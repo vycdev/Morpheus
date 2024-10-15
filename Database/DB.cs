@@ -25,7 +25,10 @@ public class DB : Microsoft.EntityFrameworkCore.DbContext
     {
         // Create unique index on DiscordId
         modelBuilder.Entity<Models.User>().HasIndex(u => u.DiscordId).IsUnique();
+        modelBuilder.Entity<Models.Guild>().HasIndex(g => g.DiscordId).IsUnique();
     }
 
     public DbSet<Models.User> Users { get; set; }
+    public DbSet<Models.Guild> Guilds { get; set; }
+    public DbSet<Models.Quote> Quotes { get; set; }
 }
