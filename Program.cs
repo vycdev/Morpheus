@@ -3,10 +3,14 @@ using Discord;
 using Morpheus.Utilities;
 using Discord.Commands;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Morpheus.Services;
 using System;
 using Morpheus.Database;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+
 
 // Load environment variables from .env file
 EnvReader.Load(".env");
@@ -41,18 +45,21 @@ services.AddSingleton<CommandService>();
 services.AddSingleton<LoggerService>();
 
 // Add the database context
-services.AddDbContextPool<Morpheus.Database.DbContext>(options => options.UseNpgsql(Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")));
+services.AddDbContextPool<DB>(options => options.UseNpgsql(Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")));
 
-IServiceProvider serviceProvider = services.BuildServiceProvider();
+IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
+    foreach(ServiceDescriptor service in services) 
+        srv.Add(service);
+}).Build();
 
 // Start the logger service
-_ = serviceProvider.GetRequiredService<LoggerService>();
+_ = host.Services.GetRequiredService<LoggerService>();
 
 // Start the bot
-DiscordSocketClient client = serviceProvider.GetRequiredService<DiscordSocketClient>();
+DiscordSocketClient client = host.Services.GetRequiredService<DiscordSocketClient>();
 
 await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("BOT_TOKEN"));
 await client.StartAsync();
 
-// Block this task until the program is closed.
-await Task.Delay(-1);
+// Keep the app running
+await host.RunAsync();

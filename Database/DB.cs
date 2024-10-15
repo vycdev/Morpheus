@@ -3,7 +3,7 @@ using Morpheus.Utilities;
 using System;
 
 namespace Morpheus.Database;
-public class DbContext : Microsoft.EntityFrameworkCore.DbContext
+public class DB : Microsoft.EntityFrameworkCore.DbContext
 {
     // =============== Migrations instructions =============== 
     // ================== Create migrations ==================
@@ -19,7 +19,13 @@ public class DbContext : Microsoft.EntityFrameworkCore.DbContext
     // dotnet tool install --global dotnet-ef --version 8.*
     // 
 
-    public DbContext(DbContextOptions<DbContext> options) : base(options) { }
+    public DB(DbContextOptions<DB> options) : base(options) { }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // Create unique index on DiscordId
+        modelBuilder.Entity<Models.User>().HasIndex(u => u.DiscordId).IsUnique();
+    }
 
     public DbSet<Models.User> Users { get; set; }
 }
