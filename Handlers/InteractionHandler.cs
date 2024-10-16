@@ -1,4 +1,4 @@
 ﻿namespace Morpheus.Handlers;
-internal class InteractionsHandler
+internal class InteractionHandler
 {
 }
