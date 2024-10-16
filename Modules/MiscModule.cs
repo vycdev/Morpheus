@@ -71,7 +71,7 @@ public class MiscModule : ModuleBase<SocketCommandContext>
         var builder = new EmbedBuilder()
         {
             Color = new Color(114, 137, 218),
-            Title = $"Commands in {moduleName}",
+            Title = $"{moduleName.Replace("Module", "")} commands",
             Description = "Here are the commands available in this module:"
         };
 
