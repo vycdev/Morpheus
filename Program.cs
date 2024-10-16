@@ -10,6 +10,8 @@ using Morpheus.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using Morpheus.Handlers;
+using Discord.Interactions;
 
 
 // Load environment variables from .env file
@@ -41,6 +43,9 @@ services.AddSingleton<DiscordSocketClient>();
 services.AddSingleton(commandServiceConfig);
 services.AddSingleton<CommandService>();
 
+// Add the handlers
+services.AddSingleton<CommandHandler>();
+
 // Add the logger service
 services.AddSingleton<LoggerService>();
 
@@ -54,6 +59,9 @@ IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
 
 // Start the logger service
 _ = host.Services.GetRequiredService<LoggerService>();
+
+// Register the commands 
+_ = host.Services.GetRequiredService<CommandHandler>().InstallCommandsAsync();
 
 // Start the bot
 DiscordSocketClient client = host.Services.GetRequiredService<DiscordSocketClient>();
