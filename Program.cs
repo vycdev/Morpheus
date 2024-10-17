@@ -4,11 +4,12 @@ using Morpheus.Utilities;
 using Discord.Commands;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Morpheus.Services;
 using Morpheus.Database;
 using Microsoft.EntityFrameworkCore;
-using Morpheus.Handlers;
 using Discord.Interactions;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Morpheus.Handlers;
 
 // Load environment variables from .env file
 Env.Load(".env");
@@ -39,14 +40,15 @@ services.AddSingleton(commandServiceConfig);
 services.AddSingleton<CommandService>();
 
 // Add the handlers
-services.AddSingleton<CommandHandler>();
-services.AddSingleton<InteractionHandler>();
+services.AddSingleton<MessagesHandler>();
+services.AddSingleton<InteractionsHandler>();
 
 // Add the logger service
-services.AddSingleton<LoggerService>();
+services.AddSingleton<LogsHandler>();
 
 // Add the database context
-services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"]));
+services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"])
+            .ConfigureWarnings(c => c.Ignore(RelationalEventId.CommandExecuted)));
 
 IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
     foreach(ServiceDescriptor service in services) 
@@ -54,10 +56,10 @@ IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
 }).Build();
 
 // Start the logger service
-_ = host.Services.GetRequiredService<LoggerService>();
+_ = host.Services.GetRequiredService<LogsHandler>();
 
 // Register the commands 
-_ = host.Services.GetRequiredService<CommandHandler>().InstallCommandsAsync();
+_ = host.Services.GetRequiredService<MessagesHandler>().InstallCommandsAsync();
 
 // Start the bot
 DiscordSocketClient client = host.Services.GetRequiredService<DiscordSocketClient>();
