@@ -1,10 +1,15 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
+using Morpheus.Database.Models;
+using Morpheus.Extensions;
+using Morpheus.Utilities;
 using System.Reflection;
 
 namespace Morpheus.Handlers;
-public class CommandHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider)
+public class CommandHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext)
 {
     public async Task InstallCommandsAsync()
     {
@@ -22,12 +27,18 @@ public class CommandHandler(DiscordSocketClient client, CommandService commands,
         // Create a number to track where the prefix ends and the command begins
         int argPos = 0;
 
+        Guild? guild = null;
+        User? user = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == message.Author.Id);
+
+        if (message.Channel is SocketGuildChannel guildChannel)
+            guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == guildChannel.Guild.Id);
+
         // Determine if the message is a command based on the prefix and make sure no bots trigger commands
-        if (!(message.HasStringPrefix("m!", ref argPos) || message.HasMentionPrefix(client.CurrentUser, ref argPos)) || message.Author.IsBot)
+        if (!(message.HasStringPrefix(guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"], ref argPos) || message.HasMentionPrefix(client.CurrentUser, ref argPos)) || message.Author.IsBot)
             return;
 
         // Create a WebSocket-based command context based on the message
-        var context = new SocketCommandContext(client, message);
+        var context = new SocketCommandContextExtended(client, message, guild, user);
 
         // Execute the command with the command context we just
         // created, along with the service provider for precondition checks.
