@@ -1,6 +1,8 @@
 ﻿namespace Morpheus.Utilities;
-internal class EnvReader
+public class Env
 {
+    public static Dictionary<string, string> Variables { get; } = new();
+
     public static void Load(string filePath)
     {
         if (!File.Exists(filePath))
@@ -20,6 +22,7 @@ internal class EnvReader
             string key = parts[0].Trim();
             string value = parts[1].Trim();
             Environment.SetEnvironmentVariable(key, value);
+            Variables.Add(key, value);
         }
     }
 }

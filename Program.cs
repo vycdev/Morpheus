@@ -5,18 +5,13 @@ using Discord.Commands;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Morpheus.Services;
-using System;
 using Morpheus.Database;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Morpheus.Handlers;
 using Discord.Interactions;
 
-
 // Load environment variables from .env file
-EnvReader.Load(".env");
-
+Env.Load(".env");
 
 // Set up configs
 DiscordSocketConfig clientConfig = new()
@@ -30,7 +25,7 @@ DiscordSocketConfig clientConfig = new()
 CommandServiceConfig commandServiceConfig = new()
 {
     LogLevel = LogSeverity.Verbose,
-    DefaultRunMode = RunMode.Async,
+    DefaultRunMode = Discord.Commands.RunMode.Async,
 };
 
 // Set up dependency injection
@@ -45,12 +40,13 @@ services.AddSingleton<CommandService>();
 
 // Add the handlers
 services.AddSingleton<CommandHandler>();
+services.AddSingleton<InteractionHandler>();
 
 // Add the logger service
 services.AddSingleton<LoggerService>();
 
 // Add the database context
-services.AddDbContextPool<DB>(options => options.UseNpgsql(Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")));
+services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"]));
 
 IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
     foreach(ServiceDescriptor service in services) 
@@ -66,7 +62,7 @@ _ = host.Services.GetRequiredService<CommandHandler>().InstallCommandsAsync();
 // Start the bot
 DiscordSocketClient client = host.Services.GetRequiredService<DiscordSocketClient>();
 
-await client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("BOT_TOKEN"));
+await client.LoginAsync(TokenType.Bot, Env.Variables["BOT_TOKEN"]);
 await client.StartAsync();
 
 // Keep the app running
