@@ -31,7 +31,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     {
         var builder = new EmbedBuilder()
         {
-            Color = new Color(114, 137, 218),
+            Color = Colors.Blue,
             Description = "Select a command module to view its commands."
         };
 
@@ -85,7 +85,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     {
         var builder = new EmbedBuilder()
         {
-            Color = new Color(114, 137, 218),
+            Color = Colors.Blue,
             Title = $"{moduleName.Replace("Module", "")} commands",
             Description = "Here are the commands available in this module:"
         };
@@ -360,5 +360,47 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         Random random = new();
         string response = responses[random.Next(responses.Length)];
         await ReplyAsync(response);
+    }
+
+    [Name("Info")]
+    [Summary("Displays information about the bot.")]
+    [Command("info")]
+    [Alias("information", "about", "botinfo")]
+    public async Task InfoAsync()
+    {
+        ulong ownerId = ulong.Parse(Env.Variables["OWNER_ID"]);
+
+        var builder = new EmbedBuilder()
+        {
+            Color = Colors.Blue,
+            Title = "Morpheus",
+            Description = $"""
+            A multi-purpose Discord bot written in C# using Discord.Net.
+            **Warning:** Might contain traces of sentince and Codify!
+
+            **Links:**
+            [Website]({Env.Variables["WEBSITE"]})
+            [GitHub Repository]({Env.Variables["GITHUB_REPO_URL"]}) 
+            [Invite Link]({Env.Variables["BOT_INVITE_URL"]})
+            [Support Discord Server]({Env.Variables["BOT_SUPPORT_SERVER_URL"]})
+            """,
+            ThumbnailUrl = Context.Client.CurrentUser.GetAvatarUrl(),
+            Footer = new EmbedFooterBuilder()
+            {
+                Text = "Made with ❤️ by VycDev",
+                IconUrl = (await Context.Client.Rest.GetUserAsync(ownerId)).GetAvatarUrl()
+            }
+        };
+    
+        await ReplyAsync(embed: builder.Build());
+    }
+
+    [Name("Uptime")]
+    [Summary("Displays the bot's uptime.")]
+    [Command("uptime")]
+    public async Task UptimeAsync()
+    {
+        string uptime = Env.StartTime.GetAccurateTimeSpan(DateTime.UtcNow);
+        await ReplyAsync($"Bot turned on {uptime} ago.");
     }
 }
