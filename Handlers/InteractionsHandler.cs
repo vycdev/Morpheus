@@ -1,6 +1,4 @@
-﻿using Discord.Commands;
-using Discord.WebSocket;
-using System;
+﻿using Discord.WebSocket;
 
 namespace Morpheus.Handlers;
 public class InteractionsHandler(DiscordSocketClient client)

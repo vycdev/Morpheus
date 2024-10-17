@@ -6,9 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Morpheus.Database;
 using Microsoft.EntityFrameworkCore;
-using Discord.Interactions;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging;
 using Morpheus.Handlers;
 
 // Load environment variables from .env file
