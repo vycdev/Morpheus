@@ -2,6 +2,7 @@
 public class Env
 {
     public static Dictionary<string, string> Variables { get; } = new();
+    public static DateTime StartTime { get; } = DateTime.UtcNow;
 
     public static void Load(string filePath)
     {
