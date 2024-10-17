@@ -2,22 +2,25 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
+using Morpheus.Extensions;
+using Morpheus.Handlers;
 using Morpheus.Utilities;
+using System.Reflection;
 using System.Text;
 
 namespace Morpheus.Commands;
 
-public class MiscModule : ModuleBase<SocketCommandContext>
+public class MiscModule : ModuleBase<SocketCommandContextExtended>
 {
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
 
-    public MiscModule(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider)
+    public MiscModule(DiscordSocketClient client, CommandService commands, InteractionHandler interactionHandler, IServiceProvider serviceProvider)
     {
         this.commands = commands;
         this.serviceProvider = serviceProvider;
 
-        client.InteractionCreated += HandleInteraction;
+        interactionHandler.RegisterInteraction("module_selector", HandleInteraction);
     }
 
     [Name("Help")]
@@ -60,8 +63,20 @@ public class MiscModule : ModuleBase<SocketCommandContext>
             {
                 var selectedModule = messageComponent.Data.Values.First();
                 var embed = CreateModuleHelpEmbed(selectedModule);
-                
-                await messageComponent.RespondAsync(embed: embed, ephemeral: true); // Sends a private message
+
+                var modules = commands.Modules.Select(m => m.Name).ToList();
+                var selectMenu = new SelectMenuBuilder()
+                    .WithPlaceholder("Select a module")
+                    .WithCustomId("module_selector");
+
+                // Add the options
+                foreach (string? module in modules)
+                    selectMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Replace("Module", "")).WithValue(module));
+
+                // Create an interaction message
+                var component = new ComponentBuilder().WithSelectMenu(selectMenu).Build();
+
+                await messageComponent.RespondAsync(embed: embed, ephemeral: true, components: component); // Sends a private message
             }
         }
     }
@@ -81,8 +96,8 @@ public class MiscModule : ModuleBase<SocketCommandContext>
             foreach (var cmd in module.Commands)
             {
                 var commandDescription = cmd.Summary ?? "No description available.";
-                var commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_") ? 
-                    $"Usage: `{cmd.Name} {string.Join(" ", cmd.Parameters.Select(p => $"<{p.Name}>"))}`" : 
+                var commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_") ?
+                    $"Usage: `{cmd.Name} {string.Join(" ", cmd.Parameters.Select(p => $"<{p.Name}>"))}`" :
                     $"Usage: `{cmd.Name}`";
 
                 builder.AddField(x =>
@@ -118,7 +133,7 @@ public class MiscModule : ModuleBase<SocketCommandContext>
     [Alias("say")]
     public async Task EchoAsync([Remainder] string input = "")
     {
-        if(string.IsNullOrWhiteSpace(input))
+        if (string.IsNullOrWhiteSpace(input))
         {
             await ReplyAsync("nothing");
             return;
@@ -197,7 +212,7 @@ public class MiscModule : ModuleBase<SocketCommandContext>
             return;
         }
 
-        if(count > 100)
+        if (count > 100)
         {
             await ReplyAsync("Please provide a number less than or equal to 100.");
             return;
@@ -209,7 +224,7 @@ public class MiscModule : ModuleBase<SocketCommandContext>
         int tails = 0;
         for (int i = 0; i < count; i++)
         {
-            if(random.Next(2) == 0)
+            if (random.Next(2) == 0)
             {
                 heads++;
                 sb.Append("Heads");
@@ -224,7 +239,7 @@ public class MiscModule : ModuleBase<SocketCommandContext>
                 sb.Append(", ");
         }
 
-        if(count > 5)
+        if (count > 5)
             sb.Append($"\n\nHeads: {heads}\nTails: {tails}");
 
         await ReplyAsync(sb.ToString());
