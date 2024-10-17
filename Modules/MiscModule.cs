@@ -1,7 +1,10 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Morpheus.Database;
+using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
@@ -14,13 +17,16 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 {
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
+    private readonly DB dbContext;
+    private readonly int HelpPageSize = 10;
 
-    public MiscModule(DiscordSocketClient client, CommandService commands, InteractionHandler interactionHandler, IServiceProvider serviceProvider)
+    public MiscModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
     {
         this.commands = commands;
         this.serviceProvider = serviceProvider;
+        this.dbContext = dbContext;
 
-        interactionHandler.RegisterInteraction("module_selector", HandleInteraction);
+        interactionHandler.RegisterInteraction("module_selector", HandleHelpSelectorInteraction);
     }
 
     [Name("Help")]
@@ -42,8 +48,20 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             .WithCustomId("module_selector");
 
         // Add the options
-        foreach (string? module in modules)
-            selectMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Replace("Module", "")).WithValue(module));
+        foreach (var module in commands.Modules)
+        {
+            if(module.Commands.Count <= HelpPageSize)
+                selectMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Name.Replace("Module", "")).WithValue("1_" + module.Name));
+            else
+            {
+                int j = 1;
+                for (int i = 0; i < module.Commands.Count; i += HelpPageSize)
+                {
+                    selectMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Name.Replace("Module", "") + " " + j).WithValue($"{j}_{module.Name}"));
+                    j++;
+                }
+            }
+        }
 
         // Create an interaction message
         var component = new ComponentBuilder().WithSelectMenu(selectMenu).Build();
@@ -55,55 +73,64 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     }
 
     // Handle the interaction when a module is selected
-    private async Task HandleInteraction(SocketInteraction interaction)
+    private async Task HandleHelpSelectorInteraction(SocketInteraction interaction)
     {
         if (interaction is SocketMessageComponent messageComponent)
         {
             if (messageComponent.Data.CustomId == "module_selector")
             {
+                Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == interaction.GuildId);
+                string commandPrefix = guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"];
+
                 var selectedModule = messageComponent.Data.Values.First();
-                var embed = CreateModuleHelpEmbed(selectedModule);
+                var embed = CreateModuleHelpEmbed(selectedModule, commandPrefix);
 
-                var modules = commands.Modules.Select(m => m.Name).ToList();
-                var selectMenu = new SelectMenuBuilder()
-                    .WithPlaceholder("Select a module")
-                    .WithCustomId("module_selector");
+                // Fetch the original message using message ID
+                var message = await messageComponent.Channel.GetMessageAsync(messageComponent.Message.Id) as IUserMessage;
 
-                // Add the options
-                foreach (string? module in modules)
-                    selectMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Replace("Module", "")).WithValue(module));
-
-                // Create an interaction message
-                var component = new ComponentBuilder().WithSelectMenu(selectMenu).Build();
-
-                await messageComponent.RespondAsync(embed: embed, ephemeral: true, components: component); // Sends a private message
+                if (message != null)
+                {
+                    await message.ModifyAsync(prop => prop.Embed = embed); // Sends a private message
+                    await messageComponent.DeferAsync();
+                }
             }
         }
     }
 
-    private Embed CreateModuleHelpEmbed(string moduleName)
+    private Embed CreateModuleHelpEmbed(string moduleName, string commandPrefix)
     {
+        int page = int.Parse(moduleName.Split("_")[0]);
+        string name = moduleName.Split("_")[1].Replace("Module", "");
+
         var builder = new EmbedBuilder()
         {
             Color = Colors.Blue,
-            Title = $"{moduleName.Replace("Module", "")} commands",
+            Title = $"{name} {page} commands",
             Description = "Here are the commands available in this module:"
         };
 
-        var module = commands.Modules.FirstOrDefault(m => m.Name == moduleName);
+        var module = commands.Modules.FirstOrDefault(m => m.Name == name + "Module");
+
         if (module != null)
         {
-            foreach (var cmd in module.Commands)
+            for(int i = (page - 1) * HelpPageSize; i < page * HelpPageSize && i < module.Commands.Count; i++)
             {
+                var cmd = module.Commands.ElementAt(i);
+
+                var aliases = cmd.Aliases.Count > 1
+                    ? $"Aliases: {string.Join(", ", cmd.Aliases.Skip(1).Select(a => commandPrefix + a))}"
+                    : "No aliases available.";
+
                 var commandDescription = cmd.Summary ?? "No description available.";
-                var commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_") ?
-                    $"Usage: `{cmd.Name} {string.Join(" ", cmd.Parameters.Select(p => $"<{p.Name}>"))}`" :
-                    $"Usage: `{cmd.Name}`";
+
+                var commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
+                    ? $"Usage: `{commandPrefix}{cmd.Aliases[0]} {string.Join(" ", cmd.Parameters.Select(p => $"[{p.Name}{(p.IsOptional ? "?" : "")}{(!string.IsNullOrEmpty(p.DefaultValue?.ToString()) ? " = " + p.DefaultValue.ToString() : "")}]"))}`"
+                    : $"Usage: `{commandPrefix}{cmd.Aliases[0]}`";
 
                 builder.AddField(x =>
                 {
                     x.Name = cmd.Name;
-                    x.Value = $"{commandDescription}\n{commandUsage}";
+                    x.Value = $"{commandDescription}\n{commandUsage}\n{aliases}";
                     x.IsInline = false;
                 });
             }
@@ -391,7 +418,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
                 IconUrl = (await Context.Client.Rest.GetUserAsync(ownerId)).GetAvatarUrl()
             }
         };
-    
+
         await ReplyAsync(embed: builder.Build());
     }
 
