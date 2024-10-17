@@ -9,7 +9,7 @@ using Morpheus.Utilities;
 using System.Reflection;
 
 namespace Morpheus.Handlers;
-public class CommandHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext)
+public class MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext)
 {
     public async Task InstallCommandsAsync()
     {
@@ -44,7 +44,7 @@ public class CommandHandler(DiscordSocketClient client, CommandService commands,
         // created, along with the service provider for precondition checks.
         var result = await commands.ExecuteAsync(context, argPos, serviceProvider);
 
-        if(result.IsSuccess) return;
+        if (result.IsSuccess) return;
 
         _ = result.Error switch
         {
