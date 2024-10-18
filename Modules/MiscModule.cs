@@ -447,4 +447,33 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("How gay")]
+    [Summary("Determines how gay a person is")]
+    [Command("howgay")]
+    public async Task HowGayAsync(SocketGuildUser? user = null)
+    {
+        user ??= Context.User as SocketGuildUser;
+
+        Random random = new();
+        int gayness = random.Next(101);
+        string gaynessBar = new string('█', gayness / 5) + new string('░', 20 - gayness / 5);
+        
+        if(user.Id == Context.Client.CurrentUser.Id)
+            gayness = 100;
+
+        var embed = new EmbedBuilder()
+            {
+            Color = Colors.Blue,
+            Title = $":rainbow_flag: {user.Username} is {gayness}% gay",
+            Description = $"{gaynessBar}",
+            Footer = new EmbedFooterBuilder()
+            {
+                Text = "Gayness is a spectrum.",
+                IconUrl = user.GetAvatarUrl()
+            }
+        };
+
+        await ReplyAsync(embed: embed.Build());
+    }
 }
