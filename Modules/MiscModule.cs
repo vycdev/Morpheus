@@ -428,4 +428,23 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         string uptime = Env.StartTime.GetAccurateTimeSpan(DateTime.UtcNow);
         await ReplyAsync($"Bot turned on {uptime} ago.");
     }
+
+    [Name("Random Color")]
+    [Summary("Generates a random color.")]
+    [Command("randomcolor")]
+    [Alias("randcolor", "rc")]
+    public async Task RandomColorAsync()
+    {
+        Random random = new();
+        var color = new Color((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256));
+
+        var embed = new EmbedBuilder()
+        {
+            Color = color,
+            Title = $"#{color.R:X2}{color.G:X2}{color.B:X2}",
+            Description = $"RGB: {color.R}, {color.G}, {color.B}"
+        };
+
+        await ReplyAsync(embed: embed.Build());
+    }
 }
