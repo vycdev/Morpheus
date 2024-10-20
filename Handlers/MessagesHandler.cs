@@ -8,8 +8,27 @@ using Morpheus.Utilities;
 using System.Reflection;
 
 namespace Morpheus.Handlers;
-public class MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext)
+public class MessagesHandler
 {
+    private readonly DiscordSocketClient client;
+    private readonly CommandService commands;
+    private readonly IServiceProvider serviceProvider;
+    private readonly DB dbContext;
+    bool started = false;
+
+    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext)
+    {
+        if(started)
+            throw new InvalidOperationException("At most one instance of this service can be started");
+
+        started = true;
+
+        this.client = client;
+        this.commands = commands;
+        this.serviceProvider = serviceProvider;
+        this.dbContext = dbContext;
+    }
+
     public async Task InstallCommandsAsync()
     {
         client.MessageReceived += HandleCommandAsync;
@@ -21,7 +40,8 @@ public class MessagesHandler(DiscordSocketClient client, CommandService commands
     {
         // Don't process the command if it was a system message
         var message = messageParam as SocketUserMessage;
-        if (message == null) return;
+        if (message == null)
+            return;
 
         // Create a number to track where the prefix ends and the command begins
         int argPos = 0;
@@ -43,7 +63,8 @@ public class MessagesHandler(DiscordSocketClient client, CommandService commands
         // created, along with the service provider for precondition checks.
         var result = await commands.ExecuteAsync(context, argPos, serviceProvider);
 
-        if (result.IsSuccess) return;
+        if (result.IsSuccess)
+            return;
 
         _ = result.Error switch
         {
@@ -58,4 +79,6 @@ public class MessagesHandler(DiscordSocketClient client, CommandService commands
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
         };
     }
+
+
 }

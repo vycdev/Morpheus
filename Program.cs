@@ -38,11 +38,11 @@ services.AddSingleton(commandServiceConfig);
 services.AddSingleton<CommandService>();
 
 // Add the handlers
-services.AddSingleton<MessagesHandler>();
-services.AddSingleton<InteractionsHandler>();
+services.AddScoped<MessagesHandler>();
+services.AddScoped<InteractionsHandler>();
 
 // Add the logger service
-services.AddSingleton<LogsHandler>();
+services.AddScoped<LogsHandler>();
 
 // Add the database context
 services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"])
