@@ -449,7 +449,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     }
 
     [Name("How gay")]
-    [Summary("Determines how gay a person is based on their server nickname")]
+    [Summary("Determines how gay a person is based on their nickname")]
     [Command("howgay")]
     public async Task HowGayAsync(SocketGuildUser? user = null)
     {
