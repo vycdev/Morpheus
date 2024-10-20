@@ -449,13 +449,13 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     }
 
     [Name("How gay")]
-    [Summary("Determines how gay a person is")]
+    [Summary("Determines how gay a person is based on their server nickname")]
     [Command("howgay")]
     public async Task HowGayAsync(SocketGuildUser? user = null)
     {
         user ??= Context.User as SocketGuildUser;
 
-        Random random = new();
+        Random random = new(user.Nickname.Select(c => (int)c).Sum());
         int gayness = random.Next(101);
         string gaynessBar = new string('█', gayness / 5) + new string('░', 20 - gayness / 5);
 
