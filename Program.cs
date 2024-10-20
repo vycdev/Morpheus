@@ -53,6 +53,9 @@ IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
         srv.Add(service);
 }).Build();
 
+// Run database migrations 
+host.Services.GetRequiredService<DB>().Database.Migrate();
+
 // Start the logger service
 _ = host.Services.GetRequiredService<LogsHandler>();
 
