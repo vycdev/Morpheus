@@ -1,4 +1,6 @@
-﻿namespace Morpheus.Utilities;
+﻿using System.Collections;
+
+namespace Morpheus.Utilities;
 public class Env
 {
     public static Dictionary<string, string> Variables { get; } = new();
@@ -6,24 +8,33 @@ public class Env
 
     public static void Load(string filePath)
     {
-        if (!File.Exists(filePath))
-            throw new FileNotFoundException($"The file '{filePath}' does not exist.");
-
-        string[] array = File.ReadAllLines(filePath);
-        for (int i = 0; i < array.Length; i++)
+        // Load variables from the .env file
+        if (File.Exists(filePath))
         {
-            string line = array[i];
-            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                continue; // Skip empty lines and comments
+            string[] array = File.ReadAllLines(filePath);
+            for (int i = 0; i < array.Length; i++)
+            {
+                string line = array[i];
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+                    continue; // Skip empty lines and comments
 
-            string[] parts = line.Split('=', 2);
-            if (parts.Length != 2)
-                continue; // Skip lines that are not key-value pairs
+                string[] parts = line.Split('=', 2);
+                if (parts.Length != 2)
+                    continue; // Skip lines that are not key-value pairs
 
-            string key = parts[0].Trim();
-            string value = parts[1].Trim();
-            Environment.SetEnvironmentVariable(key, value);
-            Variables.Add(key, value);
+                string key = parts[0].Trim();
+                string value = parts[1].Trim();
+                Environment.SetEnvironmentVariable(key, value);
+                Variables.Add(key, value);
+            }
+        }
+
+        // Add the remaining variables from the environment to the dictionary
+        foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            string key = entry.Key.ToString() ?? string.Empty;
+            if (!Variables.ContainsKey(key)) // .env variables take precedence
+                Variables.Add(key, entry.Value?.ToString() ?? string.Empty);
         }
     }
 }
