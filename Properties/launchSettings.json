@@ -4,7 +4,11 @@
       "commandName": "Project"
     },
     "Container (Dockerfile)": {
-      "commandName": "Docker"
+      "commandName": "Docker",
+      // Add environment variables
+      "environmentVariables": {
+        "DB_CONNECTION_STRING": "Test"
+      }
     }
   }
 }
