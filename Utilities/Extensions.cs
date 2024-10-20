@@ -1,4 +1,6 @@
-﻿namespace Morpheus.Utilities;
+﻿using System.Text;
+
+namespace Morpheus.Utilities;
 public static partial class Extensions
 {
 
@@ -66,5 +68,21 @@ public static partial class Extensions
             timeComponents.Add($"{milliseconds} milliseconds");
 
         return timeComponents.Count > 0 ? string.Join(", ", timeComponents) : "0 milliseconds";
+    }
+
+    public static string GetPercentageBar(this int value)
+    {
+        // Define the total length of the bar
+        int totalLength = 30;
+
+        // Calculate the number of filled cells
+        int filledCells = (int)Math.Round((double)value / 100 * totalLength);
+
+        // Create the percentage bar
+        StringBuilder bar = new();
+        bar.Append('█', filledCells);
+        bar.Append('░', totalLength - filledCells);
+
+        return bar.ToString();
     }
 }
