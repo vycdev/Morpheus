@@ -408,6 +408,8 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             [GitHub Repository]({Env.Variables["GITHUB_REPO_URL"]}) 
             [Invite Link]({Env.Variables["BOT_INVITE_URL"]})
             [Support Discord Server]({Env.Variables["BOT_SUPPORT_SERVER_URL"]})
+
+            -# Version: v{Utils.GetAssemblyVersion()}
             """,
             ThumbnailUrl = Context.Client.CurrentUser.GetAvatarUrl(),
             Footer = new EmbedFooterBuilder()
