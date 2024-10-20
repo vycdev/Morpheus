@@ -5,6 +5,7 @@ using Morpheus.Database;
 using System.Transactions;
 using Morpheus.Database.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Morpheus.Utilities;
 
 namespace Morpheus.Handlers;
 internal class LogsHandler
@@ -36,7 +37,8 @@ internal class LogsHandler
         dbContext.Add(new Log()
         {
             Message = log,
-            Severity = (int)message.Severity
+            Severity = (int)message.Severity,
+            Version = Utils.GetAssemblyVersion()
         });
 
         dbContext.SaveChanges();

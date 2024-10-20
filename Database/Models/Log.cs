@@ -11,5 +11,7 @@ public class Log
     public int Severity { get; set; }
     public string Message { get; set; }
 
+    public string Version { get; set; }
+
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 }
