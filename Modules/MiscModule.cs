@@ -463,7 +463,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             {
             Color = Colors.Blue,
             Title = $":rainbow_flag: {user.Username} is {gayness}% gay",
-            Description = $"{gaynessBar}",
+            Description = $"{gayness.GetPercentageBar()}",
             Footer = new EmbedFooterBuilder()
             {
                 Text = "Gayness is a spectrum.",
@@ -472,5 +472,28 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         };
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Year Percentage")]
+    [Summary("Displays the percentage of the year that has passed.")]
+    [Command("yearpercentage")]
+    [Alias("yearpercent", "yp")]
+    public async Task YearPercentageAsync()
+    {
+        DateTime now = DateTime.UtcNow;
+        DateTime startOfYear = new DateTime(now.Year, 1, 1);
+        DateTime endOfYear = new DateTime(now.Year + 1, 1, 1);
+
+        double percentage = ((now - startOfYear).TotalDays / (endOfYear - startOfYear).TotalDays * 100);
+
+        var embed = new EmbedBuilder()
+            {
+            Color = Colors.Blue,
+            Title = $"{now.Year} is {percentage:F2}% done",
+            Description = $"{((int)percentage).GetPercentageBar()}",
+        };
+
+        await ReplyAsync(embed: embed.Build());
+
     }
 }
