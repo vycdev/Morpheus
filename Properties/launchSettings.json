@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Morpheus": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
