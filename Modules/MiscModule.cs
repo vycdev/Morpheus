@@ -494,6 +494,5 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         };
 
         await ReplyAsync(embed: embed.Build());
-
     }
 }
