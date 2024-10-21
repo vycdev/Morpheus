@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Morpheus.Database.Models;
+﻿namespace Morpheus.Database.Models;
 public class User_Activity
 {
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public DateTime InsertDate { get; set; } = DateTime.UtcNow;
+
 }

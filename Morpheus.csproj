@@ -55,6 +55,6 @@
 		</Compile>
 	</ItemGroup>
 	<Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-	  <Exec Command="&quot;$(DevEnvDir)TextTransform.exe&quot; -a !!BuildConfiguration!$(Configuration) &quot;$(ProjectDir)Properties\AssemblyInfo.tt&quot;&#xD;&#xA;" />
+	  <Exec Condition="'$(RunningInDocker)' != 'true'" Command="&quot;$(DevEnvDir)TextTransform.exe&quot; -a !!BuildConfiguration!$(Configuration) &quot;$(ProjectDir)Properties\AssemblyInfo.tt&quot;&#xD;&#xA;" />
 	</Target>
 </Project>
