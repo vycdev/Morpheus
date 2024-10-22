@@ -9,7 +9,7 @@ using System.Resources;
 [assembly: AssemblyDescription("A discord bot with generic functionalities, also sentient.")]
 
 // Version information
-[assembly: AssemblyVersion("1.0.12.14")]
-[assembly: AssemblyFileVersion("1.0.12.14")]
+[assembly: AssemblyVersion("1.0.32.35")]
+[assembly: AssemblyFileVersion("1.0.32.35")]
 [assembly: NeutralResourcesLanguageAttribute("en-US")]
 
