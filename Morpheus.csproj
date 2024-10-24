@@ -7,6 +7,8 @@
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 		<DockerfileContext>.</DockerfileContext>
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+		<Deterministic>false</Deterministic>
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="Discord.Net" Version="3.16.0" />
@@ -34,10 +36,6 @@
 		<None Update=".env">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</None>
-		<None Update="Properties\AssemblyInfo.tt">
-			<Generator>TextTemplatingFileGenerator</Generator>
-			<LastGenOutput>AssemblyInfo.cs</LastGenOutput>
-		</None>
 	</ItemGroup>
 	<ItemGroup>
 		<Folder Include="Migrations\" />
@@ -47,14 +45,4 @@
 	<ItemGroup>
 		<Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
 	</ItemGroup>
-	<ItemGroup>
-		<Compile Update="Properties\AssemblyInfo.cs">
-			<DesignTime>True</DesignTime>
-			<AutoGen>True</AutoGen>
-			<DependentUpon>AssemblyInfo.tt</DependentUpon>
-		</Compile>
-	</ItemGroup>
-	<Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-	  <Exec Condition="'$(RunningInDocker)' != 'true'" Command="&quot;$(DevEnvDir)TextTransform.exe&quot; -a !!BuildConfiguration!$(Configuration) &quot;$(ProjectDir)Properties\AssemblyInfo.tt&quot;&#xD;&#xA;" />
-	</Target>
 </Project>
