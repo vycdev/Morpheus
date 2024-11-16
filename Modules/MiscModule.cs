@@ -1,4 +1,6 @@
-﻿using Discord;
+﻿using color_names_csharp;
+using color_names_csharp.Utility;
+using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
@@ -33,22 +35,22 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Alias("commands", "cmds", "h")]
     public async Task HelpAsync()
     {
-        var builder = new EmbedBuilder()
+        EmbedBuilder builder = new()
         {
             Color = Colors.Blue,
             Description = "Select a command module to view its commands."
         };
 
         // Create the selector (dropdown)
-        var modules = commands.Modules.Select(m => m.Name).ToList();
-        var selectMenu = new SelectMenuBuilder()
+        List<string> modules = commands.Modules.Select(m => m.Name).ToList();
+        SelectMenuBuilder selectMenu = new SelectMenuBuilder()
             .WithPlaceholder("Select a module")
             .WithCustomId("module_selector");
 
         // Add the options
-        foreach (var module in commands.Modules)
+        foreach (ModuleInfo? module in commands.Modules)
         {
-            if(module.Commands.Count <= HelpPageSize)
+            if (module.Commands.Count <= HelpPageSize)
                 selectMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Name.Replace("Module", "")).WithValue("1_" + module.Name));
             else
             {
@@ -62,10 +64,10 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Create an interaction message
-        var component = new ComponentBuilder().WithSelectMenu(selectMenu).Build();
+        MessageComponent component = new ComponentBuilder().WithSelectMenu(selectMenu).Build();
 
         // Create the initial embed
-        var message = await ReplyAsync(embed: builder.Build());
+        IUserMessage message = await ReplyAsync(embed: builder.Build());
 
         await message.ModifyAsync(msg => msg.Components = component);
     }
@@ -80,11 +82,11 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
                 Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == interaction.GuildId);
                 string commandPrefix = guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"];
 
-                var selectedModule = messageComponent.Data.Values.First();
-                var embed = CreateModuleHelpEmbed(selectedModule, commandPrefix);
+                string selectedModule = messageComponent.Data.Values.First();
+                Embed embed = CreateModuleHelpEmbed(selectedModule, commandPrefix);
 
                 // Fetch the original message using message ID
-                var message = await messageComponent.Channel.GetMessageAsync(messageComponent.Message.Id) as IUserMessage;
+                IUserMessage? message = await messageComponent.Channel.GetMessageAsync(messageComponent.Message.Id) as IUserMessage;
 
                 if (message != null)
                 {
@@ -100,28 +102,28 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         int page = int.Parse(moduleName.Split("_")[0]);
         string name = moduleName.Split("_")[1].Replace("Module", "");
 
-        var builder = new EmbedBuilder()
+        EmbedBuilder builder = new()
         {
             Color = Colors.Blue,
             Title = $"{name} {page} commands",
             Description = "Here are the commands available in this module:"
         };
 
-        var module = commands.Modules.FirstOrDefault(m => m.Name == name + "Module");
+        ModuleInfo? module = commands.Modules.FirstOrDefault(m => m.Name == name + "Module");
 
         if (module != null)
         {
-            for(int i = (page - 1) * HelpPageSize; i < page * HelpPageSize && i < module.Commands.Count; i++)
+            for (int i = (page - 1) * HelpPageSize; i < page * HelpPageSize && i < module.Commands.Count; i++)
             {
-                var cmd = module.Commands.ElementAt(i);
+                CommandInfo cmd = module.Commands.ElementAt(i);
 
-                var aliases = cmd.Aliases.Count > 1
+                string aliases = cmd.Aliases.Count > 1
                     ? $"Aliases: {string.Join(", ", cmd.Aliases.Skip(1).Select(a => commandPrefix + a))}"
                     : "No aliases available.";
 
-                var commandDescription = cmd.Summary ?? "No description available.";
+                string commandDescription = cmd.Summary ?? "No description available.";
 
-                var commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
+                string commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
                     ? $"Usage: `{commandPrefix}{cmd.Aliases[0]} {string.Join(" ", cmd.Parameters.Select(p => $"[{p.Name}{(p.IsOptional ? "?" : "")}{(!string.IsNullOrEmpty(p.DefaultValue?.ToString()) ? " = " + p.DefaultValue.ToString() : "")}]"))}`"
                     : $"Usage: `{commandPrefix}{cmd.Aliases[0]}`";
 
@@ -181,7 +183,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Command("guildage")]
     public async Task GuildAgeAsync([Remainder] string? _ = null)
     {
-        var guild = Context.Guild;
+        SocketGuild guild = Context.Guild;
         string age = guild.CreatedAt.UtcDateTime.GetAccurateTimeSpan(DateTime.UtcNow);
 
         await ReplyAsync($"Created on {guild.CreatedAt.UtcDateTime} UTC,\n{guild.Name} is {age} old.");
@@ -395,7 +397,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     {
         ulong ownerId = ulong.Parse(Env.Variables["OWNER_ID"]);
 
-        var builder = new EmbedBuilder()
+        EmbedBuilder builder = new()
         {
             Color = Colors.Blue,
             Title = "Morpheus",
@@ -437,17 +439,64 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Alias("randcolor", "rc")]
     public async Task RandomColorAsync()
     {
-        Random random = new();
-        var color = new Color((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256));
-
-        var embed = new EmbedBuilder()
+        NamedColor? color = Colors.ColorNames.GetRandomNamedColor();
+        if (color is null)
         {
-            Color = color,
-            Title = $"#{color.R:X2}{color.G:X2}{color.B:X2}",
-            Description = $"RGB: {color.R}, {color.G}, {color.B}"
+            await ReplyAsync("Failed to generate a random color.");
+            return;
+        }
+
+        EmbedBuilder embed = new()
+        {
+            Color = new(color.Rgb.Item1, color.Rgb.Item2, color.Rgb.Item3),
+            Title = color.Name,
+            Description =
+            $"""
+            HEX: {color.Hex}
+            RGB: {color.Rgb.Item1}, {color.Rgb.Item2}, {color.Rgb.Item3}
+            LAB: {color.Lab.Item1:F2}, {color.Lab.Item2:F2}, {color.Lab.Item3:F2}
+            """
         };
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Find color name")]
+    [Summary("Finds the closest color name match, based on a hex value")]
+    [Command("findcolor")]
+    [Alias("findc", "fc")]
+    public async Task FindColorName([Remainder] string hexValue)
+    {
+        try
+        {
+            (short r, short g, short b) Rgb = ColorConverter.HexToRgb(hexValue);
+            NamedColor? color = Colors.ColorNames.FindClosestColor(Rgb);
+
+            if (color == null)
+            {
+                await ReplyAsync("Color name couldn't be found");
+                return;
+            }
+
+            EmbedBuilder embed = new()
+            {
+                Color = new(color.Rgb.Item1, color.Rgb.Item2, color.Rgb.Item3),
+                Title = color.Name,
+                Description =
+                $"""
+                HEX: {color.Hex}
+                RGB: {color.Rgb.Item1}, {color.Rgb.Item2}, {color.Rgb.Item3}
+                LAB: {color.Lab.Item1:F2}, {color.Lab.Item2:F2}, {color.Lab.Item3:F2}
+                """
+            };
+
+            await ReplyAsync(embed: embed.Build());
+
+        }
+        catch (ArgumentException ex)
+        {
+            await ReplyAsync(ex.Message);
+        }
     }
 
     [Name("How gay")]
@@ -461,8 +510,8 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         int gayness = random.Next(101);
         string gaynessBar = new string('█', gayness / 5) + new string('░', 20 - gayness / 5);
 
-        var embed = new EmbedBuilder()
-            {
+        EmbedBuilder embed = new()
+        {
             Color = Colors.Blue,
             Title = $":rainbow_flag: {user.Username} is {gayness}% gay",
             Description = $"{gayness.GetPercentageBar()}",
@@ -483,13 +532,13 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     public async Task YearPercentageAsync()
     {
         DateTime now = DateTime.UtcNow;
-        DateTime startOfYear = new DateTime(now.Year, 1, 1);
-        DateTime endOfYear = new DateTime(now.Year + 1, 1, 1);
+        DateTime startOfYear = new(now.Year, 1, 1);
+        DateTime endOfYear = new(now.Year + 1, 1, 1);
 
         double percentage = ((now - startOfYear).TotalDays / (endOfYear - startOfYear).TotalDays * 100);
 
-        var embed = new EmbedBuilder()
-            {
+        EmbedBuilder embed = new()
+        {
             Color = Colors.Blue,
             Title = $"{now.Year} is {percentage:F2}% done",
             Description = $"{((int)percentage).GetPercentageBar()}",
