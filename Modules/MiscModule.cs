@@ -508,7 +508,6 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 
         Random random = new(user.Nickname.Select(c => (int)c).Sum());
         int gayness = random.Next(101);
-        string gaynessBar = new string('█', gayness / 5) + new string('░', 20 - gayness / 5);
 
         EmbedBuilder embed = new()
         {
