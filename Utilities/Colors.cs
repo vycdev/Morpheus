@@ -1,5 +1,4 @@
-﻿
-using color_names_csharp;
+﻿using ColorNamesSharp.Colors;
 using Discord;
 
 namespace Morpheus.Utilities;

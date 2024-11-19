@@ -5,7 +5,7 @@ VisualStudioVersion = 17.10.35027.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Morpheus", "Morpheus.csproj", "{43FD3A80-8ECF-4B47-BAD6-68749BDCDE73}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ColorNames", "..\color-names-csharp\ColorNames.csproj", "{30AC2092-1671-4DFB-965A-D61D2DC4B075}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ColorNamesSharp", "..\color-names-csharp\ColorNamesSharp.csproj", "{30AC2092-1671-4DFB-965A-D61D2DC4B075}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

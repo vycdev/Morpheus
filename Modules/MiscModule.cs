@@ -1,5 +1,6 @@
-﻿using color_names_csharp;
-using color_names_csharp.Utility;
+﻿using ColorNamesSharp;
+using ColorNamesSharp.Colors;
+using ColorNamesSharp.Utility;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
