@@ -1,10 +1,10 @@
-﻿using ColorNamesSharp.Colors;
+﻿using ColorNamesSharp;
 using Discord;
 
 namespace Morpheus.Utilities;
 public static class Colors
 {
-    public static ColorNames ColorNames =  new ColorNamesBuilder().LoadDefault().BuildColorNames;
+    public static ColorNames ColorNames =  new ColorNamesBuilder().LoadDefault().Build();
 
     public static Color Blue = new(50, 153, 254);
     public static Color BlueShadow = new(19, 61, 101);

@@ -1,5 +1,4 @@
 ﻿using ColorNamesSharp;
-using ColorNamesSharp.Colors;
 using ColorNamesSharp.Utility;
 using Discord;
 using Discord.Commands;
