@@ -1,10 +1,13 @@
 ﻿using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
+using Morpheus.Services;
 using Morpheus.Utilities;
+using Morpheus.Utilities.Lists;
 using System.Reflection;
 
 namespace Morpheus.Handlers;
@@ -14,9 +17,15 @@ public class MessagesHandler
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
     private readonly DB dbContext;
+    private readonly GuildService guildService; 
     bool started = false;
 
-    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext)
+    private readonly RandomBag welcomeMessagesBag = new(WelcomeMessages.Messages);
+    private readonly RandomBag goodbyeMessagesBag = new(GoodbyeMessages.Messages);
+    private readonly RandomBag happyEmojisBag = new(EmojiList.EmojisHappy);
+    private readonly RandomBag sadEmojisBag = new(EmojiList.EmojisSad);
+
+    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext, GuildService guildService)
     {
         if(started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -27,11 +36,14 @@ public class MessagesHandler
         this.commands = commands;
         this.serviceProvider = serviceProvider;
         this.dbContext = dbContext;
+        this.guildService = guildService;
     }
 
     public async Task InstallCommandsAsync()
     {
         client.MessageReceived += HandleCommandAsync;
+        client.UserJoined += HandleUserJoined;
+        client.UserLeft += HandleUserLeft;
 
         await commands.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
     }
@@ -49,8 +61,10 @@ public class MessagesHandler
         Guild? guild = null;
         User? user = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == message.Author.Id);
 
+        // If the message is in a guild, try to get the guild from the database
+        // If the guild doesn't exist, create it and then get it
         if (message.Channel is SocketGuildChannel guildChannel)
-            guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == guildChannel.Guild.Id);
+            guild = await guildService.TryGetCreateGuild(guildChannel.Guild);
 
         // Determine if the message is a command based on the prefix and make sure no bots trigger commands
         if (!(message.HasStringPrefix(guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"], ref argPos) || message.HasMentionPrefix(client.CurrentUser, ref argPos)) || message.Author.IsBot)
@@ -73,7 +87,7 @@ public class MessagesHandler
             CommandError.ParseFailed => await context.Channel.SendMessageAsync("Failed to parse arguments."),
             CommandError.ObjectNotFound => await context.Channel.SendMessageAsync("Object not found."),
             CommandError.MultipleMatches => await context.Channel.SendMessageAsync("Multiple matches found."),
-            CommandError.UnmetPrecondition => await context.Channel.SendMessageAsync("Unmet precondition."),
+            CommandError.UnmetPrecondition => await context.Channel.SendMessageAsync("Unmet precondition. Make sure you have the right permissions for the command."),
             CommandError.Exception => await context.Channel.SendMessageAsync("An exception occurred."),
             CommandError.Unsuccessful => await context.Channel.SendMessageAsync("Unsuccessful."),
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
@@ -81,4 +95,41 @@ public class MessagesHandler
     }
 
 
+    private async Task HandleUserJoined(SocketGuildUser user)
+    {
+        Guild? guild = await guildService.TryGetCreateGuild(user.Guild);
+
+        if (guild == null)
+            return;
+
+        if (guild.WelcomeChannelId == 0)
+            return;
+
+        var channel = user.Guild.GetTextChannel(guild.WelcomeChannelId);
+
+        if (channel == null)
+            return;
+
+        await channel.SendMessageAsync(string.Format(welcomeMessagesBag.Random(), user.Mention));
+        await channel.SendMessageAsync($"Server now has {user.Guild.MemberCount} members! {happyEmojisBag.Random()}");
+    }
+
+    private async Task HandleUserLeft(SocketGuild guild, SocketUser user)
+    {
+        Guild? guildDb = await guildService.TryGetCreateGuild(guild);
+
+        if (guildDb == null)
+            return;
+
+        if (guildDb.WelcomeChannelId == 0)
+            return;
+
+        var channel = guild.GetTextChannel(guildDb.WelcomeChannelId);
+
+        if (channel == null)
+            return;
+
+        await channel.SendMessageAsync(string.Format(goodbyeMessagesBag.Random(), user.Mention));
+        await channel.SendMessageAsync($"Server now has {guild.MemberCount} members! {sadEmojisBag.Random()}");
+    }
 }

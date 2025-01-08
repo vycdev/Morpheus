@@ -11,8 +11,8 @@ public class Guild
     [Required]
     public ulong DiscordId { get; set; }
     
-    public string Name { get; set; }
-    
+    public string Name { get; set; } = "";
+
     // Settings
     public string Prefix { get; set; } = "m!";
 

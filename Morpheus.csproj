@@ -41,7 +41,6 @@
 	<ItemGroup>
 		<Folder Include="Migrations\" />
 		<Folder Include="Properties\PublishProfiles\" />
-		<Folder Include="Services\" />
 	</ItemGroup>
 	<ItemGroup>
 		<Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />

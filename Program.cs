@@ -8,6 +8,7 @@ using Morpheus.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Morpheus.Handlers;
+using Morpheus.Services;
 
 // Load environment variables from .env file
 Env.Load(".env");
@@ -36,6 +37,9 @@ services.AddSingleton<DiscordSocketClient>();
 
 services.AddSingleton(commandServiceConfig);
 services.AddSingleton<CommandService>();
+
+// Scoped Services
+services.AddScoped<GuildService>();
 
 // Add the handlers
 services.AddScoped<MessagesHandler>();
