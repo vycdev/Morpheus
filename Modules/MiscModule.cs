@@ -561,9 +561,15 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Returns definitions from urban dictionary")]
     [Command("udic")]
     [Alias("urbandictionary", "urbandic", "udictionary")]
-    public async Task UrbanDictionary(string word)
+    public async Task UrbanDictionary([Remainder] string word)
     {
-        string url = $"https://api.urbandictionary.com/v0/define?term={word}";
+        string url;
+        
+        if(!string.IsNullOrWhiteSpace(word))
+            url = $"https://api.urbandictionary.com/v0/define?term={word}";
+        else
+            url = "https://api.urbandictionary.com/v0/random";
+
         HttpResponseMessage response = await httpClient.GetAsync(url);
 
         if (!response.IsSuccessStatusCode)
