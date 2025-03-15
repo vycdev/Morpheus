@@ -10,6 +10,7 @@ using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
 using Newtonsoft.Json.Linq;
+using System.IO.Compression;
 using System.Text;
 
 namespace Morpheus.Commands;
@@ -668,5 +669,56 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         await ReplyAsync("Message pinned successfully.");
 
         return; 
+    }
+
+    [Name("Download Emojis")]
+    [Summary("Downloads all emojis from the server and packs them into a ZIP file.")]
+    [Command("downloademojis")]
+    [Alias("downloademoji", "downloademotes", "downloademote")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    public async Task DownloadEmojisAsync()
+    {
+        SocketGuild guild = Context.Guild;
+        string directory = Path.Combine(Path.GetTempPath(), "emojis", guild.Id.ToString());
+        string zipPath = Path.Combine(Path.GetTempPath(), $"{guild.Name}_Emojis.zip");
+
+        // Ensure directory is clean
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, true);
+
+        Directory.CreateDirectory(directory);
+
+        using HttpClient client = new();
+        int totalEmojis = guild.Emotes.Count;
+        int count = 0;
+
+        var progressMessage = await ReplyAsync($"Starting to download {totalEmojis} emojis...");
+
+        foreach (var emoji in guild.Emotes)
+        {
+            string extension = emoji.Animated ? ".gif" : ".png";
+            string filePath = Path.Combine(directory, emoji.Name + extension);
+
+            byte[] data = await client.GetByteArrayAsync(emoji.Url);
+            await File.WriteAllBytesAsync(filePath, data);
+            count++;
+        }
+
+        await progressMessage.ModifyAsync(m => m.Content = "Packing emojis into a ZIP file...");
+
+        // Create ZIP archive
+        if (File.Exists(zipPath))
+            File.Delete(zipPath);
+
+        ZipFile.CreateFromDirectory(directory, zipPath);
+
+        await progressMessage.ModifyAsync(m => m.Content = "Uploading ZIP file...");
+        await Context.Channel.SendFileAsync(zipPath, "Here are all the server emojis!");
+
+        // Clean up files
+        Directory.Delete(directory, true);
+        File.Delete(zipPath);
+
+        await progressMessage.ModifyAsync(m => m.Content = "Emoji download process completed!");
     }
 }
