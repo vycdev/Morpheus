@@ -10,8 +10,10 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Morpheus.Commands;
@@ -743,4 +745,97 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 
         await progressMessage.ModifyAsync(m => m.Content = "Emoji download process completed!");
     }
+
+    [Name("Ping Minecraft Server")]
+    [Summary("Pings a Minecraft server to get information about it.")]
+    [Command("pingmc")]
+    [Alias("mcserver", "mcstatus")]
+    [RateLimit(2, 30)]
+    public async Task PingMinecraftServerAsync(string ip, int port = 25565)
+    {
+        var message = await ReplyAsync("Fetching data...");
+
+        string url = $"https://api.mcsrvstat.us/2/{ip}:{port}";
+
+        // Create an HttpClient and set the User-Agent header
+        using (var httpClient = new HttpClient())
+        {
+            httpClient.DefaultRequestHeaders.Add("User-Agent", $"{Env.Get("BOT_NAME", "Morpheus")}/{Utils.GetAssemblyVersion()}");
+
+            HttpResponseMessage response = await httpClient.GetAsync(url);
+            string content = await response.Content.ReadAsStringAsync();
+
+            JObject data = JObject.Parse(content);
+
+            // Check if server is online
+            if (data["online"] == null || !data["online"].Value<bool>())
+            {
+                var offlineEmbed = new EmbedBuilder()
+                    .WithColor(Color.Orange)
+                    .WithTitle($"{ip}:{port} is Offline")
+                    .WithDescription("The server appears to be offline.")
+                    .WithFooter("Powered by mcsrvstat.us")
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                await message.ModifyAsync(msg =>
+                {
+                    msg.Content = string.Empty;
+                    msg.Embed = offlineEmbed;
+                });
+                
+                return;
+            }
+
+            // Extract data if online
+            string version = data["version"]?.ToString() ?? "N/A";
+            var motdArray = data["motd"]?["clean"] as JArray;
+            string motd = motdArray != null ? string.Join("\n", motdArray) : "N/A";
+            int playersOnline = data["players"]?["online"]?.Value<int>() ?? 0;
+            int maxPlayers = data["players"]?["max"]?.Value<int>() ?? 0;
+            string software = data["software"]?.ToString() ?? "Unknown";
+            string serverImageBase64 = data["icon"]?.ToString(); // Base64 encoded image
+
+            // Build a nicely formatted embed
+            var embed = new EmbedBuilder()
+                .WithColor(Color.Green)
+                .WithTitle("Minecraft Server Status")
+                .WithDescription($"**Server:** {ip}:{port}")
+                .AddField("Version", version, inline: true)
+                .AddField("Players", $"{playersOnline}/{maxPlayers}", inline: true)
+                .AddField("Software", software, inline: true)
+                .AddField("MOTD", motd)
+                .WithFooter("Powered by mcsrvstat.us")
+                .WithCurrentTimestamp();
+
+            // Include image if the favicon exists
+            if (!string.IsNullOrEmpty(serverImageBase64))
+            {
+                embed.WithThumbnailUrl($"attachment://favicon.png"); // Point to an inline attachment URL
+                var imageBytes = Convert.FromBase64String(serverImageBase64.Split(',')[1]); // Remove the data:image/png;base64, part
+                var stream = new MemoryStream(imageBytes);
+                var attachment = new FileAttachment(stream, "favicon.png");
+
+                var finalEmbed = embed.Build();
+                // await Context.Channel.SendFileAsync(attachment: attachment, embed: finalEmbed);
+                await message.ModifyAsync(msg =>
+                {
+                    msg.Content = string.Empty;
+                    msg.Embed = finalEmbed;
+                    msg.Attachments = new([attachment]);
+                });
+            }
+            else
+            {
+                var finalEmbed = embed.Build();
+
+                await message.ModifyAsync(msg =>
+                {
+                    msg.Content = string.Empty;
+                    msg.Embed = finalEmbed;
+                });
+            }
+        }
+    }
+
 }

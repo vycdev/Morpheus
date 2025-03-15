@@ -37,4 +37,7 @@ public class Env
                 Variables.Add(key, entry.Value?.ToString() ?? string.Empty);
         }
     }
+
+    public static string Get(string key, string defaultValue = "")
+        =>  Variables.TryGetValue(key, out string? value) ? value : defaultValue;
 }
