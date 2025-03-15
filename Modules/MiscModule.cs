@@ -760,7 +760,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         // Create an HttpClient and set the User-Agent header
         using (var httpClient = new HttpClient())
         {
-            httpClient.DefaultRequestHeaders.Add("User-Agent", $"{Env.Get("BOT_NAME", "Morpheus")}/{Utils.GetAssemblyVersion()}");
+            httpClient.DefaultRequestHeaders.Add("User-Agent", $"{Env.Variables["BOT_NAME"]}/{Utils.GetAssemblyVersion()}");
 
             HttpResponseMessage response = await httpClient.GetAsync(url);
             string content = await response.Content.ReadAsStringAsync();
