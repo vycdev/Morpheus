@@ -907,4 +907,41 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         string hash = BitConverter.ToString(hashBytes).Replace("-", "");
         await ReplyAsync($"Hashed using {algorithm.ToUpper()}: `{hash}`");
     }
+
+    [Name("Timer")]
+    [Summary("Sets a timer for the specified duration.")]
+    [Command("timer")]
+    [Alias("settimer")]
+    [RateLimit(3, 10)]
+    public async Task TimerAsync(int duration, string format = "seconds")
+    {
+        if (duration < 1)
+        {
+            await ReplyAsync("Please provide a duration greater than 0.");
+            return;
+        }
+
+        if (format != "seconds" && format != "minutes" && format != "hours")
+        {
+            await ReplyAsync("Invalid format. Supported formats are: `seconds`, `minutes`, `hours`.");
+            return;
+        }
+
+        int durationSeconds = duration;
+
+        if (format == "minutes")
+            durationSeconds *= 60;
+        else if (format == "hours")
+            durationSeconds *= 3600;
+
+        if (durationSeconds > 3600 * 24)
+        {
+            await ReplyAsync($"Please provide a duration less than or equal to 24 hours.");
+            return;
+        }
+
+        await ReplyAsync($"Timer set for {duration} {format}.");
+        await Task.Delay(duration * 1000);
+        await ReplyAsync($"{Context.User.Mention} {duration} {format} have passed.");
+    }
 }
