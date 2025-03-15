@@ -407,6 +407,41 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         await ReplyAsync(response);
     }
 
+    [Name("Rock Paper Scissors")]
+    [Summary("Play a game of rock, paper, scissors.")]
+    [Command("rps")]
+    [Alias("rockpaperscissors")]
+    [RateLimit(3, 10)]
+    public async Task RockPaperScissorsAsync(string choice)
+    {
+        string[] choices = ["rock", "paper", "scissors"];
+        if (!choices.Contains(choice.ToLower()))
+        {
+            await ReplyAsync("Invalid choice. Please choose either `rock`, `paper`, or `scissors`.");
+            return;
+        }
+        Random random = new();
+        string botChoice = choices[random.Next(choices.Length)];
+        
+        if(choice == botChoice)
+        {
+            await ReplyAsync($"It's a tie! I chose {botChoice} too.");
+            return;
+        }
+        
+        if((choice == "rock" && botChoice == "scissors") || (choice == "paper" && botChoice == "rock") || (choice == "scissors" && botChoice == "paper"))
+        {
+            await ReplyAsync($"You win! I chose {botChoice}.");
+            return;
+        }
+     
+        if((choice == "rock" && botChoice == "paper") || (choice == "paper" && botChoice == "scissors") || (choice == "scissors" && botChoice == "rock"))
+        {
+            await ReplyAsync($"You lose! I chose {botChoice}.");
+            return;
+        }
+    }
+
     [Name("Info")]
     [Summary("Displays information about the bot.")]
     [Command("info")]
@@ -837,5 +872,4 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             }
         }
     }
-
 }
