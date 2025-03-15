@@ -564,7 +564,9 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     {
         user ??= Context.User as SocketGuildUser;
 
-        Random random = new(user.Nickname.Select(c => (int)c).Sum());
+        string name = user.Nickname ?? user.Username;
+
+        Random random = new(name.Select(c => (int)c).Sum());
         int gayness = random.Next(101);
 
         EmbedBuilder embed = new()
@@ -943,5 +945,29 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         await ReplyAsync($"Timer set for {duration} {format}.");
         await Task.Delay(duration * 1000);
         await ReplyAsync($"{Context.User.Mention} {duration} {format} have passed.");
+    }
+
+    [Name("Love Compatibility")]
+    [Summary("Calculates the love compatibility between two people.")]
+    [Command("love")]
+    [Alias("lovecompatibility", "lovecalc", "lovecouple")]
+    [RateLimit(3, 10)]
+    public async Task LoveCompatibilityAsync(SocketGuildUser user1, SocketGuildUser? user2)
+    {
+        user2 ??= Context.User as SocketGuildUser;
+
+        string name1 = user1.Nickname ?? user1.Username;
+        string name2 = user2.Nickname ?? user2.Username;
+
+        int seed = name1.Select(c => (int)c).Sum() + name2.Select(c => (int)c).Sum();
+        Random random = new(seed);
+        int lovePercentage = random.Next(101);
+        var embed = new EmbedBuilder()
+            .WithColor(Color.Blue)
+            .WithTitle($":heart: {user1.Username} and {user2.Username} are {lovePercentage}% compatible")
+            .WithDescription($"{lovePercentage.GetPercentageBar()}")
+            .WithFooter("Love is in the air")
+            .WithCurrentTimestamp();
+        await ReplyAsync(embed: embed.Build());
     }
 }
