@@ -602,4 +602,71 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("Pin")]
+    [Summary("Pins a message.")]
+    [Command("pin")]
+    public async Task PinAsync([Remainder] string? _ = null)
+    {
+        // Get guild from db
+        Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+
+        if (guild == null)
+        {
+            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
+            return;
+        }
+
+        // Check if the guild has a pins channel set
+        if (guild.PinsChannelId == 0)
+        {
+            await ReplyAsync("Pins channel hasn't been set yet.");
+            return;
+        }
+
+        // Get the pins channel
+        SocketTextChannel? pinsChannel = Context.Guild.GetTextChannel(guild.PinsChannelId);
+
+        if (pinsChannel == null)
+        {
+            await ReplyAsync("Pins channel couldn't be found.");
+            return;
+        }
+
+        // Get the message the user replied to
+        var message = await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) as IUserMessage;
+
+        if (message == null)
+        {
+            await ReplyAsync("Couldn't find the message you want to pin.");
+            return;
+        }
+
+        // Make an embed of the message details
+        EmbedBuilder embed = new()
+        {
+            Title = $"Pin in `#{message.Channel.Name}` by {Context.Message.Author.Username}",
+            Url = message.GetJumpUrl(),
+            Author = new EmbedAuthorBuilder()
+            {
+                Name = message.Author.Username,
+                IconUrl = message.Author.GetAvatarUrl()
+            },
+            Description = message.Content,
+            Color = Colors.Blue,
+            Timestamp = message.CreatedAt
+        };
+
+        // Add image to embed
+        if (message.Attachments.Count > 0)
+            embed.ImageUrl = message.Attachments.First().Url;
+
+        // Send the message to the pins channel
+        await pinsChannel.SendMessageAsync(embed: embed.Build());
+
+        // Send a confirmation message
+        await ReplyAsync("Message pinned successfully.");
+
+        return; 
+    }
 }
