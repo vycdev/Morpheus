@@ -872,4 +872,39 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             }
         }
     }
+
+    [Name("Hash")]
+    [Summary("Hashes a string using the specified algorithm.")]
+    [Command("hash")]
+    [Alias("hashstring")]
+    [RateLimit(3, 10)]
+    public async Task HashAsync(string algorithm, [Remainder] string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            await ReplyAsync("Please provide a string to hash.");
+            return;
+        }
+        
+        HashAlgorithm? hashAlgorithm = algorithm.ToLower() switch
+        {
+            "md5" => MD5.Create(),
+            "sha1" => SHA1.Create(),
+            "sha256" => SHA256.Create(),
+            "sha384" => SHA384.Create(),
+            "sha512" => SHA512.Create(),
+            _ => null
+        };
+
+        if (hashAlgorithm == null)
+        {
+            await ReplyAsync("Invalid algorithm. Supported algorithms are: `md5`, `sha1`, `sha256`, `sha384`, `sha512`.");
+            return;
+        }
+        
+        byte[] inputBytes = Encoding.UTF8.GetBytes(input);
+        byte[] hashBytes = hashAlgorithm.ComputeHash(inputBytes);
+        string hash = BitConverter.ToString(hashBytes).Replace("-", "");
+        await ReplyAsync($"Hashed using {algorithm.ToUpper()}: `{hash}`");
+    }
 }
