@@ -87,13 +87,12 @@ public class MessagesHandler
             CommandError.ParseFailed => await context.Channel.SendMessageAsync("Failed to parse arguments."),
             CommandError.ObjectNotFound => await context.Channel.SendMessageAsync("Object not found."),
             CommandError.MultipleMatches => await context.Channel.SendMessageAsync("Multiple matches found."),
-            CommandError.UnmetPrecondition => await context.Channel.SendMessageAsync("Unmet precondition. Make sure you have the right permissions for the command."),
+            CommandError.UnmetPrecondition => await context.Channel.SendMessageAsync(result.ErrorReason),
             CommandError.Exception => await context.Channel.SendMessageAsync("An exception occurred."),
             CommandError.Unsuccessful => await context.Channel.SendMessageAsync("Unsuccessful."),
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
         };
     }
-
 
     private async Task HandleUserJoined(SocketGuildUser user)
     {

@@ -1,6 +1,7 @@
 ﻿using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
+using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
@@ -28,6 +29,7 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [Command("setwchannel")]
     [Alias("setwc", "swc", "welcomechannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
     public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
@@ -57,6 +59,7 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [Command("setprefix")]
     [Alias("setcommandsprefix", "setcp")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
     public async Task SetCommandsPrefix([Remainder] string prefix = "m!")
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
@@ -91,6 +94,7 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [Command("setpinschannel")]
     [Alias("setpc", "spc", "pinschannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
     public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);

@@ -4,6 +4,7 @@ using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
+using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
@@ -37,6 +38,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Displays a list of commands.")]
     [Command("help")]
     [Alias("commands", "cmds", "h")]
+    [RateLimit(1, 30)]
     public async Task HelpAsync()
     {
         EmbedBuilder builder = new()
@@ -147,6 +149,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Screams a random amount of 'A's.")]
     [Command("scream")]
     [Alias("screm", "a")]
+    [RateLimit(3, 10)]
     public async Task ScreamAsync()
     {
         StringBuilder scream = new();
@@ -162,6 +165,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Echoes the input.")]
     [Command("echo")]
     [Alias("say")]
+    [RateLimit(3, 10)]
     public async Task EchoAsync([Remainder] string input = "")
     {
         if (string.IsNullOrWhiteSpace(input))
@@ -177,6 +181,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Displays the current time of the server.")]
     [Command("servertime")]
     [Alias("time", "st")]
+    [RateLimit(3, 10)]
     public async Task ServerTimeAsync([Remainder] string? _ = null)
     {
         await ReplyAsync($"The current time is {DateTime.UtcNow} UTC.");
@@ -185,6 +190,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Name("Guild Age")]
     [Summary("Displays the age of the guild.")]
     [Command("guildage")]
+    [RateLimit(3, 10)]
     public async Task GuildAgeAsync([Remainder] string? _ = null)
     {
         SocketGuild guild = Context.Guild;
@@ -197,6 +203,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Displays the time until a specified event.")]
     [Command("timeuntil")]
     [Alias("until")]
+    [RateLimit(3, 10)]
     public async Task TimeUntilAsync([Remainder] string eventName)
     {
         DateTime now = DateTime.UtcNow;
@@ -235,6 +242,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Flips a coin, or multiple coins.")]
     [Command("coinflip")]
     [Alias("flipcoin", "flip", "coin")]
+    [RateLimit(3, 10)]
     public async Task CoinFlipAsync([Remainder] string input = "1")
     {
         if (!int.TryParse(input, out int count) || count < 1)
@@ -280,6 +288,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Rolls a die, or multiple dice.")]
     [Command("rolldice")]
     [Alias("roll", "dice")]
+    [RateLimit(3, 10)]
     public async Task RollDiceAsync([Remainder] string input = "1d6")
     {
         if (input.AsSpan().Count('d') != 1)
@@ -330,6 +339,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Randomly chooses between multiple options.")]
     [Command("choose")]
     [Alias("pick", "select")]
+    [RateLimit(3, 10)]
     public async Task ChooseAsync([Remainder] string options)
     {
         string[] parts = options.Split('\n');
@@ -348,6 +358,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Generates a random number between the specified range.")]
     [Command("randomnumber")]
     [Alias("randomnum", "randnum", "randnumber", "random")]
+    [RateLimit(3, 10)]
     public async Task RandomNumberAsync(int min, int max)
     {
         if (min >= max)
@@ -362,6 +373,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Ask the magic 8 ball a question.")]
     [Command("8ball")]
     [Alias("8b")]
+    [RateLimit(3, 10)]
     public async Task EightBallAsync([Remainder] string question)
     {
         string[] responses =
@@ -397,6 +409,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Displays information about the bot.")]
     [Command("info")]
     [Alias("information", "about", "botinfo")]
+    [RateLimit(3, 10)]
     public async Task InfoAsync()
     {
         ulong ownerId = ulong.Parse(Env.Variables["OWNER_ID"]);
@@ -431,6 +444,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Name("Uptime")]
     [Summary("Displays the bot's uptime.")]
     [Command("uptime")]
+    [RateLimit(3, 10)]
     public async Task UptimeAsync()
     {
         string uptime = Env.StartTime.GetAccurateTimeSpan(DateTime.UtcNow);
@@ -441,6 +455,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Generates a random color.")]
     [Command("randomcolor")]
     [Alias("randcolor", "rc")]
+    [RateLimit(2, 10)]
     public async Task RandomColorAsync()
     {
         NamedColor? color = Colors.ColorNames.GetRandomNamedColor();
@@ -469,6 +484,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Finds the closest color name match, based on a hex value")]
     [Command("findcolor")]
     [Alias("findc", "fc")]
+    [RateLimit(2, 10)]
     public async Task FindColorName([Remainder] string hexValue)
     {
         try
@@ -506,6 +522,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Name("How gay")]
     [Summary("Determines how gay a person is based on their nickname")]
     [Command("howgay")]
+    [RateLimit(3, 10)]
     public async Task HowGayAsync(SocketGuildUser? user = null)
     {
         user ??= Context.User as SocketGuildUser;
@@ -532,6 +549,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Displays the percentage of the year that has passed.")]
     [Command("yearpercentage")]
     [Alias("yearpercent", "yp")]
+    [RateLimit(3, 10)]
     public async Task YearPercentageAsync()
     {
         DateTime now = DateTime.UtcNow;
@@ -553,6 +571,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Name("Ping")]
     [Summary("Displays the latency between the bot and discord.")]
     [Command("ping")]
+    [RateLimit(3, 10)]
     public async Task PingAsync()
     {
         await ReplyAsync($"Pong! {Context.Client.Latency}ms");
@@ -562,7 +581,8 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Returns definitions from urban dictionary")]
     [Command("udic")]
     [Alias("urbandictionary", "urbandic", "udictionary")]
-    public async Task UrbanDictionary([Remainder] string word)
+    [RateLimit(5, 30)]
+    public async Task UrbanDictionary(string? word = null)
     {
         string url;
         
@@ -607,6 +627,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Name("Pin")]
     [Summary("Pins a message.")]
     [Command("pin")]
+    [RateLimit(5, 30)]
     public async Task PinAsync([Remainder] string? _ = null)
     {
         // Get guild from db
@@ -676,6 +697,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Command("downloademojis")]
     [Alias("downloademoji", "downloademotes", "downloademote")]
     [RequireUserPermission(GuildPermission.Administrator)]
+    [RateLimit(1, 600)]
     public async Task DownloadEmojisAsync()
     {
         SocketGuild guild = Context.Guild;
