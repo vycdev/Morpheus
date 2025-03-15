@@ -9,12 +9,15 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
+using Newtonsoft.Json.Linq;
 using System.Text;
 
 namespace Morpheus.Commands;
 
 public class MiscModule : ModuleBase<SocketCommandContextExtended>
 {
+    private static readonly HttpClient httpClient = new();
+
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
     private readonly DB dbContext;
@@ -542,6 +545,54 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             Title = $"{now.Year} is {percentage:F2}% done",
             Description = $"{((int)percentage).GetPercentageBar()}",
         };
+
+        await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Ping")]
+    [Summary("Displays the latency between the bot and discord.")]
+    [Command("ping")]
+    public async Task PingAsync()
+    {
+        await ReplyAsync($"Pong! {Context.Client.Latency}ms");
+    }
+
+    [Name("Urban Dictionary")]
+    [Summary("Returns definitions from urban dictionary")]
+    [Command("udic")]
+    [Alias("urbandictionary", "urbandic", "udictionary")]
+    public async Task UrbanDictionary(string word)
+    {
+        string url = $"https://api.urbandictionary.com/v0/define?term={word}";
+        HttpResponseMessage response = await httpClient.GetAsync(url);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            await ReplyAsync("Failed to fetch the definition. Try again later.");
+            return;
+        }
+
+        string json = await response.Content.ReadAsStringAsync();
+        JObject data = JObject.Parse(json);
+        JArray list = (JArray)data["list"];
+
+        if (list.Count == 0)
+        {
+            await ReplyAsync($"No definition found for **{word}**.");
+            return;
+        }
+
+        string definition = list[0]["definition"].ToString();
+        string example = list[0]["example"].ToString();
+        string permalink = list[0]["permalink"].ToString();
+
+        var embed = new EmbedBuilder()
+            .WithTitle($"Urban Dictionary: **{word}**")
+            .WithUrl(permalink)
+            .WithDescription(definition.Length > 1024 ? definition.Substring(0, 1021) + "..." : definition)
+            .AddField("Example", string.IsNullOrWhiteSpace(example) ? "N/A" : example.Length > 1024 ? example.Substring(0, 1021) + "..." : example, false)
+            .WithColor(Color.Blue)
+            .WithFooter("Powered by Urban Dictionary");
 
         await ReplyAsync(embed: embed.Build());
     }
