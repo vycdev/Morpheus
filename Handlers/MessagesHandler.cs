@@ -1,4 +1,5 @@
-﻿using Discord.Commands;
+﻿using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -41,14 +42,14 @@ public class MessagesHandler
 
     public async Task InstallCommandsAsync()
     {
-        client.MessageReceived += HandleCommandAsync;
+        client.MessageReceived += HandleMessageAsync;
         client.UserJoined += HandleUserJoined;
         client.UserLeft += HandleUserLeft;
 
         await commands.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
     }
 
-    private async Task HandleCommandAsync(SocketMessage messageParam)
+    private async Task HandleMessageAsync(SocketMessage messageParam)
     {
         // Don't process the command if it was a system message
         var message = messageParam as SocketUserMessage;
@@ -110,7 +111,13 @@ public class MessagesHandler
         if (channel == null)
             return;
 
-        await channel.SendMessageAsync(string.Format(welcomeMessagesBag.Random(), user.Mention));
+
+        Emote? joinEmoji = null;
+
+        if (ulong.TryParse(Env.Variables["BOT_JOIN_EMOJI_ID"], out ulong emojiId))
+            joinEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
+
+        await channel.SendMessageAsync((joinEmoji != null ? joinEmoji.ToString() + " " : "") + string.Format(welcomeMessagesBag.Random(), user.Mention));
         await channel.SendMessageAsync($"Server now has {user.Guild.MemberCount} members! {happyEmojisBag.Random()}");
     }
 
@@ -128,8 +135,13 @@ public class MessagesHandler
 
         if (channel == null)
             return;
+        
+        Emote? leaveEmoji = null; 
+        
+        if(ulong.TryParse(Env.Variables["BOT_LEAVE_EMOJI_ID"], out ulong emojiId))
+            leaveEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
 
-        await channel.SendMessageAsync(string.Format(goodbyeMessagesBag.Random(), user.Mention));
+        await channel.SendMessageAsync((leaveEmoji != null ? leaveEmoji.ToString() + " " : "") + string.Format(goodbyeMessagesBag.Random(), user.Mention));
         await channel.SendMessageAsync($"Server now has {guild.MemberCount} members! {sadEmojisBag.Random()}");
     }
 }
