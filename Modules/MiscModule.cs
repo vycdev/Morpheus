@@ -468,7 +468,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             ThumbnailUrl = Context.Client.CurrentUser.GetAvatarUrl(),
             Footer = new EmbedFooterBuilder()
             {
-                Text = "Made with ❤️ by VycDev",
+                Text = "Made with ❤️ by vycdev",
                 IconUrl = (await Context.Client.Rest.GetUserAsync(ownerId)).GetAvatarUrl()
             }
         };
