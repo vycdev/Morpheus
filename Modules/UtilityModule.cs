@@ -32,16 +32,11 @@ public class UtilityModule : ModuleBase<SocketCommandContextExtended>
     [Command("pin")]
     [RateLimit(5, 30)]
     [RequireUserPermission(GuildPermission.ManageMessages)]
+    [RequireDbGuild]
     public async Task PinAsync([Remainder] string? _ = null)
     {
         // Get guild from db
-        Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
-
-        if (guild == null)
-        {
-            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
-            return;
-        }
+        Guild? guild = Context.DbGuild!;
 
         // Check if the guild has a pins channel set
         if (guild.PinsChannelId == 0)

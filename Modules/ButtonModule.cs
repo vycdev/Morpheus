@@ -29,19 +29,13 @@ public class ButtonModule : ModuleBase<SocketCommandContextExtended>
     [Command("pressbutton")]
     [Alias("button", "press")]
     [RateLimit(1, 30)]
+    [RequireDbUser]
     public async Task PressButton()
     {
         // Get guild from contenxt 
         Guild? guild = Context.DbGuild;
-
-        // Get user from context 
-        User? user = Context.DbUser;
-
-        if (user == null)
-        {
-            await ReplyAsync("Your user hasn't been added to the database yet, please try again.");
-            return;
-        }
+        // Get user from context
+        User user = Context.DbUser!;
 
         // Get most recent button press time
         ButtonGamePress? buttonGamePress = await dbContext.ButtonGamePresses.OrderByDescending(b => b.InsertDate).FirstOrDefaultAsync();
@@ -114,15 +108,11 @@ public class ButtonModule : ModuleBase<SocketCommandContextExtended>
     [Command("buttontopguild")]
     [Alias("btopguild", "topguildbutton")]
     [RateLimit(1, 30)]
+    [RequireDbGuild]
     public async Task TopGuild()
     {
         // Get guild from context 
-        Guild? guild = Context.DbGuild;
-        if (guild == null)
-        {
-            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
-            return;
-        }
+        Guild guild = Context.DbGuild!;
 
         // Get top 10 button presses 
         List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
@@ -187,15 +177,12 @@ public class ButtonModule : ModuleBase<SocketCommandContextExtended>
     [Command("buttontopuser")]
     [Alias("btopu", "topuserbutton")]
     [RateLimit(1, 30)]
+    [RequireDbUser]
     public async Task TopUser()
     {
         // Get user from context 
-        User? user = Context.DbUser;
-        if (user == null)
-        {
-            await ReplyAsync("Your user hasn't been added to the database yet, please try again.");
-            return;
-        }
+        User user = Context.DbUser!;
+
         // Get top 10 button presses 
         List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
             .Where(b => b.UserId == user.Id)
@@ -225,22 +212,14 @@ public class ButtonModule : ModuleBase<SocketCommandContextExtended>
     [Command("buttontopuserguild")]
     [Alias("btopug", "topuserguildbutton")]
     [RateLimit(1, 30)]
+    [RequireDbUser]
+    [RequireDbGuild]
     public async Task TopUserGuild()
     {
         // Get user from context 
-        User? user = Context.DbUser;
-        if (user == null)
-        {
-            await ReplyAsync("Your user hasn't been added to the database yet, please try again.");
-            return;
-        }
+        User user = Context.DbUser!;
         // Get guild from context 
-        Guild? guild = Context.DbGuild;
-        if (guild == null)
-        {
-            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
-            return;
-        }
+        Guild guild = Context.DbGuild!;
 
         // Get top 10 button presses 
         List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses

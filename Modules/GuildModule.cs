@@ -29,20 +29,14 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [Alias("setwc", "swc", "welcomechannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
+    [RequireDbGuild]
     public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
     {
-        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
-
-        if (guild == null)
-        {
-            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
-            return;
-        }
+        var guild = Context.DbGuild!;
 
         guild.WelcomeChannelId = channel?.Id ?? 0;
 
         await dbContext.SaveChangesAsync();
-
 
         if (guild.WelcomeChannelId == 0)
         {
@@ -59,15 +53,10 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [Alias("setcommandsprefix", "setcp")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
+    [RequireDbGuild]
     public async Task SetCommandsPrefix([Remainder] string prefix = "m!")
     {
-        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
-
-        if (guild == null)
-        {
-            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
-            return;
-        }
+        var guild = Context.DbGuild!;
 
         if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 3)
         {
@@ -77,7 +66,6 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
 
         guild.Prefix = prefix;
         await dbContext.SaveChangesAsync();
-
 
         if (prefix == "m!")
         {
@@ -94,14 +82,10 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [Alias("setpc", "spc", "pinschannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
+    [RequireDbGuild]
     public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
     {
-        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
-        if (guild == null)
-        {
-            await ReplyAsync("Your guild hasn't been added to the database yet, please try again.");
-            return;
-        }
+        var guild = Context.DbGuild!;
 
         guild.PinsChannelId = channel?.Id ?? 0;
         await dbContext.SaveChangesAsync();
