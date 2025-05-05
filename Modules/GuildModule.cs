@@ -5,7 +5,6 @@ using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
-using System.Threading.Channels;
 
 namespace Morpheus.Modules;
 

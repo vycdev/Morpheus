@@ -1,10 +1,7 @@
 ﻿using Discord.Commands;
 using Discord.WebSocket;
 using Discord;
-using Morpheus.Database;
-using Morpheus.Database.Models;
 using Microsoft.Extensions.DependencyInjection;
-using Morpheus.Utilities;
 using Morpheus.Services;
 
 namespace Morpheus.Handlers;

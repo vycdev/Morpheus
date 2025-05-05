@@ -1,14 +1,8 @@
 ﻿using Discord;
 using Discord.Commands;
-using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Utilities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Morpheus.Services;
 

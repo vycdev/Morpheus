@@ -1,7 +1,5 @@
 ﻿using Discord.Commands;
 using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
