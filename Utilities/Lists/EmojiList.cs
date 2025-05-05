@@ -1,4 +1,8 @@
-﻿namespace Morpheus.Utilities.Lists;
+﻿
+using Discord;
+
+namespace Morpheus.Utilities.Lists;
+
 public static class EmojiList
 {
     public static readonly List<string> EmojisHappy = [
