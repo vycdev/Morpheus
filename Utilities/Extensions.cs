@@ -3,8 +3,6 @@
 namespace Morpheus.Utilities;
 public static partial class Extensions
 {
-
-
     public static string GetAccurateTimeSpan(this DateTime start, DateTime end)
     {
         // Ensure that end is always later than start

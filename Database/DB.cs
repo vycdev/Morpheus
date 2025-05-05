@@ -30,4 +30,5 @@ public class DB : Microsoft.EntityFrameworkCore.DbContext
     public DbSet<Models.Guild> Guilds { get; set; }
     public DbSet<Models.Quote> Quotes { get; set; }
     public DbSet<Models.Log> Logs { get; set; }
+    public DbSet<Models.ButtonGamePress> ButtonGamePresses { get; set; }
 }

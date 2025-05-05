@@ -4,7 +4,7 @@ using Morpheus.Database;
 using Morpheus.Database.Models;
 
 namespace Morpheus.Services;
-public class GuildService(DB dbContext)
+public class GuildService(DB dbContext, LogsService logsService)
 {
     public async Task<Guild?> TryGetCreateGuild(SocketGuild guild)
     {
@@ -21,6 +21,8 @@ public class GuildService(DB dbContext)
 
         await dbContext.Guilds.AddAsync(guildDb);
         await dbContext.SaveChangesAsync();
+
+        logsService.Log($"New guild created {guild.Name}", Discord.LogSeverity.Verbose);
 
         return guildDb;
     }

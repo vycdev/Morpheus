@@ -17,7 +17,8 @@ public class MessagesHandler
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
     private readonly DB dbContext;
-    private readonly GuildService guildService; 
+    private readonly GuildService guildService;
+    private readonly UsersService usersService;
     bool started = false;
 
     private readonly RandomBag welcomeMessagesBag = new(WelcomeMessages.Messages);
@@ -25,7 +26,7 @@ public class MessagesHandler
     private readonly RandomBag happyEmojisBag = new(EmojiList.EmojisHappy);
     private readonly RandomBag sadEmojisBag = new(EmojiList.EmojisSad);
 
-    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext, GuildService guildService)
+    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext, GuildService guildService, UsersService usersService)
     {
         if(started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -37,6 +38,7 @@ public class MessagesHandler
         this.serviceProvider = serviceProvider;
         this.dbContext = dbContext;
         this.guildService = guildService;
+        this.usersService = usersService;
     }
 
     public async Task InstallCommandsAsync()
@@ -58,11 +60,12 @@ public class MessagesHandler
         // Create a number to track where the prefix ends and the command begins
         int argPos = 0;
 
-        Guild? guild = null;
-        User? user = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == message.Author.Id);
+        User? user = await usersService.TryGetCreateUser(message.Author);
+        await usersService.TryUpdateUsername(message.Author, user);
 
         // If the message is in a guild, try to get the guild from the database
         // If the guild doesn't exist, create it and then get it
+        Guild? guild = null;
         if (message.Channel is SocketGuildChannel guildChannel)
             guild = await guildService.TryGetCreateGuild(guildChannel.Guild);
 

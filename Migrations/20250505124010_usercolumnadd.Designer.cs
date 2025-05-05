@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20250505124010_usercolumnadd")]
+    partial class usercolumnadd
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -223,6 +226,9 @@ namespace Morpheus.Migrations
                     b.Property<decimal>("DiscordId")
                         .HasColumnType("numeric(20,0)");
 
+                    b.Property<int?>("GuildId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("InsertDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -237,6 +243,8 @@ namespace Morpheus.Migrations
 
                     b.HasIndex("DiscordId")
                         .IsUnique();
+
+                    b.HasIndex("GuildId");
 
                     b.ToTable("Users");
                 });
@@ -296,11 +304,20 @@ namespace Morpheus.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Morpheus.Database.Models.User", b =>
+                {
+                    b.HasOne("Morpheus.Database.Models.Guild", null)
+                        .WithMany("Users")
+                        .HasForeignKey("GuildId");
+                });
+
             modelBuilder.Entity("Morpheus.Database.Models.Guild", b =>
                 {
                     b.Navigation("ButtonGamePresses");
 
                     b.Navigation("Quotes");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.Quote", b =>

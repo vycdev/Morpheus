@@ -1,4 +1,5 @@
 ﻿using Discord.Commands;
+using System.Diagnostics;
 
 namespace Morpheus.Attributes;
 
@@ -16,6 +17,11 @@ public class RateLimitAttribute : PreconditionAttribute
     // A simple dictionary to track the last usage per user and command.
     private static readonly Dictionary<(ulong, string), RateLimitData> _rateLimitData = new();
 
+    /// <summary>
+    /// Rate limit attribute for commands.
+    /// </summary>
+    /// <param name="uses"></param>
+    /// <param name="seconds"></param>
     public RateLimitAttribute(int uses, int seconds)
     {
         _uses = uses;
@@ -24,6 +30,10 @@ public class RateLimitAttribute : PreconditionAttribute
 
     public override Task<PreconditionResult> CheckPermissionsAsync(ICommandContext context, CommandInfo command, IServiceProvider services)
     {
+        // Skip cooldown in debugging mode
+        if (Debugger.IsAttached)
+            return Task.FromResult(PreconditionResult.FromSuccess());
+        
         return ApplyRateLimit(context, command);
     }
 

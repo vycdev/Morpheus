@@ -5,6 +5,7 @@ using Morpheus.Database;
 using Morpheus.Database.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Utilities;
+using Morpheus.Services;
 
 namespace Morpheus.Handlers;
 internal class LogsHandler
@@ -21,27 +22,11 @@ internal class LogsHandler
     private Task LogAsync(LogMessage message)
     {
         using IServiceScope scope = scopefa.CreateScope();
-        DB dbContext = scope.ServiceProvider.GetRequiredService<DB>();
+        LogsService logsService = scope.ServiceProvider.GetRequiredService<LogsService>();
 
-        string log = string.Empty;
-        if (message.Exception is CommandException cmdException)
-        {
-            log = $"{$"[Command/{message.Severity}]",-20} {cmdException.Command.Aliases.First()}"
-                + $" failed to execute in {cmdException.Context.Channel}. \n {cmdException}";
-        }
-        else
-            log = $"{$"[General/{message.Severity}]",-20} {message}";
-
-        Console.WriteLine(log);
-        dbContext.Add(new Log()
-        {
-            Message = log,
-            Severity = (int)message.Severity,
-            Version = Utils.GetAssemblyVersion()
-        });
-
-        dbContext.SaveChanges();
+        logsService.Log(message);
 
         return Task.CompletedTask;
     }
 }
+ 

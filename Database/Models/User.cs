@@ -15,6 +15,9 @@ public class User
 
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
+    public DateTime LastUsernameCheck { get; set; } = DateTime.UtcNow;
+
     // Foreign keys
     public List<Quote> Quotes { get; set; }
+    public List<ButtonGamePress> buttonGamePresses { get; set; }
 }

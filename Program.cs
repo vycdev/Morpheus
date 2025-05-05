@@ -40,6 +40,8 @@ services.AddSingleton<CommandService>();
 
 // Scoped Services
 services.AddScoped<GuildService>();
+services.AddScoped<UsersService>();
+services.AddScoped<LogsService>();
 
 // Add the handlers
 services.AddScoped<MessagesHandler>();
