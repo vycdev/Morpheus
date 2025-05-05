@@ -791,7 +791,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [Name("Timer")]
     [Summary("Sets a timer for the specified duration.")]
     [Command("timer")]
-    [Alias("settimer")]
+    [Alias("settimer", "reminder", "remindme")]
     [RateLimit(3, 10)]
     public async Task Timer(int duration, string format = "seconds")
     {
@@ -822,7 +822,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 
         await ReplyAsync($"Timer set for {duration} {format}.");
         await Task.Delay(durationSeconds * 1000);
-        await ReplyAsync($"{Context.User.Mention} {duration} {format} have passed.");
+        await ReplyAsync($"{Context.User.Mention} {duration} {format} have passed. Original message: {Context.Message.GetJumpUrl()}");
     }
 
     [Name("Love Compatibility")]
