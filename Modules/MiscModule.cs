@@ -821,7 +821,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         }
 
         await ReplyAsync($"Timer set for {duration} {format}.");
-        await Task.Delay(duration * 1000);
+        await Task.Delay(durationSeconds * 1000);
         await ReplyAsync($"{Context.User.Mention} {duration} {format} have passed.");
     }
 
