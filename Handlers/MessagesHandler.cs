@@ -114,7 +114,7 @@ public class MessagesHandler
 
         Emote? joinEmoji = null;
 
-        if (ulong.TryParse(Env.Variables["BOT_JOIN_EMOJI_ID"], out ulong emojiId))
+        if (ulong.TryParse(Env.Variables?["CUSTOM_JOIN_EMOTE_ID"], out ulong emojiId))
             joinEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
 
         await channel.SendMessageAsync((joinEmoji != null ? joinEmoji.ToString() + " " : "") + string.Format(welcomeMessagesBag.Random(), user.Mention));
@@ -138,7 +138,7 @@ public class MessagesHandler
         
         Emote? leaveEmoji = null; 
         
-        if(ulong.TryParse(Env.Variables["BOT_LEAVE_EMOJI_ID"], out ulong emojiId))
+        if(ulong.TryParse(Env.Variables?["CUSTOM_LEAVE_EMOTE_ID"], out ulong emojiId))
             leaveEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
 
         await channel.SendMessageAsync((leaveEmoji != null ? leaveEmoji.ToString() + " " : "") + string.Format(goodbyeMessagesBag.Random(), user.Mention));
