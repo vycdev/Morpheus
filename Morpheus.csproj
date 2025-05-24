@@ -32,6 +32,7 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.8" />
+		<PackageReference Include="QRCoder" Version="1.6.0" />
 		<PackageReference Include="Quartz" Version="3.14.0" />
 		<PackageReference Include="Quartz.Extensions.DependencyInjection" Version="3.14.0" />
 		<PackageReference Include="Quartz.Extensions.Hosting" Version="3.14.0" />

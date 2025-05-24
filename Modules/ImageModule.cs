@@ -250,4 +250,43 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
     }
+
+    [Name("QR Code")]
+    [Summary("Generates a QR code for the provided text.")]
+    [Command("qrcode")]
+    [Alias("generateqrcode", "makeqrcode")]
+    [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RateLimit(3, 30)]
+    public async Task GenerateQRCodeAsync([Remainder] string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            await ReplyAsync("Please provide some text to generate a QR code.");
+            return;
+        }
+        try
+        {
+            byte[] qrCodeImage = (new QrCodeService()).GenerateQrCodeWithColors(text);
+            if (qrCodeImage == null || qrCodeImage.Length == 0)
+            {
+                await ReplyAsync("Failed to generate the QR code. Please try again later.");
+                return;
+            }
+
+            // Upload the QR code image to Discord
+            var stream = new System.IO.MemoryStream(qrCodeImage);
+            var uploadResult = await Context.Channel.SendFileAsync(stream, "qrcode.png", "Here's your QR code!", isSpoiler: false);
+            stream.Dispose();
+            if (uploadResult == null)
+            {
+                await ReplyAsync("Failed to upload the QR code image. Please try again later.");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[QR CODE ERROR] {ex}");
+            await ReplyAsync("An error occurred while generating the QR code. Please try again later.");
+        }
+    }
 }
