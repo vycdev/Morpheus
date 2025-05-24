@@ -174,7 +174,7 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
     [Alias("deepfryimage", "deepfryimg")]
     [RequireBotPermission(GuildPermission.EmbedLinks)]
     [RequireUserPermission(GuildPermission.AttachFiles)]
-    [RateLimit(5, 10)]
+    [RateLimit(3, 30)]
     public async Task DeepfryAsync()
     {
         // Check if the user has attached an image
