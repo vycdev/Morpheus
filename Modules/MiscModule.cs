@@ -758,4 +758,26 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         await ReplyAsync(embed: embed.Build());
     }
 
+    [Name("Get Bot Invite Link")]
+    [Summary("Gets the bot's invite link with the required permissions.")]
+    [Command("botinvite")]
+    [Alias("invitebot", "getinvite")]
+    [RateLimit(3, 10)]
+    public async Task GetBotInviteLink()
+    {
+        string inviteUrl = Env.Variables["BOT_INVITE_URL"];
+        if (string.IsNullOrWhiteSpace(inviteUrl))
+        {
+            await ReplyAsync("Bot invite link is not configured.");
+            return;
+        }
+        var embed = new EmbedBuilder()
+            .WithColor(Color.Blue)
+            .WithTitle("Bot Invite Link")
+            .WithDescription($"Click [here]({inviteUrl}) to invite the bot to your server.")
+            .WithFooter("Invite link fetched successfully")
+            .WithCurrentTimestamp();
+
+        await ReplyAsync(embed: embed.Build());
+    }
 }
