@@ -844,4 +844,40 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         };
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("Role Info")]
+    [Summary("Gets information about a role.")]
+    [Command("roleinfo")]
+    [Alias("role", "whohasrole")]
+    [RateLimit(3, 10)]
+    public async Task RoleInfo(SocketRole? role = null)
+    {
+        if (role == null)
+        {
+            await ReplyAsync("Role not found.");
+            return;
+        }
+
+        EmbedBuilder embed = new()
+        {
+            Color = Colors.Blue,
+            Title = $"{role.Name} Role Info",
+            Description = $"ID: {role.Id}\nCreated At: {role.CreatedAt.UtcDateTime}",
+            Fields =
+            {
+                new EmbedFieldBuilder().WithName("Color").WithValue(role.Color.ToString()),
+                new EmbedFieldBuilder().WithName("Position").WithValue(role.Position),
+                new EmbedFieldBuilder().WithName("Is Hoisted").WithValue(role.IsHoisted ? "Yes" : "No"),
+                new EmbedFieldBuilder().WithName("Is Mentionable").WithValue(role.IsMentionable ? "Yes" : "No"),
+                new EmbedFieldBuilder().WithName("Members").WithValue(role.Members.Count()),
+                new EmbedFieldBuilder().WithName("Permissions").WithValue(string.Join(",", role.Permissions.ToList()))
+            },
+            Footer = new EmbedFooterBuilder()
+            {
+                Text = "Role Info",
+                IconUrl = role.Guild.IconUrl
+            }
+        };
+        await ReplyAsync(embed: embed.Build());
+    }
 }
