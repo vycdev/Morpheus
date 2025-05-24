@@ -810,4 +810,38 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         };
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("Get User Info")]
+    [Summary("Gets information about a user.")]
+    [Command("userinfo")]
+    [Alias("user", "whois")]
+    [RateLimit(3, 10)]
+    public async Task UserInfo(SocketGuildUser? user = null)
+    {
+        user ??= Context.User as SocketGuildUser;
+        if (user == null)
+        {
+            await ReplyAsync("User not found.");
+            return;
+        }
+        EmbedBuilder embed = new()
+        {
+            Color = Colors.Blue,
+            Title = $"{user.Username}'s Info",
+            ThumbnailUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl(),
+            Description = $"ID: {user.Id}\nJoined At: {user.JoinedAt?.UtcDateTime}\nCreated At: {user.CreatedAt.UtcDateTime}",
+            Fields =
+            {
+                new EmbedFieldBuilder().WithName("Roles").WithValue(string.Join(", ", user.Roles.Select(r => r.Name))),
+                new EmbedFieldBuilder().WithName("Status").WithValue(user.Status.ToString()),
+                new EmbedFieldBuilder().WithName("Is Bot").WithValue(user.IsBot ? "Yes" : "No"),
+            },
+            Footer = new EmbedFooterBuilder()
+            {
+                Text = "User Info",
+                IconUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
+            }
+        };
+        await ReplyAsync(embed: embed.Build());
+    }
 }
