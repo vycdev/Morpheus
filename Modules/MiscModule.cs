@@ -880,4 +880,24 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         };
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("Random Advice")]
+    [Summary("Fetches a random piece of advice.")]
+    [Command("advice")]
+    [Alias("getadvice", "randomadvice")]
+    [RateLimit(3, 10)]
+    public async Task RandomAdvice()
+    {
+        string url = "https://api.adviceslip.com/advice";
+        HttpResponseMessage response = await httpClient.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ReplyAsync("Failed to fetch advice. Try again later.");
+            return;
+        }
+        string json = await response.Content.ReadAsStringAsync();
+        JObject data = JObject.Parse(json);
+        string advice = data["slip"]?["advice"]?.ToString() ?? "No advice found.";
+        await ReplyAsync(advice);
+    }
 }
