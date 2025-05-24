@@ -780,4 +780,34 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
 
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("Guild Info")]
+    [Summary("Displays information about the current guild.")]
+    [Command("guildinfo")]
+    [Alias("serverinfo", "guild", "server")]
+    [RateLimit(3, 10)]
+    public async Task GuildInfo()
+    {
+        SocketGuild guild = Context.Guild;
+        EmbedBuilder embed = new()
+        {
+            Color = Colors.Blue,
+            Title = $"Guild Info: {guild.Name}",
+            ThumbnailUrl = guild.IconUrl,
+            Description = $"ID: {guild.Id}\nOwner: {guild.Owner.Username}#{guild.Owner.Discriminator}\nCreated At: {guild.CreatedAt.UtcDateTime}",
+            Fields =
+            {
+                new EmbedFieldBuilder().WithName("Member Count").WithValue(guild.MemberCount),
+                new EmbedFieldBuilder().WithName("Verification Level").WithValue(guild.VerificationLevel.ToString()),
+                new EmbedFieldBuilder().WithName("Roles").WithValue(guild.Roles.Count),
+                new EmbedFieldBuilder().WithName("Channels").WithValue(guild.Channels.Count)
+            },
+            Footer = new EmbedFooterBuilder()
+            {
+                Text = "Guild Info",
+                IconUrl = guild.IconUrl
+            }
+        };
+        await ReplyAsync(embed: embed.Build());
+    }
 }
