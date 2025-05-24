@@ -734,4 +734,28 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             .WithCurrentTimestamp();
         await ReplyAsync(embed: embed.Build());
     }
+
+    [Name("Get Profile Picture")]
+    [Summary("Gets the profile picture of a user.")]
+    [Command("profilepic")]
+    [Alias("avatar", "pfp")]
+    [RateLimit(3, 10)]
+    public async Task GetProfilePicture(SocketGuildUser? user = null)
+    {
+        user ??= Context.User as SocketGuildUser;
+        if (user == null)
+        {
+            await ReplyAsync("User not found.");
+            return;
+        }
+        string avatarUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
+        var embed = new EmbedBuilder()
+            .WithColor(Color.Blue)
+            .WithTitle($"{user.Username}'s Profile Picture")
+            .WithImageUrl(avatarUrl)
+            .WithFooter("Profile picture fetched successfully")
+            .WithCurrentTimestamp();
+        await ReplyAsync(embed: embed.Build());
+    }
+
 }
