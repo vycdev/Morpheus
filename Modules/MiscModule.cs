@@ -900,4 +900,25 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         string advice = data["slip"]?["advice"]?.ToString() ?? "No advice found.";
         await ReplyAsync(advice);
     }
+
+    [Name("Random Joke")]
+    [Summary("Fetches a random joke.")]
+    [Command("joke")]
+    [Alias("getjoke", "randomjoke")]
+    [RateLimit(3, 10)]
+    public async Task RandomJoke()
+    {
+        string url = "https://official-joke-api.appspot.com/random_joke";
+        HttpResponseMessage response = await httpClient.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ReplyAsync("Failed to fetch a joke. Try again later.");
+            return;
+        }
+        string json = await response.Content.ReadAsStringAsync();
+        JObject data = JObject.Parse(json);
+        string setup = data["setup"]?.ToString() ?? "No setup found.";
+        string punchline = data["punchline"]?.ToString() ?? "No punchline found.";
+        await ReplyAsync($"{setup}\n\n||{punchline}||");
+    }
 }
