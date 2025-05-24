@@ -167,4 +167,58 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
             await ReplyAsync($"An unexpected error occurred while fetching a cat image. The hoomans have been notified (not really, but they should check the logs).");
         }
     }
+
+    [Name("Deepfry")]
+    [Summary("Deepfry an image.")]
+    [Command("deepfry")]
+    [Alias("deepfryimage", "deepfryimg")]
+    [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireUserPermission(GuildPermission.AttachFiles)]
+    [RateLimit(5, 10)]
+    public async Task DeepfryAsync()
+    {
+        // Check if the user has attached an image
+        if (Context.Message.Attachments.Count == 0)
+        {
+            await ReplyAsync("Please attach an image to deepfry.");
+            return;
+        }
+        // Get the first attachment
+        var attachment = Context.Message.Attachments.First();
+        byte[] imageBytes;
+
+        try
+        {
+            using (var response = await httpClient.GetAsync(attachment.Url))
+            {
+                response.EnsureSuccessStatusCode();
+                imageBytes = await response.Content.ReadAsByteArrayAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY ERROR] Failed to download image: {ex}");
+            await ReplyAsync("Failed to download the image. Please try again later.");
+            return;
+        }
+
+        byte[] deepfriedImage = ImageDeepFryer.DeepFry(imageBytes);
+        
+        if (deepfriedImage == null || deepfriedImage.Length == 0)
+        {
+            await ReplyAsync("Failed to deepfry the image. Please try again with a different image.");
+            return;
+        }
+
+        // Upload the deepfried image to Discord
+        var stream = new System.IO.MemoryStream(deepfriedImage);
+        var uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: true);
+        stream.Dispose();
+
+        if (uploadResult == null)
+        {
+            await ReplyAsync("Failed to upload the deepfried image. Please try again later.");
+            return;
+        }
+    }
 }
