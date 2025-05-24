@@ -212,12 +212,41 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
 
         // Upload the deepfried image to Discord
         var stream = new System.IO.MemoryStream(deepfriedImage);
-        var uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: true);
+        var uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: false);
         stream.Dispose();
 
         if (uploadResult == null)
         {
             await ReplyAsync("Failed to upload the deepfried image. Please try again later.");
+            return;
+        }
+    }
+
+    [Name("Get Captcha")]
+    [Summary("Get a captcha image to prove you're not a bot.")]
+    [Command("captcha")]
+    [Alias("getcaptcha")]
+    [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RateLimit(3, 30)]
+    public async Task GetCaptchaAsync()
+    {
+        // Generate a captcha image
+        CaptchaResult captchaImage = (new CaptchaGenerator()).GenerateCaptcha();
+        if (captchaImage == null)
+        {
+            await ReplyAsync("Failed to generate a captcha image. Please try again later.");
+            return;
+        }
+
+        // Upload the captcha image to Discord
+        var stream = new System.IO.MemoryStream(captchaImage.CaptchaImageBytes);
+        var uploadResult = await Context.Channel.SendFileAsync(stream, "captcha.png", 
+            $"Here's your captcha image containing the text: {captchaImage.CaptchaText}", isSpoiler: false);
+
+        stream.Dispose();
+        if (uploadResult == null)
+        {
+            await ReplyAsync("Failed to upload the captcha image. Please try again later.");
             return;
         }
     }
