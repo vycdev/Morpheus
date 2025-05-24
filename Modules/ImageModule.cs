@@ -99,4 +99,72 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
             await ReplyAsync($"An unexpected error occurred while fetching a cat image. The hoomans have been notified (not really, but they should check the logs).");
         }
     }
+
+    [Name("Random Dog")]
+    [Summary("Sends a random dog image.")]
+    [Command("dog")]
+    [Alias("dogs")]
+    [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RateLimit(5, 10)]
+    public async Task DogAsync()
+    {
+        try
+        {
+            string apiUrl = "https://dog.ceo/api/breeds/image/random";
+            var responseString = await httpClient.GetStringAsync(apiUrl);
+
+            using (JsonDocument jsonDoc = JsonDocument.Parse(responseString))
+            {
+                JsonElement root = jsonDoc.RootElement;
+
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("message", out JsonElement urlElement) && urlElement.ValueKind == JsonValueKind.String)
+                    {
+                        string imageUrl = urlElement.GetString()!;
+
+                        if (string.IsNullOrWhiteSpace(imageUrl))
+                        {
+                            await ReplyAsync("The dog API returned an empty image URL. Try again!");
+                            return;
+                        }
+
+                        var embed = new EmbedBuilder()
+                            .WithTitle("Here's a random dog!")
+                            .WithImageUrl(imageUrl)
+                            .WithColor(Color.Blue) // Or any color you like
+                            .WithFooter("Powered by dog.ceo")
+                            .Build();
+
+                        await ReplyAsync(embed: embed);
+                    }
+                    else
+                    {
+                        await ReplyAsync("Could not find the image URL in the API response. The API structure might have changed.");
+                        Console.WriteLine($"[DOG API ERROR] Unexpected JSON structure. URL property missing. Response: {responseString}");
+                    }
+                }
+                else
+                {
+                    await ReplyAsync("The dog API did not return any images. Try again!");
+                    Console.WriteLine($"[DOG API ERROR] Empty array or not an array. Response: {responseString}");
+                }
+            }
+        }
+        catch (HttpRequestException httpEx)
+        {
+            Console.WriteLine($"[DOG API HTTP ERROR] {httpEx}");
+            await ReplyAsync("Sorry, I couldn't connect to the cat API right now. Please try again later.");
+        }
+        catch (JsonException jsonEx)
+        {
+            Console.WriteLine($"[DOG API JSON ERROR] {jsonEx}");
+            await ReplyAsync("Sorry, I received an unexpected response from the cat API. Please try again later.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DOG COMMAND UNEXPECTED ERROR] {ex}");
+            await ReplyAsync($"An unexpected error occurred while fetching a cat image. The hoomans have been notified (not really, but they should check the logs).");
+        }
+    }
 }
