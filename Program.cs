@@ -9,6 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Morpheus.Handlers;
 using Morpheus.Services;
+using Quartz.Impl;
+using Quartz;
+using Morpheus.Jobs;
 
 // Load environment variables from .env file
 Env.Load(".env");
@@ -42,6 +45,21 @@ services.AddSingleton<CommandService>();
 services.AddScoped<GuildService>();
 services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
+
+// Add Quartz 
+services.AddQuartz(q =>
+{
+    q.ScheduleJob<ActivityJob>(trigger => trigger
+        .WithIdentity("every6hours", "discord")
+        .StartNow()
+        .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromHours(6)).RepeatForever())
+    );
+});
+
+services.AddQuartzHostedService(options =>
+{
+    options.WaitForJobsToComplete = true;
+});
 
 // Add the handlers
 services.AddScoped<MessagesHandler>();
