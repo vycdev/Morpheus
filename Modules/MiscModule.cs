@@ -921,4 +921,24 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         string punchline = data["punchline"]?.ToString() ?? "No punchline found.";
         await ReplyAsync($"{setup}\n\n||{punchline}||");
     }
+
+    [Name("Random Fact")]
+    [Summary("Fetches a random fact.")]
+    [Command("fact")]
+    [Alias("getfact", "randomfact")]
+    [RateLimit(3, 10)]
+    public async Task RandomFact()
+    {
+        string url = "https://uselessfacts.jsph.pl/random.json?language=en";
+        HttpResponseMessage response = await httpClient.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ReplyAsync("Failed to fetch a fact. Try again later.");
+            return;
+        }
+        string json = await response.Content.ReadAsStringAsync();
+        JObject data = JObject.Parse(json);
+        string fact = data["text"]?.ToString() ?? "No fact found.";
+        await ReplyAsync(fact);
+    }
 }
