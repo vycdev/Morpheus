@@ -54,6 +54,12 @@ services.AddQuartz(q =>
         .StartNow()
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromHours(6)).RepeatForever())
     );
+
+    q.ScheduleJob<DeleteOldLogsJob>(trigger => trigger
+        .WithIdentity("deleteOldLogs", "discord")
+        .StartNow()
+        .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
+    );
 });
 
 services.AddQuartzHostedService(options =>
