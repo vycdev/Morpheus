@@ -5,7 +5,7 @@ using Morpheus.Services;
 
 namespace Morpheus.Jobs;
 
-public class ActivityJob : IJob
+public class ActivityJob(LogsService logsService, DiscordSocketClient discordClient) : IJob
 {
     // A time‐boxed activity that recurs every year
     private class AnnualActivity
@@ -391,16 +391,6 @@ public class ActivityJob : IJob
     };
 
     private static readonly Random _rng = new();
-
-    private readonly LogsService logsService;
-    private readonly DiscordSocketClient  discordClient; // Replace YourDiscordClientType with the actual type
-
-    // Constructor injection
-    public ActivityJob(LogsService logsService, DiscordSocketClient discordClient)
-    {
-        this.logsService = logsService;
-        this.discordClient = discordClient;
-    }
 
     public async Task Execute(IJobExecutionContext context)
     {
