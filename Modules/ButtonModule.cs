@@ -11,19 +11,8 @@ using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
-public class ButtonModule : ModuleBase<SocketCommandContextExtended>
+public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
-    private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
-
-    public ButtonModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
-    {
-        this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
-    }
-
     [Name("Press the Button")]
     [Summary("Press the button to gain points!")]
     [Command("pressbutton")]
