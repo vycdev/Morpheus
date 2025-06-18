@@ -81,7 +81,7 @@ public class ActivityHandler
         // Base XP for sending a message
         int baseXP = 1; 
         // Scale XP based on message length compared to guild average
-        double messageLengthXp = message.Content.Length / previousActivityInGuild?.GuildAverageMessageLength ?? 1; 
+        double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1; 
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
         int messageHashXp = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 30) ? 0 : 1;
         // Scale XP based on time since the last message, with a maximum of 10 seconds (spamming messages gives diminishing returns)
@@ -119,6 +119,11 @@ public class ActivityHandler
         UserLevels? userLevel = dbContext.UserLevels
             .FirstOrDefault(ul => ul.UserId == user.Id && ul.GuildId == guild.Id);
 
+        bool newUserLevel = false;
+
+        if (userLevel == null)
+            newUserLevel = true; 
+
         userLevel ??= new UserLevels
         {
             UserId = user.Id,
@@ -127,13 +132,18 @@ public class ActivityHandler
 
         userLevel.TotalXp += xp;
 
-        if(userLevel.Level != CalculateLevel(userLevel.TotalXp))
+        int newLevel = CalculateLevel(userLevel.TotalXp);
+
+        if(userLevel.Level != newLevel)
         {
-            // Level up message / quote 
+            userLevel.Level = newLevel;
+            // TODO: Level up message / quote 
         }
 
-        userLevel.Level = CalculateLevel(userLevel.TotalXp);
-        dbContext.SaveChanges();
+        if (newUserLevel)
+            dbContext.Add(userLevel);
+
+        await dbContext.SaveChangesAsync();
     }
 
     public static int CalculateLevel(int xp)
