@@ -50,7 +50,7 @@ public class MessagesHandler
         // Create a number to track where the prefix ends and the command begins
         int argPos = 0;
 
-        User? user = await usersService.TryGetCreateUser(message.Author);
+        User user = await usersService.TryGetCreateUser(message.Author);
         await usersService.TryUpdateUsername(message.Author, user);
 
         // If the message is in a guild, try to get the guild from the database

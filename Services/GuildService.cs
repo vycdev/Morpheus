@@ -6,7 +6,7 @@ using Morpheus.Database.Models;
 namespace Morpheus.Services;
 public class GuildService(DB dbContext, LogsService logsService)
 {
-    public async Task<Guild?> TryGetCreateGuild(SocketGuild guild)
+    public async Task<Guild> TryGetCreateGuild(SocketGuild guild)
     {
         var guildDb = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == guild.Id);
 
