@@ -21,7 +21,7 @@ public class UserLevels
     public int GuildId { get; set; }
     
     public int Level { get; set; } = 0;
-    public int Xp { get; set; } = 0;
+    public int TotalXp { get; set; } = 0;
 
     // Foreign keys
     [ForeignKey("UserId")]
