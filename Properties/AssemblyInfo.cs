@@ -6,6 +6,6 @@ using System.Resources;
 [assembly: AssemblyDescription("A discord bot with generic functionalities, also sentient.")]
 
 // Version information
-[assembly: AssemblyVersion("1.2.*")]
+[assembly: AssemblyVersion("1.3.*")]
 [assembly: NeutralResourcesLanguage("en-US")]
 
