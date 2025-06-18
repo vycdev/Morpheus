@@ -72,6 +72,7 @@ services.AddScoped<MessagesHandler>();
 services.AddScoped<WelcomeHandler>();
 services.AddScoped<InteractionsHandler>();
 services.AddScoped<LogsHandler>();
+services.AddScoped<ActivityHandler>();
 
 // Add the database context
 services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"])
@@ -85,11 +86,15 @@ IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
 // Run database migrations 
 host.Services.GetRequiredService<DB>().Database.Migrate();
 
-// Start the logger service
+// Start the handlers 
 _ = host.Services.GetRequiredService<LogsHandler>();
+_ = host.Services.GetRequiredService<WelcomeHandler>();
+_ = host.Services.GetRequiredService<InteractionsHandler>();
+_ = host.Services.GetRequiredService<ActivityHandler>();
+var messagesHandler = host.Services.GetRequiredService<MessagesHandler>();
 
 // Register the commands 
-_ = host.Services.GetRequiredService<MessagesHandler>().InstallCommands();
+await messagesHandler.InstallCommands();
 
 // Start the bot
 DiscordSocketClient client = host.Services.GetRequiredService<DiscordSocketClient>();
