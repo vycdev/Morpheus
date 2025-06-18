@@ -69,9 +69,8 @@ services.AddQuartzHostedService(options =>
 
 // Add the handlers
 services.AddScoped<MessagesHandler>();
+services.AddScoped<WelcomeHandler>();
 services.AddScoped<InteractionsHandler>();
-
-// Add the logger service
 services.AddScoped<LogsHandler>();
 
 // Add the database context

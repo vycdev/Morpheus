@@ -15,17 +15,11 @@ public class MessagesHandler
     private readonly DiscordSocketClient client;
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
     private readonly GuildService guildService;
     private readonly UsersService usersService;
-    bool started = false;
+    private bool started = false;
 
-    private readonly RandomBag welcomeMessagesBag = new(WelcomeMessages.Messages);
-    private readonly RandomBag goodbyeMessagesBag = new(GoodbyeMessages.Messages);
-    private readonly RandomBag happyEmojisBag = new(EmojiList.EmojisHappy);
-    private readonly RandomBag sadEmojisBag = new(EmojiList.EmojisSad);
-
-    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, DB dbContext, GuildService guildService, UsersService usersService)
+    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService)
     {
         if(started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -35,7 +29,6 @@ public class MessagesHandler
         this.client = client;
         this.commands = commands;
         this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
         this.guildService = guildService;
         this.usersService = usersService;
     }
@@ -43,8 +36,6 @@ public class MessagesHandler
     public async Task InstallCommandsAsync()
     {
         client.MessageReceived += HandleMessageAsync;
-        client.UserJoined += HandleUserJoined;
-        client.UserLeft += HandleUserLeft;
 
         await commands.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
     }
@@ -94,54 +85,5 @@ public class MessagesHandler
             CommandError.Unsuccessful => await context.Channel.SendMessageAsync("Unsuccessful."),
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
         };
-    }
-
-    private async Task HandleUserJoined(SocketGuildUser user)
-    {
-        Guild? guild = await guildService.TryGetCreateGuild(user.Guild);
-
-        if (guild == null)
-            return;
-
-        if (guild.WelcomeChannelId == 0)
-            return;
-
-        var channel = user.Guild.GetTextChannel(guild.WelcomeChannelId);
-
-        if (channel == null)
-            return;
-
-
-        Emote? joinEmoji = null;
-
-        if (ulong.TryParse(Env.Variables?["CUSTOM_JOIN_EMOTE_ID"], out ulong emojiId))
-            joinEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
-
-        await channel.SendMessageAsync((joinEmoji != null ? joinEmoji.ToString() + " " : "") + string.Format(welcomeMessagesBag.Random(), user.Mention));
-        await channel.SendMessageAsync($"Server now has {user.Guild.MemberCount} members! {happyEmojisBag.Random()}");
-    }
-
-    private async Task HandleUserLeft(SocketGuild guild, SocketUser user)
-    {
-        Guild? guildDb = await guildService.TryGetCreateGuild(guild);
-
-        if (guildDb == null)
-            return;
-
-        if (guildDb.WelcomeChannelId == 0)
-            return;
-
-        var channel = guild.GetTextChannel(guildDb.WelcomeChannelId);
-
-        if (channel == null)
-            return;
-        
-        Emote? leaveEmoji = null; 
-        
-        if(ulong.TryParse(Env.Variables?["CUSTOM_LEAVE_EMOTE_ID"], out ulong emojiId))
-            leaveEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
-
-        await channel.SendMessageAsync((leaveEmoji != null ? leaveEmoji.ToString() + " " : "") + string.Format(goodbyeMessagesBag.Random(), user.Mention));
-        await channel.SendMessageAsync($"Server now has {guild.MemberCount} members! {sadEmojisBag.Random()}");
     }
 }
