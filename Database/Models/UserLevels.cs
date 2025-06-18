@@ -16,7 +16,9 @@ public class UserLevels
 
     [Required]
     public int UserId { get; set; }
-    public int? GuildId { get; set; }
+    
+    [Required]
+    public int GuildId { get; set; }
     
     public int Level { get; set; } = 0;
     public int Xp { get; set; } = 0;
