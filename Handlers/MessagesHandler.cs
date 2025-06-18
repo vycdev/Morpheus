@@ -31,12 +31,12 @@ public class MessagesHandler
         this.serviceProvider = serviceProvider;
         this.guildService = guildService;
         this.usersService = usersService;
+
+        client.MessageReceived += HandleMessageAsync;
     }
 
-    public async Task InstallCommandsAsync()
+    public async Task InstallCommands()
     {
-        client.MessageReceived += HandleMessageAsync;
-
         await commands.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
     }
 

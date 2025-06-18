@@ -89,7 +89,7 @@ host.Services.GetRequiredService<DB>().Database.Migrate();
 _ = host.Services.GetRequiredService<LogsHandler>();
 
 // Register the commands 
-_ = host.Services.GetRequiredService<MessagesHandler>().InstallCommandsAsync();
+_ = host.Services.GetRequiredService<MessagesHandler>().InstallCommands();
 
 // Start the bot
 DiscordSocketClient client = host.Services.GetRequiredService<DiscordSocketClient>();
