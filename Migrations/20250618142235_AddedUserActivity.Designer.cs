@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20250618142235_AddedUserActivity")]
+    partial class AddedUserActivity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -250,7 +253,7 @@ namespace Morpheus.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("Morpheus.Database.Models.UserActivity", b =>
+            modelBuilder.Entity("Morpheus.Database.Models.User_Activity", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -286,7 +289,7 @@ namespace Morpheus.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("UserActivity");
+                    b.ToTable("User_Activity");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.ButtonGamePress", b =>
@@ -344,7 +347,7 @@ namespace Morpheus.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Morpheus.Database.Models.UserActivity", b =>
+            modelBuilder.Entity("Morpheus.Database.Models.User_Activity", b =>
                 {
                     b.HasOne("Morpheus.Database.Models.Guild", "Guild")
                         .WithMany("UserActivities")

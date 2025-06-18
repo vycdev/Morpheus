@@ -27,6 +27,7 @@ public class DB : Microsoft.EntityFrameworkCore.DbContext
     }
 
     public DbSet<Models.User> Users { get; set; }
+    public DbSet<Models.UserActivity> UserActivity { get; set; }
     public DbSet<Models.Guild> Guilds { get; set; }
     public DbSet<Models.Quote> Quotes { get; set; }
     public DbSet<Models.Log> Logs { get; set; }

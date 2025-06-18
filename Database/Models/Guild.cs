@@ -10,30 +10,27 @@ public class Guild
 
     [Required]
     public ulong DiscordId { get; set; }
-    
     public string Name { get; set; } = "";
 
     // Settings
     public string Prefix { get; set; } = "m!";
 
+    // Channels 
     public ulong WelcomeChannelId { get; set; } 
-
     public ulong PinsChannelId { get; set; }
-
     public ulong LevelUpMessagesChannelId { get; set; }
     public ulong LevelUpQuotesChannelId { get; set; }
 
-    public bool LevelUpMessages { get; set; } = true;
-    public bool LevelUpQuotes { get; set; } = true;
-    public bool WelcomeMessages { get; set; } = true;
-
-    public bool UseGlobalQuotes { get; set; } = true;
-    public bool UseGlobalLevelUpMessages { get; set; } = true;
-
+    // Leveling and Quotes system settings 
+    public bool LevelUpMessages { get; set; } = false;
+    public bool LevelUpQuotes { get; set; } = false;
+    public bool UseGlobalQuotes { get; set; } = false;
     public ulong QuotesApprovalChannelId { get; set; }
     public int QuoteAddRequiredApprovals { get; set; } = 5;
     public int QuoteRemoveRequiredApprovals { get; set; } = 5;
 
+    // Settings 
+    public bool WelcomeMessages { get; set; } = true;
     public bool UseActivityRoles { get; set; } = false;
     
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
@@ -41,4 +38,5 @@ public class Guild
     // Foreign keys
     public List<Quote> Quotes { get; set; }
     public List<ButtonGamePress> ButtonGamePresses { get; set; }
+    public List<UserActivity> UserActivities { get; set; }
 }

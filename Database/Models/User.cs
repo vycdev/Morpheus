@@ -17,7 +17,14 @@ public class User
 
     public DateTime LastUsernameCheck { get; set; } = DateTime.UtcNow;
 
+    // Leveling system 
+    public long TotalXp { get; set; } = 0;
+    public int Level { get; set; } = 0;
+    public bool LevelUpMessages { get; set; } = true;
+    public bool LevelUpQuotes { get; set; } = true;
+
     // Foreign keys
     public List<Quote> Quotes { get; set; }
-    public List<ButtonGamePress> buttonGamePresses { get; set; }
+    public List<ButtonGamePress> ButtonGamePresses { get; set; }
+    public List<UserActivity> UserActivities { get; set; }
 }
