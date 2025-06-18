@@ -85,7 +85,7 @@ public class ActivityHandler
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
         int messageHashXp = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 30) ? 0 : 1;
         // Scale XP based on time since the last message, with a maximum of 10 seconds (spamming messages gives diminishing returns)
-        double timeXp = previousActivity != null ? Math.Min(Math.Abs((now - previousActivity.InsertDate).TotalMilliseconds), 5 * 1000) / 5 * 1000 : 1;
+        double timeXp = previousActivity != null ? Math.Min(Math.Abs((now - previousActivity.InsertDate).TotalMilliseconds), 5 * 1000) / (5 * 1000) : 1;
 
         int xp = (int)Math.Floor(baseXP + messageLengthXp * messageHashXp * timeXp);
 
