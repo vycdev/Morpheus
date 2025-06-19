@@ -8,20 +8,12 @@ using Morpheus.Handlers;
 
 namespace Morpheus.Modules;
 
-public class GuildModule : ModuleBase<SocketCommandContextExtended>
+public class GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
-    private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
+    private readonly CommandService commands = commands;
+    private readonly IServiceProvider serviceProvider = serviceProvider;
+    private readonly DB dbContext = dbContext;
     private readonly int HelpPageSize = 10;
-
-    public GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
-    {
-        this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
-    }
-
 
     [Name("Set Welcome Channel")]
     [Summary("Sets the welcome channel where new join messages will appear.")]
@@ -32,7 +24,7 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [RequireDbGuild]
     public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
     {
-        var guild = Context.DbGuild!;
+        Database.Models.Guild guild = Context.DbGuild!;
 
         guild.WelcomeChannelId = channel?.Id ?? 0;
 
@@ -56,7 +48,7 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [RequireDbGuild]
     public async Task SetCommandsPrefix([Remainder] string prefix = "m!")
     {
-        var guild = Context.DbGuild!;
+        Database.Models.Guild guild = Context.DbGuild!;
 
         if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 3)
         {
@@ -85,7 +77,7 @@ public class GuildModule : ModuleBase<SocketCommandContextExtended>
     [RequireDbGuild]
     public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
     {
-        var guild = Context.DbGuild!;
+        Database.Models.Guild guild = Context.DbGuild!;
 
         guild.PinsChannelId = channel?.Id ?? 0;
         await dbContext.SaveChangesAsync();

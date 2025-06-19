@@ -1,48 +1,36 @@
-﻿using Discord.WebSocket;
-using Discord;
-using Quartz;
+﻿using Discord;
+using Discord.WebSocket;
 using Morpheus.Services;
+using Quartz;
 
 namespace Morpheus.Jobs;
 
 public class ActivityJob(LogsService logsService, DiscordSocketClient discordClient) : IJob
 {
     // A time‐boxed activity that recurs every year
-    private class AnnualActivity
+    private class AnnualActivity(
+        int startMonth, int startDay, TimeSpan startTime,
+        int endMonth, int endDay, TimeSpan endTime,
+        ActivityType type, string description)
     {
-        public int StartMonth { get; }
-        public int StartDay { get; }
-        public TimeSpan StartTime { get; }
+        public int StartMonth { get; } = startMonth;
+        public int StartDay { get; } = startDay;
+        public TimeSpan StartTime { get; } = startTime;
 
-        public int EndMonth { get; }
-        public int EndDay { get; }
-        public TimeSpan EndTime { get; }
+        public int EndMonth { get; } = endMonth;
+        public int EndDay { get; } = endDay;
+        public TimeSpan EndTime { get; } = endTime;
 
-        public ActivityType Type { get; }
-        public string Description { get; }
-
-        public AnnualActivity(
-            int startMonth, int startDay, TimeSpan startTime,
-            int endMonth, int endDay, TimeSpan endTime,
-            ActivityType type, string description)
-        {
-            StartMonth = startMonth;
-            StartDay = startDay;
-            StartTime = startTime;
-            EndMonth = endMonth;
-            EndDay = endDay;
-            EndTime = endTime;
-            Type = type;
-            Description = description;
-        }
+        public ActivityType Type { get; } = type;
+        public string Description { get; } = description;
 
         public bool IsActive(DateTime now)
         {
             // Build this year's start/end DateTimes
-            var year = now.Year;
-            var start = new DateTime(year, StartMonth, StartDay)
+            int year = now.Year;
+            DateTime start = new DateTime(year, StartMonth, StartDay)
                             .Add(StartTime);
-            var end = new DateTime(year, EndMonth, EndDay)
+            DateTime end = new DateTime(year, EndMonth, EndDay)
                             .Add(EndTime);
 
             // Handle wrap‐around (e.g. Dec→Jan)
@@ -59,8 +47,8 @@ public class ActivityJob(LogsService logsService, DiscordSocketClient discordCli
     }
 
     // 1) Your yearly schedule (examples: Halloween, Christmas, Birthday)
-    private static readonly AnnualActivity[] Schedule = new[]
-    {
+    private static readonly AnnualActivity[] Schedule =
+    [
         // New Year Celebration: Jan 1, 00:00 → Jan 2, 00:00
         new AnnualActivity(
             startMonth: 1, startDay: 1, startTime: TimeSpan.Zero,
@@ -158,11 +146,11 @@ public class ActivityJob(LogsService logsService, DiscordSocketClient discordCli
             endMonth:   1, endDay:   1,  endTime: new TimeSpan(2, 0, 0),
             type: ActivityType.Listening, description: "New Year's countdown 🎉"
         )
-    };
+    ];
 
     // 2) Default fallback activities
     private static readonly (ActivityType Type, string Description)[] DefaultActivities =
-    {
+    [
         (ActivityType.Playing,   "with your feelings"),
         (ActivityType.Watching,  "paint dry"),
         (ActivityType.Listening, "to my parents arguing"),
@@ -388,16 +376,16 @@ public class ActivityJob(LogsService logsService, DiscordSocketClient discordCli
         (ActivityType.Playing,   "connect-four with destiny"),
         (ActivityType.Watching,  "the dust on the windowsill"),
         (ActivityType.Listening, "to the hum of fluorescent lights")
-    };
+    ];
 
     private static readonly Random _rng = new();
 
     public async Task Execute(IJobExecutionContext context)
     {
-        var now = DateTime.Now;
+        DateTime now = DateTime.Now;
 
         // 3) Find an annual event matching today
-        var evt = Schedule.FirstOrDefault(e => e.IsActive(now));
+        AnnualActivity? evt = Schedule.FirstOrDefault(e => e.IsActive(now));
 
         ActivityType type;
         string description;

@@ -8,4 +8,3 @@ using System.Resources;
 // Version information
 [assembly: AssemblyVersion("1.3.*")]
 [assembly: NeutralResourcesLanguage("en-US")]
-

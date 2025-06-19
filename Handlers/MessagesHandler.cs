@@ -17,11 +17,11 @@ public class MessagesHandler
     private readonly IServiceProvider serviceProvider;
     private readonly GuildService guildService;
     private readonly UsersService usersService;
-    private bool started = false;
+    private readonly bool started = false;
 
     public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService)
     {
-        if(started)
+        if (started)
             throw new InvalidOperationException("At most one instance of this service can be started");
 
         started = true;
@@ -43,8 +43,7 @@ public class MessagesHandler
     private async Task HandleMessageAsync(SocketMessage messageParam)
     {
         // Don't process the command if it was a system message
-        var message = messageParam as SocketUserMessage;
-        if (message == null)
+        if (messageParam is not SocketUserMessage message)
             return;
 
         // Create a number to track where the prefix ends and the command begins
@@ -64,11 +63,11 @@ public class MessagesHandler
             return;
 
         // Create a WebSocket-based command context based on the message
-        var context = new SocketCommandContextExtended(client, message, guild, user);
+        SocketCommandContextExtended context = new(client, message, guild, user);
 
         // Execute the command with the command context we just
         // created, along with the service provider for precondition checks.
-        var result = await commands.ExecuteAsync(context, argPos, serviceProvider);
+        IResult result = await commands.ExecuteAsync(context, argPos, serviceProvider);
 
         if (result.IsSuccess)
             return;

@@ -16,7 +16,7 @@ public class Guild
     public string Prefix { get; set; } = "m!";
 
     // Channels 
-    public ulong WelcomeChannelId { get; set; } 
+    public ulong WelcomeChannelId { get; set; }
     public ulong PinsChannelId { get; set; }
     public ulong LevelUpMessagesChannelId { get; set; }
     public ulong LevelUpQuotesChannelId { get; set; }
@@ -32,7 +32,7 @@ public class Guild
     // Settings 
     public bool WelcomeMessages { get; set; } = true;
     public bool UseActivityRoles { get; set; } = false;
-    
+
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
     // Foreign keys

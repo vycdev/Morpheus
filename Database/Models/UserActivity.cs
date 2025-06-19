@@ -22,13 +22,13 @@ public class UserActivity
     public double GuildAverageMessageLength { get; set; } = 0.0;
     public int GuildMessageCount { get; set; } = 0;
     public int XpGained { get; set; } = 0;
-    
+
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
     // Foreign keys
     [ForeignKey("UserId")]
     public User User { get; set; }
-    
+
     [ForeignKey("GuildId")]
     public Guild Guild { get; set; }
 }

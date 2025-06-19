@@ -4,9 +4,9 @@ using Morpheus.Database.Models;
 
 namespace Morpheus.Extensions;
 public class SocketCommandContextExtended(
-    DiscordSocketClient client, 
-    SocketUserMessage msg, 
-    Guild? guild, 
+    DiscordSocketClient client,
+    SocketUserMessage msg,
+    Guild? guild,
     User? user
 ) : SocketCommandContext(client, msg)
 {

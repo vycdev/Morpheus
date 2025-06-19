@@ -25,10 +25,10 @@ public class LogsService(DB dbContext)
 
     public void Log(LogMessage message)
     {
-        string log = string.Empty;
+        string log;
         if (message.Exception is CommandException cmdException)
         {
-            log = $"{$"[Command/{message.Severity}]",-20} {cmdException.Command.Aliases.First()}"
+            log = $"{$"[Command/{message.Severity}]",-20} {cmdException.Command.Aliases[0]}"
                 + $" failed to execute in {cmdException.Context.Channel}. \n {cmdException}";
         }
         else

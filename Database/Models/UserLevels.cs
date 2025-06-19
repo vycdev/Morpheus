@@ -16,10 +16,10 @@ public class UserLevels
 
     [Required]
     public int UserId { get; set; }
-    
+
     [Required]
     public int GuildId { get; set; }
-    
+
     public int Level { get; set; } = 0;
     public int TotalXp { get; set; } = 0;
 

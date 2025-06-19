@@ -10,7 +10,7 @@ public class QuoteScore
 
     [Required]
     public int QuoteId { get; set; }
-    
+
     [Required]
     public int UserId { get; set; }
     public int Score { get; set; } = 0;

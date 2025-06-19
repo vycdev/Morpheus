@@ -1,16 +1,16 @@
 ﻿public class RandomBag
 {
-    private List<string> items;
-    private List<string> currentBag;
-    private Random random;
+    private readonly List<string> items;
+    private readonly List<string> currentBag;
+    private readonly Random random;
 
     public RandomBag(List<string> initialItems)
     {
         if (initialItems == null || initialItems.Count == 0)
             throw new ArgumentException("Initial list cannot be null or empty.");
 
-        items = new List<string>(initialItems);
-        currentBag = new List<string>(items);
+        items = [.. initialItems];
+        currentBag = [.. items];
         random = new Random();
     }
 

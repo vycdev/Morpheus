@@ -3,6 +3,8 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 
+namespace Morpheus.Utilities.Images;
+
 public static class ImageDeepFryer
 {
     /// <summary>
@@ -23,10 +25,8 @@ public static class ImageDeepFryer
         Bitmap originalBitmap;
         try
         {
-            using (MemoryStream ms = new MemoryStream(imageData))
-            {
-                originalBitmap = new Bitmap(ms);
-            }
+            using MemoryStream ms = new(imageData);
+            originalBitmap = new Bitmap(ms);
         }
         catch (Exception ex)
         {
@@ -36,8 +36,8 @@ public static class ImageDeepFryer
 
         using (originalBitmap)
         {
-            Bitmap friedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
-            Random random = new Random();
+            Bitmap friedBitmap = new(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+            Random random = new();
 
             for (int y = 0; y < originalBitmap.Height; y++)
             {
@@ -70,48 +70,46 @@ public static class ImageDeepFryer
                 }
             }
 
-            using (MemoryStream outputMs = new MemoryStream())
+            using MemoryStream outputMs = new();
+            // Try to preserve original format, with fallbacks
+            ImageFormat outputFormat = originalBitmap.RawFormat;
+            if (outputFormat.Guid.Equals(ImageFormat.MemoryBmp.Guid))
             {
-                // Try to preserve original format, with fallbacks
-                ImageFormat outputFormat = originalBitmap.RawFormat;
-                if (outputFormat.Guid.Equals(ImageFormat.MemoryBmp.Guid))
-                {
-                    // MemoryBmp is not a savable format, default to Png or Jpeg
-                    outputFormat = ImageFormat.Png;
-                }
-                else if (IsPixelFormatIndexed(originalBitmap.PixelFormat) && !outputFormat.Equals(ImageFormat.Gif))
-                {
-                    // If original was indexed (like some PNGs) but not GIF, PNG is a good choice
-                    // GIF manipulation often better saved as PNG if frames aren't handled
-                    outputFormat = ImageFormat.Png;
-                }
-                else if (!outputFormat.Equals(ImageFormat.Jpeg) && !outputFormat.Equals(ImageFormat.Png) && !outputFormat.Equals(ImageFormat.Bmp) && !outputFormat.Equals(ImageFormat.Gif) && !outputFormat.Equals(ImageFormat.Tiff))
-                {
-                    // If it's an unknown or less common format, default to Jpeg for deep fry (lossy is often fine)
-                    outputFormat = ImageFormat.Jpeg;
-                }
-
-
-                // For deep-fried effect, JPEG is often acceptable due to its lossy nature.
-                // If transparency is critical, PNG would be better.
-                // Here, we try to use original or a sensible default like JPEG.
-                if (outputFormat.Equals(ImageFormat.Gif))
-                {
-                    // If it was a GIF, saving as PNG is usually better after pixel manipulation unless handling frames.
-                    friedBitmap.Save(outputMs, ImageFormat.Png);
-                }
-                else if (outputFormat.Equals(ImageFormat.Jpeg))
-                {
-                    friedBitmap.Save(outputMs, ImageFormat.Jpeg);
-                }
-                else
-                {
-                    // For most other cases (PNG, BMP, TIFF that wasn't MemoryBMP)
-                    // or if we defaulted, PNG is a good versatile choice.
-                    friedBitmap.Save(outputMs, outputFormat);
-                }
-                return outputMs.ToArray();
+                // MemoryBmp is not a savable format, default to Png or Jpeg
+                outputFormat = ImageFormat.Png;
             }
+            else if (IsPixelFormatIndexed(originalBitmap.PixelFormat) && !outputFormat.Equals(ImageFormat.Gif))
+            {
+                // If original was indexed (like some PNGs) but not GIF, PNG is a good choice
+                // GIF manipulation often better saved as PNG if frames aren't handled
+                outputFormat = ImageFormat.Png;
+            }
+            else if (!outputFormat.Equals(ImageFormat.Jpeg) && !outputFormat.Equals(ImageFormat.Png) && !outputFormat.Equals(ImageFormat.Bmp) && !outputFormat.Equals(ImageFormat.Gif) && !outputFormat.Equals(ImageFormat.Tiff))
+            {
+                // If it's an unknown or less common format, default to Jpeg for deep fry (lossy is often fine)
+                outputFormat = ImageFormat.Jpeg;
+            }
+
+
+            // For deep-fried effect, JPEG is often acceptable due to its lossy nature.
+            // If transparency is critical, PNG would be better.
+            // Here, we try to use original or a sensible default like JPEG.
+            if (outputFormat.Equals(ImageFormat.Gif))
+            {
+                // If it was a GIF, saving as PNG is usually better after pixel manipulation unless handling frames.
+                friedBitmap.Save(outputMs, ImageFormat.Png);
+            }
+            else if (outputFormat.Equals(ImageFormat.Jpeg))
+            {
+                friedBitmap.Save(outputMs, ImageFormat.Jpeg);
+            }
+            else
+            {
+                // For most other cases (PNG, BMP, TIFF that wasn't MemoryBMP)
+                // or if we defaulted, PNG is a good versatile choice.
+                friedBitmap.Save(outputMs, outputFormat);
+            }
+            return outputMs.ToArray();
         }
     }
 

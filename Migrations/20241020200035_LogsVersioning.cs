@@ -2,28 +2,27 @@
 
 #nullable disable
 
-namespace Morpheus.Migrations
+namespace Morpheus.Migrations;
+
+/// <inheritdoc />
+public partial class LogsVersioning : Migration
 {
     /// <inheritdoc />
-    public partial class LogsVersioning : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.AddColumn<string>(
-                name: "Version",
-                table: "Logs",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-        }
+        migrationBuilder.AddColumn<string>(
+            name: "Version",
+            table: "Logs",
+            type: "text",
+            nullable: false,
+            defaultValue: "");
+    }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropColumn(
-                name: "Version",
-                table: "Logs");
-        }
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.DropColumn(
+            name: "Version",
+            table: "Logs");
     }
 }

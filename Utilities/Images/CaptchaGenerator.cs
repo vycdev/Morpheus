@@ -5,18 +5,11 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Text;
 
-public class CaptchaResult
+public class CaptchaResult(string captchaText, byte[] captchaImageBytes)
 {
-    public string CaptchaText { get; }
-    public byte[] CaptchaImageBytes { get; }
-    public DateTime Timestamp { get; }
-
-    public CaptchaResult(string captchaText, byte[] captchaImageBytes)
-    {
-        CaptchaText = captchaText;
-        CaptchaImageBytes = captchaImageBytes;
-        Timestamp = DateTime.UtcNow;
-    }
+    public string CaptchaText { get; } = captchaText;
+    public byte[] CaptchaImageBytes { get; } = captchaImageBytes;
+    public DateTime Timestamp { get; } = DateTime.UtcNow;
 }
 
 public class CaptchaGenerator
@@ -24,11 +17,11 @@ public class CaptchaGenerator
     private readonly int _width;
     private readonly int _height;
     private readonly int _textLength;
-    private readonly Random _random = new Random();
+    private readonly Random _random = new();
 
     private readonly string _charSet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-    private readonly string[] _fontFamilies = { "Arial", "Verdana", "Times New Roman", "Courier New", "Tahoma", "Georgia", "Comic Sans MS" };
-    private readonly Color[] _backgroundColors = { Color.WhiteSmoke, Color.LightGray, Color.FromArgb(240, 240, 240), Color.AliceBlue, Color.Lavender };
+    private readonly string[] _fontFamilies = ["Arial", "Verdana", "Times New Roman", "Courier New", "Tahoma", "Georgia", "Comic Sans MS"];
+    private readonly Color[] _backgroundColors = [Color.WhiteSmoke, Color.LightGray, Color.FromArgb(240, 240, 240), Color.AliceBlue, Color.Lavender];
 
     public CaptchaGenerator(int width = 400, int height = 70, int textLength = 8)
     {
@@ -44,30 +37,24 @@ public class CaptchaGenerator
     public CaptchaResult GenerateCaptcha()
     {
         string captchaText = GenerateRandomText();
-        string actualDrawnText = ""; // To store only the characters that were actually drawn
+        using Bitmap bitmap = new(_width, _height, PixelFormat.Format32bppArgb);
+        using Graphics graphics = Graphics.FromImage(bitmap);
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias; // Better text
+        graphics.Clear(_backgroundColors[_random.Next(_backgroundColors.Length)]);
 
-        using (Bitmap bitmap = new Bitmap(_width, _height, PixelFormat.Format32bppArgb))
-        using (Graphics graphics = Graphics.FromImage(bitmap))
-        {
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias; // Better text
-            graphics.Clear(_backgroundColors[_random.Next(_backgroundColors.Length)]);
+        string actualDrawnText = DrawCaptchaTextAndReturnDrawn(graphics, captchaText);
+        AddDistortionAndNoise(graphics, bitmap);
 
-            actualDrawnText = DrawCaptchaTextAndReturnDrawn(graphics, captchaText);
-            AddDistortionAndNoise(graphics, bitmap);
-
-            using (MemoryStream ms = new MemoryStream())
-            {
-                bitmap.Save(ms, ImageFormat.Png);
-                // Return the text that was actually drawn, in case it's less than _textLength
-                return new CaptchaResult(actualDrawnText, ms.ToArray());
-            }
-        }
+        using MemoryStream ms = new();
+        bitmap.Save(ms, ImageFormat.Png);
+        // Return the text that was actually drawn, in case it's less than _textLength
+        return new CaptchaResult(actualDrawnText, ms.ToArray());
     }
 
     private string GenerateRandomText()
     {
-        StringBuilder sb = new StringBuilder(_textLength);
+        StringBuilder sb = new(_textLength);
         for (int i = 0; i < _textLength; i++)
         {
             sb.Append(_charSet[_random.Next(_charSet.Length)]);
@@ -78,7 +65,7 @@ public class CaptchaGenerator
     private string DrawCaptchaTextAndReturnDrawn(Graphics graphics, string text)
     {
         float currentX = _random.Next(5, 10); // Initial X padding
-        StringBuilder drawnTextBuilder = new StringBuilder();
+        StringBuilder drawnTextBuilder = new();
 
         for (int i = 0; i < text.Length; i++)
         {
@@ -95,8 +82,7 @@ public class CaptchaGenerator
             else if (styleRoll < 6 && (fontStyle & FontStyle.Bold) == 0) fontStyle |= FontStyle.Italic; // BoldItalic less frequent
 
             Font chosenFont = null;
-            SizeF charSize = SizeF.Empty;
-
+            SizeF charSize;
             try
             {
                 chosenFont = new Font(fontFamily, fontSize, fontStyle);
@@ -164,16 +150,14 @@ public class CaptchaGenerator
         int numDistortionLines = _random.Next(2, 5);
         for (int i = 0; i < numDistortionLines; i++)
         {
-            Point p1 = new Point(_random.Next(_width), _random.Next(_height));
-            Point p2 = new Point(_random.Next(_width), _random.Next(_height));
-            Point ctrl1 = new Point(_random.Next(_width), _random.Next(_height));
-            Point ctrl2 = new Point(_random.Next(_width), _random.Next(_height));
+            Point p1 = new(_random.Next(_width), _random.Next(_height));
+            Point p2 = new(_random.Next(_width), _random.Next(_height));
+            Point ctrl1 = new(_random.Next(_width), _random.Next(_height));
+            Point ctrl2 = new(_random.Next(_width), _random.Next(_height));
             int alpha = _random.Next(70, 130);
-            using (Pen pen = new Pen(Color.FromArgb(alpha, GetRandomDarkColor(150)), Math.Max(1, _height / 35)))
-            {
-                try { graphics.DrawBezier(pen, p1, ctrl1, ctrl2, p2); }
-                catch { /* GDI+ can sometimes throw generic errors with complex paths */ }
-            }
+            using Pen pen = new(Color.FromArgb(alpha, GetRandomDarkColor(150)), Math.Max(1, _height / 35));
+            try { graphics.DrawBezier(pen, p1, ctrl1, ctrl2, p2); }
+            catch { /* GDI+ can sometimes throw generic errors with complex paths */ }
         }
 
         // Add straight noise lines
@@ -185,10 +169,8 @@ public class CaptchaGenerator
             int x2 = _random.Next(_width);
             int y2 = _random.Next(_height);
             int alpha = _random.Next(40, 100);
-            using (Pen pen = new Pen(Color.FromArgb(alpha, GetRandomGrayColorValue(180), GetRandomGrayColorValue(180), GetRandomGrayColorValue(180)), 1))
-            {
-                try { graphics.DrawLine(pen, x1, y1, x2, y2); } catch { }
-            }
+            using Pen pen = new(Color.FromArgb(alpha, GetRandomGrayColorValue(180), GetRandomGrayColorValue(180), GetRandomGrayColorValue(180)), 1);
+            try { graphics.DrawLine(pen, x1, y1, x2, y2); } catch { }
         }
 
         // Add pixel noise ("salt and pepper")

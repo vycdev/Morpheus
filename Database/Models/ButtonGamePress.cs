@@ -8,7 +8,7 @@ public class ButtonGamePress
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
- 
+
     [Required]
     public int UserId { get; set; }
     public int? GuildId { get; set; }

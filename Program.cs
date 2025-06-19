@@ -1,17 +1,17 @@
-﻿using Discord.WebSocket;
-using Discord;
-using Morpheus.Utilities;
+﻿using Discord;
 using Discord.Commands;
+using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Morpheus.Database;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Morpheus.Handlers;
-using Morpheus.Services;
-using Quartz.Impl;
-using Quartz;
 using Morpheus.Jobs;
+using Morpheus.Services;
+using Morpheus.Utilities;
+using Quartz;
+using Quartz.Impl;
 
 // Load environment variables from .env file
 Env.Load(".env");
@@ -22,7 +22,7 @@ DiscordSocketConfig clientConfig = new()
     MessageCacheSize = 100,
     AlwaysDownloadUsers = true,
     LogLevel = LogSeverity.Verbose,
-    GatewayIntents = GatewayIntents.All, 
+    GatewayIntents = GatewayIntents.All,
 };
 
 CommandServiceConfig commandServiceConfig = new()
@@ -78,8 +78,9 @@ services.AddScoped<ActivityHandler>();
 services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"])
             .ConfigureWarnings(c => c.Ignore(RelationalEventId.CommandExecuted)));
 
-IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) => {
-    foreach(ServiceDescriptor service in services) 
+IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) =>
+{
+    foreach (ServiceDescriptor service in services)
         srv.Add(service);
 }).Build();
 
@@ -91,7 +92,7 @@ _ = host.Services.GetRequiredService<LogsHandler>();
 _ = host.Services.GetRequiredService<WelcomeHandler>();
 _ = host.Services.GetRequiredService<InteractionsHandler>();
 _ = host.Services.GetRequiredService<ActivityHandler>();
-var messagesHandler = host.Services.GetRequiredService<MessagesHandler>();
+MessagesHandler messagesHandler = host.Services.GetRequiredService<MessagesHandler>();
 
 // Register the commands 
 await messagesHandler.InstallCommands();

@@ -8,7 +8,7 @@ public class GuildService(DB dbContext, LogsService logsService)
 {
     public async Task<Guild> TryGetCreateGuild(SocketGuild guild)
     {
-        var guildDb = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == guild.Id);
+        Guild? guildDb = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == guild.Id);
 
         if (guildDb != null)
             return guildDb;

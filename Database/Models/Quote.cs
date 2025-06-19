@@ -18,7 +18,7 @@ public class Quote
     public string Content { get; set; }
 
     public bool Approved { get; set; } = false;
-    
+
     public bool Removed { get; set; } = false;
 
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;

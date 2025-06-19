@@ -1,6 +1,6 @@
-﻿using Discord.Commands;
+﻿using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
-using Discord;
 using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Services;
 
@@ -26,4 +26,3 @@ internal class LogsHandler
         return Task.CompletedTask;
     }
 }
- 

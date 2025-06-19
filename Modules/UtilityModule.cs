@@ -1,31 +1,16 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
-using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
-using Morpheus.Handlers;
 using Morpheus.Utilities;
-using System.IO.Compression;
 
 namespace Morpheus.Modules;
 
-public class UtilityModule : ModuleBase<SocketCommandContextExtended>
+public class UtilityModule() : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
-
-    private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
-
-    public UtilityModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
-    {
-        this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
-    }
 
     [Name("Pin")]
     [Summary("Pins a message.")]
@@ -55,9 +40,7 @@ public class UtilityModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Get the message the user replied to
-        var message = await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) as IUserMessage;
-
-        if (message == null)
+        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage message)
         {
             await ReplyAsync("Couldn't find the message you want to pin.");
             return;

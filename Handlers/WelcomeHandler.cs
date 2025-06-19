@@ -13,7 +13,7 @@ public class WelcomeHandler
 {
     private readonly DiscordSocketClient client;
     private readonly GuildService guildService;
-    private bool started = false;
+    private readonly bool started = false;
 
     private readonly RandomBag welcomeMessagesBag = new(WelcomeMessages.Messages);
     private readonly RandomBag goodbyeMessagesBag = new(GoodbyeMessages.Messages);
@@ -44,7 +44,7 @@ public class WelcomeHandler
         if (guild.WelcomeChannelId == 0)
             return;
 
-        var channel = user.Guild.GetTextChannel(guild.WelcomeChannelId);
+        SocketTextChannel channel = user.Guild.GetTextChannel(guild.WelcomeChannelId);
 
         if (channel == null)
             return;
@@ -69,7 +69,7 @@ public class WelcomeHandler
         if (guildDb.WelcomeChannelId == 0)
             return;
 
-        var channel = guild.GetTextChannel(guildDb.WelcomeChannelId);
+        SocketTextChannel channel = guild.GetTextChannel(guildDb.WelcomeChannelId);
 
         if (channel == null)
             return;

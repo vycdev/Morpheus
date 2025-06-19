@@ -21,7 +21,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     private const int HelpPageSize = 10;
 
     SelectMenuBuilder? helpMenu = null;
-    Dictionary<string, Embed> helpModules = [];
+    readonly Dictionary<string, Embed> helpModules = [];
 
     public HelpModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
     {
@@ -46,9 +46,8 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
                 Embed embed = CreateModuleHelpEmbed(selectedModule, commandPrefix);
 
                 // Fetch the original message using message ID
-                IUserMessage? message = await messageComponent.Channel.GetMessageAsync(messageComponent.Message.Id) as IUserMessage;
 
-                if (message != null)
+                if (await messageComponent.Channel.GetMessageAsync(messageComponent.Message.Id) is IUserMessage message)
                 {
                     await message.ModifyAsync(prop => prop.Embed = embed); // Sends a private message
                     await messageComponent.DeferAsync();
@@ -60,7 +59,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     private Embed CreateModuleHelpEmbed(string moduleName, string commandPrefix)
     {
         if (helpModules.TryGetValue(commandPrefix + moduleName, out Embed? embed))
-            return embed; 
+            return embed;
 
         int page = int.Parse(moduleName.Split("_")[0]);
         string name = moduleName.Split("_")[1].Replace("Module", "");
@@ -119,9 +118,9 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
         };
 
         // Create the selector (dropdown)
-        if(helpMenu == null)
+        if (helpMenu == null)
         {
-            List<string> modules = commands.Modules.Select(m => m.Name).ToList();
+            List<string> modules = [.. commands.Modules.Select(m => m.Name)];
             helpMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select a module")
                 .WithCustomId("module_selector");

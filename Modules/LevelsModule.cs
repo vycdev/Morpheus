@@ -5,11 +5,7 @@ using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Morpheus.Modules;
 
@@ -22,8 +18,8 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [RateLimit(3, 10)]
     public async Task CurrentLevelAsync()
     {
-        var user = Context.DbUser;
-        var guild = Context.DbGuild;
+        User? user = Context.DbUser;
+        Guild? guild = Context.DbGuild;
 
         if (user == null || guild == null)
         {
@@ -37,7 +33,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         UserLevels? userLevelGuild = userLevels
             .FirstOrDefault(ul => ul.GuildId == guild.Id);
 
-        if (userLevels.Count() == 0)
+        if (!userLevels.Any())
         {
             await ReplyAsync("There is no level information available for you in any guild.");
             return;
@@ -68,7 +64,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [RateLimit(3, 10)]
     public async Task LeaderboardAsync(int page = 1)
     {
-        var guild = Context.DbGuild;
+        Guild? guild = Context.DbGuild;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
@@ -89,7 +85,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var leaderboard = userLevels
+        IEnumerable<string> leaderboard = userLevels
             .Skip((page - 1) * 10)
             .Take(10)
             .Include(u => u.User)
@@ -115,14 +111,14 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [RateLimit(3, 60)]
     public async Task LeaderboardPastAsync(int days, int page = 1)
     {
-        var guild = Context.DbGuild;
+        Guild? guild = Context.DbGuild;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
             return;
         }
 
-        if(days <= 0)
+        if (days <= 0)
         {
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
@@ -149,7 +145,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var leaderboard = userLevels
+        IEnumerable<string> leaderboard = userLevels
             .Skip((page - 1) * 10)
             .Take(10)
             .ToList()
@@ -193,7 +189,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var leaderboard = userLevels
+        IEnumerable<string> leaderboard = userLevels
             .Skip((page - 1) * 10)
             .Take(10)
             .ToList()
@@ -222,7 +218,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
         }
-        
+
         IQueryable<UserLevels> userLevels = dbContext.UserActivity
             .Where(ua => ua.InsertDate >= DateTime.UtcNow.AddDays(-days))
             .GroupBy(ua => ua.User)
@@ -236,14 +232,14 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         int totalUsers = userLevels.Count();
         int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
-        
+
         if (page < 1 || page > totalPages)
         {
             await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
             return;
         }
 
-        var leaderboard = userLevels
+        IEnumerable<string> leaderboard = userLevels
             .Skip((page - 1) * 10)
             .Take(10)
             .ToList()

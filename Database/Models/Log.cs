@@ -7,7 +7,7 @@ public class Log
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
-    
+
     public int Severity { get; set; }
     public string Message { get; set; }
 

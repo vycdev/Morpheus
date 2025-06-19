@@ -24,7 +24,7 @@ public class ActivityHandler
     private readonly GuildService guildService;
     private readonly UsersService usersService;
     private readonly DB dbContext;
-    private bool started = false;
+    private readonly bool started = false;
 
     public ActivityHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService, DB db)
     {
@@ -46,8 +46,7 @@ public class ActivityHandler
     private async Task HandleActivity(SocketMessage messageParam)
     {
         // Don't process the command if it was a system message
-        var message = messageParam as SocketUserMessage;
-        if (message == null)
+        if (messageParam is not SocketUserMessage message)
             return;
 
         // Check if message was sent by a bot or webhook
@@ -56,7 +55,7 @@ public class ActivityHandler
 
         // Ignore messages not in guilds
         if (message.Channel is not SocketGuildChannel guildChannel)
-            return; 
+            return;
 
         User user = await usersService.TryGetCreateUser(message.Author);
         await usersService.TryUpdateUsername(message.Author, user);
@@ -79,9 +78,9 @@ public class ActivityHandler
         DateTime now = DateTime.UtcNow;
 
         // Base XP for sending a message
-        int baseXP = 1; 
+        int baseXP = 1;
         // Scale XP based on message length compared to guild average
-        double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1; 
+        double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
         int messageHashXp = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 30) ? 0 : 1;
         // Scale XP based on time since the last message, with a maximum of 5 seconds (spamming messages gives diminishing returns)
@@ -122,7 +121,7 @@ public class ActivityHandler
         bool newUserLevel = false;
 
         if (userLevel == null)
-            newUserLevel = true; 
+            newUserLevel = true;
 
         userLevel ??= new UserLevels
         {
@@ -134,7 +133,7 @@ public class ActivityHandler
 
         int newLevel = CalculateLevel(userLevel.TotalXp);
 
-        if(userLevel.Level != newLevel)
+        if (userLevel.Level != newLevel)
         {
             userLevel.Level = newLevel;
             // TODO: Level up message / quote 

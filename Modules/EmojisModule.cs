@@ -9,20 +9,13 @@ using System.IO.Compression;
 
 namespace Morpheus.Modules;
 
-public class EmojisModule : ModuleBase<SocketCommandContextExtended>
+public class EmojisModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
 
-    private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
-
-    public EmojisModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
-    {
-        this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
-    }
+    private readonly CommandService commands = commands;
+    private readonly IServiceProvider serviceProvider = serviceProvider;
+    private readonly DB dbContext = dbContext;
 
     [Name("Use Emoji")]
     [Summary("Uses an emoji in the current channel. The bot will try to delete your original message at the end.")]
@@ -33,7 +26,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     [RateLimit(5, 10)]
     public async Task UseEmoji([Remainder] string emojiName)
     {
-        var emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
+        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
 
         if (emoji == null)
         {
@@ -44,7 +37,8 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         // Send the emoji in the channel
         await Context.Channel.SendMessageAsync(emoji.ToString());
 
-        try {
+        try
+        {
             await Context.Message.DeleteAsync();
         }
         catch { }
@@ -59,7 +53,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     [RateLimit(5, 10)]
     public async Task React([Remainder] string emojiName)
     {
-        var emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
+        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
 
         if (emoji == null)
         {
@@ -68,21 +62,21 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Get the message the user replied to
-        var message = await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) as IUserMessage;
 
-        if (message == null)
+        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage message)
         {
             await ReplyAsync("You need to reply to a message to react to it.");
             return;
         }
-        
+
         // React to the message with the specified emoji
         await message.AddReactionAsync(emoji);
 
         try
         {
             await Context.Message.DeleteAsync();
-        } catch { }
+        }
+        catch { }
     }
 
     [Name("List Emojis")]
@@ -100,7 +94,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var emojiList = string.Join("\n", emotes.Select(e => e.Name + " - " + e.ToString()));
+        string emojiList = string.Join("\n", emotes.Select(e => e.Name + " - " + e.ToString()));
         await ReplyAsync($"**Custom Emojis:**\n{emojiList}");
     }
 
@@ -126,9 +120,9 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         int totalEmojis = guild.Emotes.Count;
         int count = 0;
 
-        var progressMessage = await ReplyAsync($"Starting to download {totalEmojis} emojis...");
+        IUserMessage progressMessage = await ReplyAsync($"Starting to download {totalEmojis} emojis...");
 
-        foreach (var emoji in guild.Emotes)
+        foreach (GuildEmote? emoji in guild.Emotes)
         {
             string extension = emoji.Animated ? ".gif" : ".png";
             string filePath = Path.Combine(directory, emoji.Name + extension);

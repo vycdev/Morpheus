@@ -6,8 +6,8 @@ using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
-using System.Text;
 using Morpheus.Utilities;
+using System.Text;
 
 namespace Morpheus.Modules;
 

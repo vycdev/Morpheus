@@ -1,7 +1,7 @@
 ﻿using QRCoder;
-using System;
 using System.Drawing; // Still needed by QRCoder for some internal operations or if you want Bitmap output
-using System.IO;
+
+namespace Morpheus.Utilities.Images;
 
 public class QrCodeService
 {
@@ -12,7 +12,7 @@ public class QrCodeService
     /// <param name="pixelsPerModule">The size of each "dot" (module) in the QR code. Higher means larger image.</param>
     /// <param name="eccLevel">The error correction level. Higher levels allow more of the QR code to be damaged/obscured and still be readable.</param>
     /// <returns>A byte array representing the QR code image in PNG format.</returns>
-    public byte[] GenerateQrCode(string data, int pixelsPerModule = 20, QRCodeGenerator.ECCLevel eccLevel = QRCodeGenerator.ECCLevel.Q)
+    public static byte[] GenerateQrCode(string data, int pixelsPerModule = 20, QRCodeGenerator.ECCLevel eccLevel = QRCodeGenerator.ECCLevel.Q)
     {
         if (string.IsNullOrEmpty(data))
         {
@@ -25,10 +25,10 @@ public class QrCodeService
 
         byte[] qrCodeBytes;
 
-        using (QRCodeGenerator qrGenerator = new QRCodeGenerator())
+        using (QRCodeGenerator qrGenerator = new())
         using (QRCodeData qrCodeData = qrGenerator.CreateQrCode(data, eccLevel))
         // PngByteQRCode is convenient as it directly outputs byte[] for a PNG
-        using (PngByteQRCode qrCode = new PngByteQRCode(qrCodeData))
+        using (PngByteQRCode qrCode = new(qrCodeData))
         {
             qrCodeBytes = qrCode.GetGraphic(pixelsPerModule);
         }
@@ -46,7 +46,7 @@ public class QrCodeService
     /// <param name="eccLevel">Error correction level.</param>
     /// <param name="drawQuietZones">Whether to include the white border (quiet zone) around the QR code.</param>
     /// <returns>Byte array of the PNG QR code image.</returns>
-    public byte[] GenerateQrCodeWithColors(
+    public static byte[] GenerateQrCodeWithColors(
         string data,
         string darkColorHtml = "#000000",
         string lightColorHtml = "#FFFFFF",
@@ -68,9 +68,9 @@ public class QrCodeService
 
         byte[] qrCodeBytes;
 
-        using (QRCodeGenerator qrGenerator = new QRCodeGenerator())
+        using (QRCodeGenerator qrGenerator = new())
         using (QRCodeData qrCodeData = qrGenerator.CreateQrCode(data, eccLevel))
-        using (PngByteQRCode qrCode = new PngByteQRCode(qrCodeData))
+        using (PngByteQRCode qrCode = new(qrCodeData))
         {
             qrCodeBytes = qrCode.GetGraphic(pixelsPerModule, darkColor, lightColor, drawQuietZones);
         }
@@ -83,64 +83,64 @@ public class QrCodeService
 
 public class ExampleUsage
 {
-    public static void Main(string[] args)
+public static void Main(string[] args)
+{
+    QrCodeService qrService = new QrCodeService();
+    string dataToEncode = "https://www.example.com";
+
+    // Generate a standard black and white QR code
+    try
     {
-        QrCodeService qrService = new QrCodeService();
-        string dataToEncode = "https://www.example.com";
+        byte[] qrCodeBytes = qrService.GenerateQrCode(dataToEncode, pixelsPerModule: 15);
+        File.WriteAllBytes("qrcode_standard.png", qrCodeBytes);
+        Console.WriteLine("Standard QR code generated as qrcode_standard.png");
 
-        // Generate a standard black and white QR code
-        try
+        // Generate a QR code with custom colors (e.g., dark blue on light yellow)
+        byte[] qrCodeColorBytes = qrService.GenerateQrCodeWithColors(
+            dataToEncode,
+            darkColorHtml: "#000080", // Navy
+            lightColorHtml: "#FFFFE0", // LightYellow
+            pixelsPerModule: 20);
+        File.WriteAllBytes("qrcode_color.png", qrCodeColorBytes);
+        Console.WriteLine("Color QR code generated as qrcode_color.png");
+
+        // Example with logo (more advanced, QRCoder supports this too)
+        // This requires a Bitmap for the logo.
+        // Note: QRCoder's built-in logo support renders it to a Bitmap first, then you'd convert to bytes.
+        // PngByteQRCode doesn't have direct logo support, you'd use QRCode class then GetGraphic()
+        // and convert the Bitmap to byte array.
+
+        using (QRCodeGenerator qrGenerator = new QRCodeGenerator())
+        using (QRCodeData qrCodeData = qrGenerator.CreateQrCode(dataToEncode, QRCodeGenerator.ECCLevel.H)) // Higher ECC for logo
+        using (QRCode qrCodeWithLogo = new QRCode(qrCodeData))
         {
-            byte[] qrCodeBytes = qrService.GenerateQrCode(dataToEncode, pixelsPerModule: 15);
-            File.WriteAllBytes("qrcode_standard.png", qrCodeBytes);
-            Console.WriteLine("Standard QR code generated as qrcode_standard.png");
+            // Assuming you have a logo.png file
+            // Bitmap logo = null;
+            // if (File.Exists("logo.png"))
+            // {
+            //    logo = new Bitmap("logo.png");
+            // }
 
-            // Generate a QR code with custom colors (e.g., dark blue on light yellow)
-            byte[] qrCodeColorBytes = qrService.GenerateQrCodeWithColors(
-                dataToEncode,
-                darkColorHtml: "#000080", // Navy
-                lightColorHtml: "#FFFFE0", // LightYellow
-                pixelsPerModule: 20);
-            File.WriteAllBytes("qrcode_color.png", qrCodeColorBytes);
-            Console.WriteLine("Color QR code generated as qrcode_color.png");
+            // For simplicity, we'll skip the actual logo loading here.
+            // If you had a logo Bitmap:
+            // Bitmap qrCodeImageWithLogo = qrCodeWithLogo.GetGraphic(10, Color.Black, Color.White, logo);
 
-            // Example with logo (more advanced, QRCoder supports this too)
-            // This requires a Bitmap for the logo.
-            // Note: QRCoder's built-in logo support renders it to a Bitmap first, then you'd convert to bytes.
-            // PngByteQRCode doesn't have direct logo support, you'd use QRCode class then GetGraphic()
-            // and convert the Bitmap to byte array.
-
-            using (QRCodeGenerator qrGenerator = new QRCodeGenerator())
-            using (QRCodeData qrCodeData = qrGenerator.CreateQrCode(dataToEncode, QRCodeGenerator.ECCLevel.H)) // Higher ECC for logo
-            using (QRCode qrCodeWithLogo = new QRCode(qrCodeData))
+            // Without logo, but using the QRCode class to show how to get Bitmap then bytes:
+            Bitmap qrBitmap = qrCodeWithLogo.GetGraphic(10);
+            using (MemoryStream ms = new MemoryStream())
             {
-                // Assuming you have a logo.png file
-                // Bitmap logo = null;
-                // if (File.Exists("logo.png"))
-                // {
-                //    logo = new Bitmap("logo.png");
-                // }
-
-                // For simplicity, we'll skip the actual logo loading here.
-                // If you had a logo Bitmap:
-                // Bitmap qrCodeImageWithLogo = qrCodeWithLogo.GetGraphic(10, Color.Black, Color.White, logo);
-
-                // Without logo, but using the QRCode class to show how to get Bitmap then bytes:
-                Bitmap qrBitmap = qrCodeWithLogo.GetGraphic(10);
-                using (MemoryStream ms = new MemoryStream())
-                {
-                    qrBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                    byte[] qrBitmapBytes = ms.ToArray();
-                    File.WriteAllBytes("qrcode_from_bitmap.png", qrBitmapBytes);
-                    Console.WriteLine("QR code (from Bitmap) generated as qrcode_from_bitmap.png");
-                }
-                qrBitmap.Dispose();
+                qrBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                byte[] qrBitmapBytes = ms.ToArray();
+                File.WriteAllBytes("qrcode_from_bitmap.png", qrBitmapBytes);
+                Console.WriteLine("QR code (from Bitmap) generated as qrcode_from_bitmap.png");
             }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error generating QR code: {ex.Message}");
+            qrBitmap.Dispose();
         }
     }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error generating QR code: {ex.Message}");
+    }
+}
 }
 */

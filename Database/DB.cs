@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
 namespace Morpheus.Database;
-public class DB : Microsoft.EntityFrameworkCore.DbContext
+public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.DbContext(options)
 {
     // =============== Migrations instructions =============== 
     // ================== Create migrations ==================
@@ -17,7 +17,6 @@ public class DB : Microsoft.EntityFrameworkCore.DbContext
     // dotnet tool install --global dotnet-ef --version 8.*
     // 
 
-    public DB(DbContextOptions<DB> options) : base(options) { }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

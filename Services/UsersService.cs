@@ -26,15 +26,15 @@ public class UsersService(DB dbContext, LogsService logsService)
 
         logsService.Log($"New user created {user.Username}", Discord.LogSeverity.Verbose);
 
-        return userDb; 
+        return userDb;
     }
 
     public async Task TryUpdateUsername(SocketUser socketUser, User user)
     {
-        if(user == null) 
+        if (user == null)
             return;
 
-        if(DateTime.UtcNow < user.LastUsernameCheck.AddDays(10))
+        if (DateTime.UtcNow < user.LastUsernameCheck.AddDays(10))
             return;
 
         user.Username = socketUser.Username;
@@ -45,6 +45,6 @@ public class UsersService(DB dbContext, LogsService logsService)
 
         logsService.Log($"New user username updated {user.Username}", Discord.LogSeverity.Verbose);
 
-        return; 
+        return;
     }
 }

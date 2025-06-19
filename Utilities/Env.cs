@@ -3,7 +3,7 @@
 namespace Morpheus.Utilities;
 public class Env
 {
-    public static Dictionary<string, string> Variables { get; } = new();
+    public static Dictionary<string, string> Variables { get; } = [];
     public static DateTime StartTime { get; } = DateTime.UtcNow;
 
     public static void Load(string filePath)
@@ -15,7 +15,7 @@ public class Env
             for (int i = 0; i < array.Length; i++)
             {
                 string line = array[i];
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
                     continue; // Skip empty lines and comments
 
                 string[] parts = line.Split('=', 2);

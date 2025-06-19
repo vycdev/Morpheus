@@ -49,19 +49,19 @@ public static partial class Extensions
 
         if (months > 0)
             timeComponents.Add($"{months} months");
-        
+
         if (days > 0)
             timeComponents.Add($"{days} days");
-        
+
         if (hours > 0)
             timeComponents.Add($"{hours} hours");
-        
+
         if (minutes > 0)
             timeComponents.Add($"{minutes} minutes");
-        
+
         if (seconds > 0)
             timeComponents.Add($"{seconds} seconds");
-        
+
         if (milliseconds > 0)
             timeComponents.Add($"{milliseconds} milliseconds");
 

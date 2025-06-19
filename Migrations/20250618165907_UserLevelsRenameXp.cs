@@ -2,27 +2,26 @@
 
 #nullable disable
 
-namespace Morpheus.Migrations
+namespace Morpheus.Migrations;
+
+/// <inheritdoc />
+public partial class UserLevelsRenameXp : Migration
 {
     /// <inheritdoc />
-    public partial class UserLevelsRenameXp : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.RenameColumn(
-                name: "Xp",
-                table: "UserLevels",
-                newName: "TotalXp");
-        }
+        migrationBuilder.RenameColumn(
+            name: "Xp",
+            table: "UserLevels",
+            newName: "TotalXp");
+    }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.RenameColumn(
-                name: "TotalXp",
-                table: "UserLevels",
-                newName: "Xp");
-        }
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.RenameColumn(
+            name: "TotalXp",
+            table: "UserLevels",
+            newName: "Xp");
     }
 }

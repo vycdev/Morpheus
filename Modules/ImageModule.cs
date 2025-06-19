@@ -5,6 +5,7 @@ using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
+using Morpheus.Utilities.Images;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,20 +16,13 @@ using System.Threading.Tasks;
 
 namespace Morpheus.Modules;
 
-public class ImageModule : ModuleBase<SocketCommandContextExtended>
+public class ImageModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
 
-    private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
-
-    public ImageModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
-    {
-        this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
-    }
+    private readonly CommandService commands = commands;
+    private readonly IServiceProvider serviceProvider = serviceProvider;
+    private readonly DB dbContext = dbContext;
 
     [Name("Random Cat")]
     [Summary("Sends a random cat image.")]
@@ -41,46 +35,44 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
         try
         {
             string apiUrl = "https://api.thecatapi.com/v1/images/search";
-            var responseString = await httpClient.GetStringAsync(apiUrl);
-            
-            using (JsonDocument jsonDoc = JsonDocument.Parse(responseString))
+            string responseString = await httpClient.GetStringAsync(apiUrl);
+
+            using JsonDocument jsonDoc = JsonDocument.Parse(responseString);
+            JsonElement root = jsonDoc.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
             {
-                JsonElement root = jsonDoc.RootElement;
+                JsonElement firstCatObject = root[0]; // Get the first object in the array
 
-                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                if (firstCatObject.TryGetProperty("url", out JsonElement urlElement) && urlElement.ValueKind == JsonValueKind.String)
                 {
-                    JsonElement firstCatObject = root[0]; // Get the first object in the array
+                    string imageUrl = urlElement.GetString()!;
 
-                    if (firstCatObject.TryGetProperty("url", out JsonElement urlElement) && urlElement.ValueKind == JsonValueKind.String)
+                    if (string.IsNullOrWhiteSpace(imageUrl))
                     {
-                        string imageUrl = urlElement.GetString()!;
-
-                        if (string.IsNullOrWhiteSpace(imageUrl))
-                        {
-                            await ReplyAsync("The cat API returned an empty image URL. Try again!");
-                            return;
-                        }
-
-                        var embed = new EmbedBuilder()
-                            .WithTitle("Here's a random cat!")
-                            .WithImageUrl(imageUrl)
-                            .WithColor(Color.Blue) // Or any color you like
-                            .WithFooter("Powered by thecatapi.com")
-                            .Build();
-
-                        await ReplyAsync(embed: embed);
+                        await ReplyAsync("The cat API returned an empty image URL. Try again!");
+                        return;
                     }
-                    else
-                    {
-                        await ReplyAsync("Could not find the image URL in the API response. The API structure might have changed.");
-                        Console.WriteLine($"[CAT API ERROR] Unexpected JSON structure. URL property missing. Response: {responseString}");
-                    }
+
+                    Embed embed = new EmbedBuilder()
+                        .WithTitle("Here's a random cat!")
+                        .WithImageUrl(imageUrl)
+                        .WithColor(Color.Blue) // Or any color you like
+                        .WithFooter("Powered by thecatapi.com")
+                        .Build();
+
+                    await ReplyAsync(embed: embed);
                 }
                 else
                 {
-                    await ReplyAsync("The cat API did not return any images. Try again!");
-                    Console.WriteLine($"[CAT API ERROR] Empty array or not an array. Response: {responseString}");
+                    await ReplyAsync("Could not find the image URL in the API response. The API structure might have changed.");
+                    Console.WriteLine($"[CAT API ERROR] Unexpected JSON structure. URL property missing. Response: {responseString}");
                 }
+            }
+            else
+            {
+                await ReplyAsync("The cat API did not return any images. Try again!");
+                Console.WriteLine($"[CAT API ERROR] Empty array or not an array. Response: {responseString}");
             }
         }
         catch (HttpRequestException httpEx)
@@ -111,44 +103,42 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
         try
         {
             string apiUrl = "https://dog.ceo/api/breeds/image/random";
-            var responseString = await httpClient.GetStringAsync(apiUrl);
+            string responseString = await httpClient.GetStringAsync(apiUrl);
 
-            using (JsonDocument jsonDoc = JsonDocument.Parse(responseString))
+            using JsonDocument jsonDoc = JsonDocument.Parse(responseString);
+            JsonElement root = jsonDoc.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Object)
             {
-                JsonElement root = jsonDoc.RootElement;
-
-                if (root.ValueKind == JsonValueKind.Object)
+                if (root.TryGetProperty("message", out JsonElement urlElement) && urlElement.ValueKind == JsonValueKind.String)
                 {
-                    if (root.TryGetProperty("message", out JsonElement urlElement) && urlElement.ValueKind == JsonValueKind.String)
+                    string imageUrl = urlElement.GetString()!;
+
+                    if (string.IsNullOrWhiteSpace(imageUrl))
                     {
-                        string imageUrl = urlElement.GetString()!;
-
-                        if (string.IsNullOrWhiteSpace(imageUrl))
-                        {
-                            await ReplyAsync("The dog API returned an empty image URL. Try again!");
-                            return;
-                        }
-
-                        var embed = new EmbedBuilder()
-                            .WithTitle("Here's a random dog!")
-                            .WithImageUrl(imageUrl)
-                            .WithColor(Color.Blue) // Or any color you like
-                            .WithFooter("Powered by dog.ceo")
-                            .Build();
-
-                        await ReplyAsync(embed: embed);
+                        await ReplyAsync("The dog API returned an empty image URL. Try again!");
+                        return;
                     }
-                    else
-                    {
-                        await ReplyAsync("Could not find the image URL in the API response. The API structure might have changed.");
-                        Console.WriteLine($"[DOG API ERROR] Unexpected JSON structure. URL property missing. Response: {responseString}");
-                    }
+
+                    Embed embed = new EmbedBuilder()
+                        .WithTitle("Here's a random dog!")
+                        .WithImageUrl(imageUrl)
+                        .WithColor(Color.Blue) // Or any color you like
+                        .WithFooter("Powered by dog.ceo")
+                        .Build();
+
+                    await ReplyAsync(embed: embed);
                 }
                 else
                 {
-                    await ReplyAsync("The dog API did not return any images. Try again!");
-                    Console.WriteLine($"[DOG API ERROR] Empty array or not an array. Response: {responseString}");
+                    await ReplyAsync("Could not find the image URL in the API response. The API structure might have changed.");
+                    Console.WriteLine($"[DOG API ERROR] Unexpected JSON structure. URL property missing. Response: {responseString}");
                 }
+            }
+            else
+            {
+                await ReplyAsync("The dog API did not return any images. Try again!");
+                Console.WriteLine($"[DOG API ERROR] Empty array or not an array. Response: {responseString}");
             }
         }
         catch (HttpRequestException httpEx)
@@ -184,16 +174,14 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
         // Get the first attachment
-        var attachment = Context.Message.Attachments.First();
+        Attachment attachment = Context.Message.Attachments.First();
         byte[] imageBytes;
 
         try
         {
-            using (var response = await httpClient.GetAsync(attachment.Url))
-            {
-                response.EnsureSuccessStatusCode();
-                imageBytes = await response.Content.ReadAsByteArrayAsync();
-            }
+            using HttpResponseMessage response = await httpClient.GetAsync(attachment.Url);
+            response.EnsureSuccessStatusCode();
+            imageBytes = await response.Content.ReadAsByteArrayAsync();
         }
         catch (Exception ex)
         {
@@ -203,7 +191,7 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
         }
 
         byte[] deepfriedImage = ImageDeepFryer.DeepFry(imageBytes);
-        
+
         if (deepfriedImage == null || deepfriedImage.Length == 0)
         {
             await ReplyAsync("Failed to deepfry the image. Please try again with a different image.");
@@ -211,8 +199,8 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Upload the deepfried image to Discord
-        var stream = new System.IO.MemoryStream(deepfriedImage);
-        var uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: false);
+        MemoryStream stream = new(deepfriedImage);
+        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: false);
         stream.Dispose();
 
         if (uploadResult == null)
@@ -239,8 +227,8 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Upload the captcha image to Discord
-        var stream = new System.IO.MemoryStream(captchaImage.CaptchaImageBytes);
-        var uploadResult = await Context.Channel.SendFileAsync(stream, "captcha.png", 
+        MemoryStream stream = new(captchaImage.CaptchaImageBytes);
+        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "captcha.png",
             $"Here's your captcha image containing the text: {captchaImage.CaptchaText}", isSpoiler: false);
 
         stream.Dispose();
@@ -266,7 +254,7 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
         }
         try
         {
-            byte[] qrCodeImage = (new QrCodeService()).GenerateQrCodeWithColors(text);
+            byte[] qrCodeImage = QrCodeService.GenerateQrCodeWithColors(text);
             if (qrCodeImage == null || qrCodeImage.Length == 0)
             {
                 await ReplyAsync("Failed to generate the QR code. Please try again later.");
@@ -274,8 +262,8 @@ public class ImageModule : ModuleBase<SocketCommandContextExtended>
             }
 
             // Upload the QR code image to Discord
-            var stream = new System.IO.MemoryStream(qrCodeImage);
-            var uploadResult = await Context.Channel.SendFileAsync(stream, "qrcode.png", "Here's your QR code!", isSpoiler: false);
+            MemoryStream stream = new(qrCodeImage);
+            Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "qrcode.png", "Here's your QR code!", isSpoiler: false);
             stream.Dispose();
             if (uploadResult == null)
             {

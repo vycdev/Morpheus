@@ -16,20 +16,13 @@ using System.Text;
 
 namespace Morpheus.Commands;
 
-public class MiscModule : ModuleBase<SocketCommandContextExtended>
+public class MiscModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
 
-    private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly DB dbContext;
-
-    public MiscModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext)
-    {
-        this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.dbContext = dbContext;
-    }
+    private readonly CommandService commands = commands;
+    private readonly IServiceProvider serviceProvider = serviceProvider;
+    private readonly DB dbContext = dbContext;
 
     [Name("Scream")]
     [Summary("Screams a random amount of 'A's.")]
@@ -306,20 +299,20 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         }
         Random random = new();
         string botChoice = choices[random.Next(choices.Length)];
-        
-        if(choice == botChoice)
+
+        if (choice == botChoice)
         {
             await ReplyAsync($"It's a tie! I chose {botChoice} too.");
             return;
         }
-        
-        if((choice == "rock" && botChoice == "scissors") || (choice == "paper" && botChoice == "rock") || (choice == "scissors" && botChoice == "paper"))
+
+        if ((choice == "rock" && botChoice == "scissors") || (choice == "paper" && botChoice == "rock") || (choice == "scissors" && botChoice == "paper"))
         {
             await ReplyAsync($"You win! I chose {botChoice}.");
             return;
         }
-     
-        if((choice == "rock" && botChoice == "paper") || (choice == "paper" && botChoice == "scissors") || (choice == "scissors" && botChoice == "rock"))
+
+        if ((choice == "rock" && botChoice == "paper") || (choice == "paper" && botChoice == "scissors") || (choice == "scissors" && botChoice == "rock"))
         {
             await ReplyAsync($"You lose! I chose {botChoice}.");
             return;
@@ -508,8 +501,8 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     public async Task UrbanDictionary(string? word = null)
     {
         string url;
-        
-        if(!string.IsNullOrWhiteSpace(word))
+
+        if (!string.IsNullOrWhiteSpace(word))
             url = $"https://api.urbandictionary.com/v0/define?term={word}";
         else
             url = "https://api.urbandictionary.com/v0/random";
@@ -536,11 +529,11 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         string example = list[0]["example"].ToString();
         string permalink = list[0]["permalink"].ToString();
 
-        var embed = new EmbedBuilder()
+        EmbedBuilder embed = new EmbedBuilder()
             .WithTitle($"Urban Dictionary: **{word}**")
             .WithUrl(permalink)
-            .WithDescription(definition.Length > 1024 ? definition.Substring(0, 1021) + "..." : definition)
-            .AddField("Example", string.IsNullOrWhiteSpace(example) ? "N/A" : example.Length > 1024 ? example.Substring(0, 1021) + "..." : example, false)
+            .WithDescription(definition.Length > 1024 ? definition[..1021] + "..." : definition)
+            .AddField("Example", string.IsNullOrWhiteSpace(example) ? "N/A" : example.Length > 1024 ? example[..1021] + "..." : example, false)
             .WithColor(Color.Blue)
             .WithFooter("Powered by Urban Dictionary");
 
@@ -554,88 +547,85 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
     [RateLimit(2, 30)]
     public async Task PingMinecraftServer(string ip, int port = 25565)
     {
-        var message = await ReplyAsync("Fetching data...");
+        IUserMessage message = await ReplyAsync("Fetching data...");
 
         string url = $"https://api.mcsrvstat.us/2/{ip}:{port}";
 
         // Create an HttpClient and set the User-Agent header
-        using (var httpClient = new HttpClient())
+        using HttpClient httpClient = new();
+        httpClient.DefaultRequestHeaders.Add("User-Agent", $"{Env.Variables["BOT_NAME"]}/{Utils.GetAssemblyVersion()}");
+
+        HttpResponseMessage response = await httpClient.GetAsync(url);
+        string content = await response.Content.ReadAsStringAsync();
+
+        JObject data = JObject.Parse(content);
+
+        // Check if server is online
+        if (data["online"] == null || !data["online"].Value<bool>())
         {
-            httpClient.DefaultRequestHeaders.Add("User-Agent", $"{Env.Variables["BOT_NAME"]}/{Utils.GetAssemblyVersion()}");
-
-            HttpResponseMessage response = await httpClient.GetAsync(url);
-            string content = await response.Content.ReadAsStringAsync();
-
-            JObject data = JObject.Parse(content);
-
-            // Check if server is online
-            if (data["online"] == null || !data["online"].Value<bool>())
-            {
-                var offlineEmbed = new EmbedBuilder()
-                    .WithColor(Color.Orange)
-                    .WithTitle($"{ip}:{port} is Offline")
-                    .WithDescription("The server appears to be offline.")
-                    .WithFooter("Powered by mcsrvstat.us")
-                    .WithCurrentTimestamp()
-                    .Build();
-
-                await message.ModifyAsync(msg =>
-                {
-                    msg.Content = string.Empty;
-                    msg.Embed = offlineEmbed;
-                });
-                
-                return;
-            }
-
-            // Extract data if online
-            string version = data["version"]?.ToString() ?? "N/A";
-            var motdArray = data["motd"]?["clean"] as JArray;
-            string motd = motdArray != null ? string.Join("\n", motdArray) : "N/A";
-            int playersOnline = data["players"]?["online"]?.Value<int>() ?? 0;
-            int maxPlayers = data["players"]?["max"]?.Value<int>() ?? 0;
-            string software = data["software"]?.ToString() ?? "Unknown";
-            string serverImageBase64 = data["icon"]?.ToString(); // Base64 encoded image
-
-            // Build a nicely formatted embed
-            var embed = new EmbedBuilder()
-                .WithColor(Color.Green)
-                .WithTitle("Minecraft Server Status")
-                .WithDescription($"**Server:** {ip}:{port}")
-                .AddField("Version", version, inline: true)
-                .AddField("Players", $"{playersOnline}/{maxPlayers}", inline: true)
-                .AddField("Software", software, inline: true)
-                .AddField("MOTD", motd)
+            Embed offlineEmbed = new EmbedBuilder()
+                .WithColor(Color.Orange)
+                .WithTitle($"{ip}:{port} is Offline")
+                .WithDescription("The server appears to be offline.")
                 .WithFooter("Powered by mcsrvstat.us")
-                .WithCurrentTimestamp();
+                .WithCurrentTimestamp()
+                .Build();
 
-            // Include image if the favicon exists
-            if (!string.IsNullOrEmpty(serverImageBase64))
+            await message.ModifyAsync(msg =>
             {
-                embed.WithThumbnailUrl($"attachment://favicon.png"); // Point to an inline attachment URL
-                var imageBytes = Convert.FromBase64String(serverImageBase64.Split(',')[1]); // Remove the data:image/png;base64, part
-                var stream = new MemoryStream(imageBytes);
-                var attachment = new FileAttachment(stream, "favicon.png");
+                msg.Content = string.Empty;
+                msg.Embed = offlineEmbed;
+            });
 
-                var finalEmbed = embed.Build();
-                // await Context.Channel.SendFileAsync(attachment: attachment, embed: finalEmbed);
-                await message.ModifyAsync(msg =>
-                {
-                    msg.Content = string.Empty;
-                    msg.Embed = finalEmbed;
-                    msg.Attachments = new([attachment]);
-                });
-            }
-            else
+            return;
+        }
+
+        // Extract data if online
+        string version = data["version"]?.ToString() ?? "N/A";
+        string motd = data["motd"]?["clean"] is JArray motdArray ? string.Join("\n", motdArray) : "N/A";
+        int playersOnline = data["players"]?["online"]?.Value<int>() ?? 0;
+        int maxPlayers = data["players"]?["max"]?.Value<int>() ?? 0;
+        string software = data["software"]?.ToString() ?? "Unknown";
+        string serverImageBase64 = data["icon"]?.ToString(); // Base64 encoded image
+
+        // Build a nicely formatted embed
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithColor(Color.Green)
+            .WithTitle("Minecraft Server Status")
+            .WithDescription($"**Server:** {ip}:{port}")
+            .AddField("Version", version, inline: true)
+            .AddField("Players", $"{playersOnline}/{maxPlayers}", inline: true)
+            .AddField("Software", software, inline: true)
+            .AddField("MOTD", motd)
+            .WithFooter("Powered by mcsrvstat.us")
+            .WithCurrentTimestamp();
+
+        // Include image if the favicon exists
+        if (!string.IsNullOrEmpty(serverImageBase64))
+        {
+            embed.WithThumbnailUrl($"attachment://favicon.png"); // Point to an inline attachment URL
+            byte[] imageBytes = Convert.FromBase64String(serverImageBase64.Split(',')[1]); // Remove the data:image/png;base64, part
+            MemoryStream stream = new(imageBytes);
+            FileAttachment attachment = new(stream, "favicon.png");
+
+            Embed finalEmbed = embed.Build();
+            // await Context.Channel.SendFileAsync(attachment: attachment, embed: finalEmbed);
+            await message.ModifyAsync(msg =>
             {
-                var finalEmbed = embed.Build();
+                msg.Content = string.Empty;
+                msg.Embed = finalEmbed;
+                msg.Attachments = new([attachment]);
+            });
+        }
+        else
+        {
+            Embed finalEmbed = embed.Build();
 
-                await message.ModifyAsync(msg =>
-                {
-                    msg.Content = string.Empty;
-                    msg.Embed = finalEmbed;
-                });
-            }
+            await message.ModifyAsync(msg =>
+            {
+                msg.Content = string.Empty;
+                msg.Embed = finalEmbed;
+            });
         }
     }
 
@@ -651,7 +641,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             await ReplyAsync("Please provide a string to hash.");
             return;
         }
-        
+
         HashAlgorithm? hashAlgorithm = algorithm.ToLower() switch
         {
             "md5" => MD5.Create(),
@@ -667,7 +657,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             await ReplyAsync("Invalid algorithm. Supported algorithms are: `md5`, `sha1`, `sha256`, `sha384`, `sha512`.");
             return;
         }
-        
+
         byte[] inputBytes = Encoding.UTF8.GetBytes(input);
         byte[] hashBytes = hashAlgorithm.ComputeHash(inputBytes);
         string hash = BitConverter.ToString(hashBytes).Replace("-", "");
@@ -726,7 +716,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
         int seed = name1.Select(c => (int)c).Sum() + name2.Select(c => (int)c).Sum();
         Random random = new(seed);
         int lovePercentage = random.Next(101);
-        var embed = new EmbedBuilder()
+        EmbedBuilder embed = new EmbedBuilder()
             .WithColor(Color.Blue)
             .WithTitle($":heart: {user1.Username} and {user2.Username} are {lovePercentage}% compatible")
             .WithDescription($"{lovePercentage.GetPercentageBar()}")
@@ -749,7 +739,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
         string avatarUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
-        var embed = new EmbedBuilder()
+        EmbedBuilder embed = new EmbedBuilder()
             .WithColor(Color.Blue)
             .WithTitle($"{user.Username}'s Profile Picture")
             .WithImageUrl(avatarUrl)
@@ -771,7 +761,7 @@ public class MiscModule : ModuleBase<SocketCommandContextExtended>
             await ReplyAsync("Bot invite link is not configured.");
             return;
         }
-        var embed = new EmbedBuilder()
+        EmbedBuilder embed = new EmbedBuilder()
             .WithColor(Color.Blue)
             .WithTitle("Bot Invite Link")
             .WithDescription($"Click [here]({inviteUrl}) to invite the bot to your server.")

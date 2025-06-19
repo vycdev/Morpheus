@@ -9,45 +9,37 @@ public class RateLimitData
     public int Count { get; set; }
 }
 
+/// <summary>
+/// Rate limit attribute for commands.
+/// </summary>
+/// <param name="uses"></param>
+/// <param name="seconds"></param>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public class RateLimitAttribute : PreconditionAttribute
+public class RateLimitAttribute(int uses, int seconds) : PreconditionAttribute
 {
-    private readonly int _uses;
-    private readonly int _seconds;
     // A simple dictionary to track the last usage per user and command.
-    private static readonly Dictionary<(ulong, string), RateLimitData> _rateLimitData = new();
-
-    /// <summary>
-    /// Rate limit attribute for commands.
-    /// </summary>
-    /// <param name="uses"></param>
-    /// <param name="seconds"></param>
-    public RateLimitAttribute(int uses, int seconds)
-    {
-        _uses = uses;
-        _seconds = seconds;
-    }
+    private static readonly Dictionary<(ulong, string), RateLimitData> _rateLimitData = [];
 
     public override Task<PreconditionResult> CheckPermissionsAsync(ICommandContext context, CommandInfo command, IServiceProvider services)
     {
         // Skip cooldown in debugging mode
         if (Debugger.IsAttached)
             return Task.FromResult(PreconditionResult.FromSuccess());
-        
+
         return ApplyRateLimit(context, command);
     }
 
     private Task<PreconditionResult> ApplyRateLimit(ICommandContext context, CommandInfo command)
     {
-        var key = (context.User.Id, command.Name);
-        if (_rateLimitData.TryGetValue(key, out var data))
+        (ulong Id, string Name) key = (context.User.Id, command.Name);
+        if (_rateLimitData.TryGetValue(key, out RateLimitData? data))
         {
-            var elapsed = DateTime.UtcNow - data.StartTime;
-            if (elapsed < TimeSpan.FromSeconds(_seconds))
+            TimeSpan elapsed = DateTime.UtcNow - data.StartTime;
+            if (elapsed < TimeSpan.FromSeconds(seconds))
             {
-                if (data.Count >= _uses)
+                if (data.Count >= uses)
                 {
-                    var timeLeft = TimeSpan.FromSeconds(_seconds) - elapsed;
+                    TimeSpan timeLeft = TimeSpan.FromSeconds(seconds) - elapsed;
                     return Task.FromResult(PreconditionResult.FromError(
                         $"Command is on cooldown. Try again in {timeLeft.TotalSeconds:F0} seconds."));
                 }
