@@ -107,6 +107,65 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         await ReplyAsync(sb.ToString());
     }
 
+
+    [Name("Leaderboard Past n Days")]
+    [Summary("Displays the leaderboard of users in the guild based on their levels for the past n days.")]
+    [Command("leaderboardpast")]
+    [Alias("lbp", "toppast", "topuserpast")]
+    [RateLimit(3, 60)]
+    public async Task LeaderboardPastAsync(int days, int page = 1)
+    {
+        var guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        if(days <= 0)
+        {
+            await ReplyAsync("Please provide a valid number of days greater than 0.");
+            return;
+        }
+
+        IQueryable<UserLevels> userLevels = dbContext.UserActivity
+            .Where(ua => ua.GuildId == guild.Id && ua.InsertDate >= DateTime.UtcNow.AddDays(-days))
+            .GroupBy(ua => ua.User)
+            .Select(g => new UserLevels
+            {
+                User = g.Key,
+                GuildId = guild.Id,
+                TotalXp = g.Sum(ua => ua.XpGained)
+            })
+            .OrderByDescending(ul => ul.TotalXp)
+            .Take(50);
+
+        int totalUsers = userLevels.Count();
+        int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
+
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var leaderboard = userLevels
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList()
+            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
+
+        StringBuilder sb = new();
+
+        sb.AppendLine($"**Leaderboard for {guild.Name}** for the past **{days}** days");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+
+        await ReplyAsync(sb.ToString());
+    }
+
     [Name("Global Leaderboard")]
     [Summary("Displays the global leaderboard of users based on their levels across all guilds.")]
     [Command("globalleaderboard")]
@@ -148,6 +207,54 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
 
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Global Leaderboard Past n Days")]
+    [Summary("Displays the global leaderboard of users based on their levels across all guilds for the past n days.")]
+    [Command("globalleaderboardpast")]
+    [Alias("globallbp", "globaltoppast", "globaltopuserspast")]
+    [RateLimit(3, 60)]
+    public async Task GlobalLeaderboardPastAsync(int days, int page = 1)
+    {
+        if (days <= 0)
+        {
+            await ReplyAsync("Please provide a valid number of days greater than 0.");
+            return;
+        }
+        
+        IQueryable<UserLevels> userLevels = dbContext.UserActivity
+            .Where(ua => ua.InsertDate >= DateTime.UtcNow.AddDays(-days))
+            .GroupBy(ua => ua.User)
+            .Select(g => new UserLevels
+            {
+                User = g.Key,
+                TotalXp = g.Sum(ua => ua.XpGained)
+            })
+            .OrderByDescending(ul => ul.TotalXp)
+            .Take(50);
+
+        int totalUsers = userLevels.Count();
+        int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
+        
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var leaderboard = userLevels
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList()
+            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
+
+        StringBuilder sb = new();
+        sb.AppendLine($"**Global Leaderboard** for the past **{days}** days");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 }
