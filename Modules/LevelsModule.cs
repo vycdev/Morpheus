@@ -99,9 +99,9 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         StringBuilder sb = new();
 
         sb.AppendLine($"**Leaderboard for {guild.Name}**");
-        sb.AppendLine($"(Page {page}/{totalPages})");
         sb.AppendLine("```js");
         sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
 
         await ReplyAsync(sb.ToString());
@@ -143,9 +143,9 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         StringBuilder sb = new();
 
         sb.AppendLine("**Global Leaderboard**");
-        sb.AppendLine($"(Page {page}/{totalPages})");
         sb.AppendLine("```js");
         sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
 
         await ReplyAsync(sb.ToString());
