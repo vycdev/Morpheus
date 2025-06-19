@@ -1,4 +1,5 @@
 ﻿using Discord.Commands;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -36,8 +37,8 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         UserLevels? userLevelGuild = userLevels
             .FirstOrDefault(ul => ul.GuildId == guild.Id);
 
-        if(userLevels.Count() == 0)
-        { 
+        if (userLevels.Count() == 0)
+        {
             await ReplyAsync("There is no level information available for you in any guild.");
             return;
         }
@@ -81,7 +82,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         int totalUsers = userLevels.Count();
         int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
-        
+
         if (page < 1 || page > totalPages)
         {
             await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
@@ -91,13 +92,61 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         var leaderboard = userLevels
             .Skip((page - 1) * 10)
             .Take(10)
-            .Select(ul => $"**{ul.User.Username}**: Level **{ul.Level}** with **{ul.TotalXp}** XP")
-            .ToList();
+            .Include(u => u.User)
+            .ToList()
+            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ul.Level} with {ul.TotalXp} XP");
 
         StringBuilder sb = new();
-        
-        sb.AppendLine($"**Leaderboard for {guild.Name}** (Page {page}/{totalPages})");
+
+        sb.AppendLine($"**Leaderboard for {guild.Name}**");
+        sb.AppendLine($"(Page {page}/{totalPages})");
+        sb.AppendLine("```js");
         sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine("```");
+
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Global Leaderboard")]
+    [Summary("Displays the global leaderboard of users based on their levels across all guilds.")]
+    [Command("globalleaderboard")]
+    [Alias("globallb", "globaltop", "globaltopusers")]
+    [RateLimit(3, 10)]
+    public async Task GlobalLeaderboardAsync(int page = 1)
+    {
+        IQueryable<UserLevels> userLevels = dbContext.UserLevels
+            .GroupBy(ul => ul.User)
+            .Select(g => new UserLevels
+            {
+                User = g.Key,
+                Level = g.Max(ul => ul.Level),
+                TotalXp = g.Sum(ul => ul.TotalXp)
+            })
+            .OrderByDescending(ul => ul.TotalXp)
+            .Take(50);
+
+        int totalUsers = userLevels.Count();
+        int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
+
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var leaderboard = userLevels
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList()
+            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ul.Level} with {ul.TotalXp} XP");
+
+        StringBuilder sb = new();
+
+        sb.AppendLine("**Global Leaderboard**");
+        sb.AppendLine($"(Page {page}/{totalPages})");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine("```");
 
         await ReplyAsync(sb.ToString());
     }
