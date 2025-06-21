@@ -30,7 +30,7 @@ public class Guild
     public int QuoteRemoveRequiredApprovals { get; set; } = 5;
 
     // Settings 
-    public bool WelcomeMessages { get; set; } = true;
+    public bool WelcomeMessages { get; set; } = false;
     public bool UseActivityRoles { get; set; } = false;
 
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
@@ -40,4 +40,5 @@ public class Guild
     public List<ButtonGamePress> ButtonGamePresses { get; set; }
     public List<UserActivity> UserActivity { get; set; }
     public List<UserLevels> UserLevels { get; set; }
+    public List<Role> Roles { get; set; }
 }

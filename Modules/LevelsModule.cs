@@ -90,7 +90,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .Take(10)
             .Include(u => u.User)
             .ToList()
-            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ul.Level} with {ul.TotalXp} XP");
+            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
 
         StringBuilder sb = new();
 
@@ -174,7 +174,6 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .Select(g => new UserLevels
             {
                 User = g.Key,
-                Level = g.Max(ul => ul.Level),
                 TotalXp = g.Sum(ul => ul.TotalXp)
             })
             .OrderByDescending(ul => ul.TotalXp)
@@ -193,7 +192,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .Skip((page - 1) * 10)
             .Take(10)
             .ToList()
-            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ul.Level} with {ul.TotalXp} XP");
+            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
 
         StringBuilder sb = new();
 

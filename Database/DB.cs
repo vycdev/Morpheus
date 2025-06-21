@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Morpheus.Database.Models;
 
 namespace Morpheus.Database;
 public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.DbContext(options)
@@ -21,15 +22,16 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Create unique index on DiscordId
-        modelBuilder.Entity<Models.User>().HasIndex(u => u.DiscordId).IsUnique();
-        modelBuilder.Entity<Models.Guild>().HasIndex(g => g.DiscordId).IsUnique();
+        modelBuilder.Entity<User>().HasIndex(u => u.DiscordId).IsUnique();
+        modelBuilder.Entity<Guild>().HasIndex(g => g.DiscordId).IsUnique();
     }
 
-    public DbSet<Models.User> Users { get; set; }
-    public DbSet<Models.UserActivity> UserActivity { get; set; }
-    public DbSet<Models.UserLevels> UserLevels { get; set; }
-    public DbSet<Models.Guild> Guilds { get; set; }
-    public DbSet<Models.Quote> Quotes { get; set; }
-    public DbSet<Models.Log> Logs { get; set; }
-    public DbSet<Models.ButtonGamePress> ButtonGamePresses { get; set; }
+    public DbSet<User> Users { get; set; }
+    public DbSet<UserActivity> UserActivity { get; set; }
+    public DbSet<UserLevels> UserLevels { get; set; }
+    public DbSet<Guild> Guilds { get; set; }
+    public DbSet<Quote> Quotes { get; set; }
+    public DbSet<Log> Logs { get; set; }
+    public DbSet<ButtonGamePress> ButtonGamePresses { get; set; }
+    public DbSet<Role> Roles { get; set; }
 }

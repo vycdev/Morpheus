@@ -5,7 +5,7 @@ using Quartz;
 
 namespace Morpheus.Jobs;
 
-public class ActivityJob(LogsService logsService, DiscordSocketClient discordClient) : IJob
+public class BotActivityJob(LogsService logsService, DiscordSocketClient discordClient) : IJob
 {
     // A time‐boxed activity that recurs every year
     private class AnnualActivity(
@@ -375,7 +375,8 @@ public class ActivityJob(LogsService logsService, DiscordSocketClient discordCli
         (ActivityType.Listening, "to the chirp of low battery"),
         (ActivityType.Playing,   "connect-four with destiny"),
         (ActivityType.Watching,  "the dust on the windowsill"),
-        (ActivityType.Listening, "to the hum of fluorescent lights")
+        (ActivityType.Listening, "to the hum of fluorescent lights"),
+        (ActivityType.Playing,   "Navis::"),
     ];
 
     private static readonly Random _rng = new();

@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace Morpheus.Utilities;
+namespace Morpheus.Utilities.Extensions;
 public static partial class Extensions
 {
     public static string GetAccurateTimeSpan(this DateTime start, DateTime end)

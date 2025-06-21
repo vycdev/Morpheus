@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20250621150149_AddedRoles")]
+    partial class AddedRoles
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -211,14 +214,12 @@ namespace Morpheus.Migrations
 
             modelBuilder.Entity("Morpheus.Database.Models.Roles", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<decimal>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
+                        .HasColumnType("numeric(20,0)");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("GuildId")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("GuildId")
+                        .HasColumnType("numeric(20,0)");
 
                     b.Property<decimal>("RoleId")
                         .HasColumnType("numeric(20,0)");
@@ -227,8 +228,6 @@ namespace Morpheus.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("GuildId");
 
                     b.ToTable("Roles");
                 });
@@ -397,17 +396,6 @@ namespace Morpheus.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Morpheus.Database.Models.Roles", b =>
-                {
-                    b.HasOne("Morpheus.Database.Models.Guild", "Guild")
-                        .WithMany("Roles")
-                        .HasForeignKey("GuildId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Guild");
-                });
-
             modelBuilder.Entity("Morpheus.Database.Models.UserActivity", b =>
                 {
                     b.HasOne("Morpheus.Database.Models.Guild", "Guild")
@@ -451,8 +439,6 @@ namespace Morpheus.Migrations
                     b.Navigation("ButtonGamePresses");
 
                     b.Navigation("Quotes");
-
-                    b.Navigation("Roles");
 
                     b.Navigation("UserActivity");
 

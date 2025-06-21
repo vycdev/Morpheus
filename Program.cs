@@ -45,11 +45,12 @@ services.AddSingleton<CommandService>();
 services.AddScoped<GuildService>();
 services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
+services.AddScoped<ActivityService>();
 
 // Add Quartz 
 services.AddQuartz(q =>
 {
-    q.ScheduleJob<ActivityJob>(trigger => trigger
+    q.ScheduleJob<BotActivityJob>(trigger => trigger
         .WithIdentity("every6hours", "discord")
         .StartNow()
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromHours(6)).RepeatForever())
@@ -58,6 +59,12 @@ services.AddQuartz(q =>
     q.ScheduleJob<DeleteOldLogsJob>(trigger => trigger
         .WithIdentity("deleteOldLogs", "discord")
         .StartNow()
+        .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
+    );
+
+    q.ScheduleJob<ActivityRolesJob>(trigger => trigger
+        .WithIdentity("activityRoles", "discord")
+        .StartAt((DateTime.UtcNow.AddSeconds(10)))
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
     );
 });
