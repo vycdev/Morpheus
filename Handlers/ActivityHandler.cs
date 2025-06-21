@@ -147,11 +147,11 @@ public class ActivityHandler
 
     public static int CalculateLevel(long xp)
     {
-        return (int)(Math.Pow(xp / 1000, 1.5));
+        return (int)(Math.Pow(xp / 10000, 1.5));
     }
 
     public static int CalculateXp(int level)
     {
-        return (int)(1000 * Math.Pow(level, 2.0 / 3.0));
+        return (int)(10000 * Math.Pow(level, 2.0 / 3.0));
     }
 }
