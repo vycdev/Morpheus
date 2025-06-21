@@ -147,11 +147,15 @@ public class ActivityHandler
 
     public static int CalculateLevel(long xp)
     {
-        return (int)(Math.Pow(xp / 10000, 1.5));
+        // (* 10 because on average users get 10 XP per message) 
+        // CalculateLevel(100 * 10) = ~1
+        // CalculateLevel(100000 * 10) = ~1000
+
+        return (int)Math.Pow(Math.Log10((xp + 111) / 111), 5.0243);
     }
 
     public static int CalculateXp(int level)
     {
-        return (int)(10000 * Math.Pow(level, 2.0 / 3.0));
+        return (int)(111 * Math.Pow(10, Math.Pow(level, 1.0 / 5.0243)) - 111);
     }
 }
