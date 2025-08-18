@@ -2,6 +2,7 @@
 using Morpheus.Database.Models;
 
 namespace Morpheus.Database;
+
 public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.DbContext(options)
 {
     // =============== Migrations instructions =============== 
@@ -34,4 +35,5 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<Log> Logs { get; set; }
     public DbSet<ButtonGamePress> ButtonGamePresses { get; set; }
     public DbSet<Role> Roles { get; set; }
+    public DbSet<Reminder> Reminders { get; set; }
 }
