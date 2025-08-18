@@ -197,11 +197,16 @@ public class MessagesHandler
 
                 await db.SaveChangesAsync();
 
-                // notify the channel where the quote was submitted (if available)
+                // edit the original approval message to indicate approval and remove reactions
                 try
                 {
-                    if (channel is IMessageChannel msgCh)
-                        await msgCh.SendMessageAsync($"Quote #{quote.Id} has been approved.");
+                    var approvalMsg = await cache.GetOrDownloadAsync();
+                    if (approvalMsg != null)
+                    {
+                        var approvedContent = $"✅ Quote #{quote.Id} APPROVED:\n\"{quote.Content}\"\nFinal approvals: {approval.Score} / {requiredApprovals}";
+                        await approvalMsg.ModifyAsync(m => m.Content = approvedContent);
+                        try { await approvalMsg.RemoveAllReactionsAsync(); } catch { }
+                    }
                 }
                 catch { }
             }
