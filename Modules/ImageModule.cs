@@ -277,4 +277,63 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
             await ReplyAsync("An error occurred while generating the QR code. Please try again later.");
         }
     }
+
+    [Name("Blurpify")]
+    [Summary("Pixelate + small random warps on an attached image.")]
+    [Command("blurpify")]
+    [Alias("blur", "blrp")]
+    [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireUserPermission(GuildPermission.AttachFiles)]
+    [RateLimit(3, 30)]
+    public async Task BlurpifyAsync(int pixelScale = 4, int maxOffset = 6, int smoothPasses = 2)
+    {
+        // Need an attached image
+        if (Context.Message.Attachments.Count == 0)
+        {
+            await ReplyAsync("Please attach an image to blurpify.");
+            return;
+        }
+
+        Attachment attachment = Context.Message.Attachments.First();
+        byte[] imageBytes;
+
+        try
+        {
+            using HttpResponseMessage response = await httpClient.GetAsync(attachment.Url);
+            response.EnsureSuccessStatusCode();
+            imageBytes = await response.Content.ReadAsByteArrayAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BLURPIFY ERROR] Failed to download image: {ex}");
+            await ReplyAsync("Failed to download the image. Please try again later.");
+            return;
+        }
+
+        byte[] outBytes;
+        try
+        {
+            outBytes = Blurpifier.Blurpify(imageBytes, pixelScale, maxOffset, smoothPasses);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BLURPIFY ERROR] Processing failed: {ex}");
+            await ReplyAsync("Failed to process the image. Try different parameters or a different image.");
+            return;
+        }
+
+        if (outBytes == null || outBytes.Length == 0)
+        {
+            await ReplyAsync("Processing produced no output. Try again with different parameters.");
+            return;
+        }
+
+        using MemoryStream stream = new(outBytes);
+        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "blurpified.png", "Here's your blurpified image!", isSpoiler: false);
+        if (uploadResult == null)
+        {
+            await ReplyAsync("Failed to upload the processed image. Please try again later.");
+            return;
+        }
+    }
 }
