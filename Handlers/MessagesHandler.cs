@@ -174,12 +174,14 @@ public class MessagesHandler
                     {
                         var orig = approvalMessage.Content ?? string.Empty;
                         var lines = orig.Split('\n').Where(l => !l.TrimStart().StartsWith("Approvals:", StringComparison.OrdinalIgnoreCase)).ToList();
+                        // Find the fenced code block lines (```...```) and extract quote body if present
                         var body = string.Join('\n', lines);
+                        // Construct a nicer final message
                         string finalContent;
                         if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
-                            finalContent = $"✅ Quote #{quote.Id} APPROVED:\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
+                            finalContent = $"✅ **ADD APPROVED — Quote #{quote.Id}**\n\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
                         else
-                            finalContent = $"🗑️ Quote #{quote.Id} REMOVED:\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
+                            finalContent = $"🗑️ **REMOVAL APPROVED — Quote #{quote.Id}**\n\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
 
                         await approvalMessage.ModifyAsync(m => m.Content = finalContent);
                         try { await approvalMessage.RemoveAllReactionsAsync(); } catch { }
