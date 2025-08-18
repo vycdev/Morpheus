@@ -195,6 +195,15 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
+        // compute baseline (activity before the start date) for the selected users so the running total
+        // begins from their prior total instead of zero
+        var userIds = perUser.Select(p => p.UserId).ToList();
+        var baselineMap = dbContext.UserActivity
+            .Where(ua => ua.GuildId == guild.Id && ua.InsertDate < start && userIds.Contains(ua.UserId))
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, Baseline = g.Sum(x => x.XpGained) })
+            .ToDictionary(x => x.UserId, x => x.Baseline);
+
         var series = new Dictionary<string, List<int>>();
 
         foreach (var userAgg in perUser)
@@ -209,9 +218,12 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
                 else daily[i] = 0;
             }
 
+            // start running total from baseline (activity before the window)
+            int running = 0;
+            if (baselineMap.TryGetValue(userAgg.UserId, out var baseVal)) running = baseVal;
+
             // convert to running total (cumulative)
             List<int> cumulative = new List<int>(days);
-            int running = 0;
             for (int i = 0; i < days; i++)
             {
                 running += daily[i];
@@ -361,6 +373,14 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         var series = new Dictionary<string, List<int>>();
 
+        // compute baseline (activity before the start date) for the selected users
+        var userIds = perUser.Select(p => p.UserId).ToList();
+        var baselineMap = dbContext.UserActivity
+            .Where(ua => ua.InsertDate < start && userIds.Contains(ua.UserId))
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, Baseline = g.Sum(x => x.XpGained) })
+            .ToDictionary(x => x.UserId, x => x.Baseline);
+
         foreach (var userAgg in perUser)
         {
             var dbUser = dbContext.Users.Find(userAgg.UserId);
@@ -373,9 +393,12 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
                 else daily[i] = 0;
             }
 
+            // start running total from baseline (activity before the window)
+            int running = 0;
+            if (baselineMap.TryGetValue(userAgg.UserId, out var baseVal)) running = baseVal;
+
             // cumulative
             List<int> cumulative = new List<int>(days);
-            int running = 0;
             for (int i = 0; i < days; i++)
             {
                 running += daily[i];
