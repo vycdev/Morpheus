@@ -476,6 +476,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
+        // todo: this is wrong
         var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
         if (approval == null)
         {
