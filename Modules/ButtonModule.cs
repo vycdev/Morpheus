@@ -79,15 +79,23 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        StringBuilder sb = new();
-        sb.AppendLine("Top 10 Global Button Presses:");
+        var entries = new List<string>();
+        int idx = 1;
         foreach (ButtonGamePress buttonGamePress in buttonGamePresses)
         {
             User? user = await dbContext.Users.FindAsync(buttonGamePress.UserId);
             Guild? guild = await dbContext.Guilds.FindAsync(buttonGamePress.GuildId);
-            sb.AppendLine($"**{user?.Username}** - **{guild?.Name}**: {buttonGamePress.Score}");
+            string uname = user?.Username ?? buttonGamePress.UserId.ToString();
+            string gname = guild?.Name ?? "(DM)";
+            entries.Add($"[{idx}] | {uname} - {gname}: {buttonGamePress.Score}");
+            idx++;
         }
 
+        StringBuilder sb = new();
+        sb.AppendLine("**Top 10 Global Button Presses:**");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", entries));
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 
@@ -116,14 +124,21 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        StringBuilder sb = new();
-        sb.AppendLine($"Top 10 Button Presses in {guild.Name}:");
+        var entries = new List<string>();
+        int idx = 1;
         foreach (ButtonGamePress buttonGamePress in buttonGamePresses)
         {
             User? user = await dbContext.Users.FindAsync(buttonGamePress.UserId);
-            sb.AppendLine($"**{user?.Username}**: {buttonGamePress.Score}");
+            string uname = user?.Username ?? buttonGamePress.UserId.ToString();
+            entries.Add($"[{idx}] | {uname}: {buttonGamePress.Score}");
+            idx++;
         }
 
+        StringBuilder sb = new();
+        sb.AppendLine($"**Top 10 Button Presses in {guild.Name}:**");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", entries));
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 
@@ -148,15 +163,21 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        StringBuilder sb = new();
-        sb.AppendLine($"Top 10 Button Presses by Individual Users:");
-
+        var entries = new List<string>();
+        int idx = 1;
         foreach (ButtonGamePress buttonGamePress in buttonGamePresses)
         {
             User? user = await dbContext.Users.FindAsync(buttonGamePress.UserId);
-            sb.AppendLine($"**{user?.Username}**: {buttonGamePress.Score}");
+            string uname = user?.Username ?? buttonGamePress.UserId.ToString();
+            entries.Add($"[{idx}] | {uname}: {buttonGamePress.Score}");
+            idx++;
         }
 
+        StringBuilder sb = new();
+        sb.AppendLine("**Top 10 Button Presses by Individual Users:**");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", entries));
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 
@@ -185,13 +206,21 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        StringBuilder sb = new();
-        sb.AppendLine($"Top 10 Button Presses by {user.Username}:");
+        var entries = new List<string>();
+        int idx = 1;
         foreach (ButtonGamePress buttonGamePress in buttonGamePresses)
         {
             Guild? guild = await dbContext.Guilds.FindAsync(buttonGamePress.GuildId);
-            sb.AppendLine($"**{guild?.Name}**: {buttonGamePress.Score}");
+            string gname = guild?.Name ?? "(DM)";
+            entries.Add($"[{idx}] | {gname}: {buttonGamePress.Score}");
+            idx++;
         }
+
+        StringBuilder sb = new();
+        sb.AppendLine($"**Top 10 Button Presses by {user.Username}:**");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", entries));
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 
@@ -223,14 +252,19 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        StringBuilder sb = new();
-        sb.AppendLine($"Top 10 Button Presses by {user.Username} in {guild.Name}:");
-
+        var entries = new List<string>();
+        int idx = 1;
         foreach (ButtonGamePress buttonGamePress in buttonGamePresses)
         {
-            sb.AppendLine($"**{buttonGamePress.Score}**");
+            entries.Add($"[{idx}] | {buttonGamePress.Score}");
+            idx++;
         }
 
+        StringBuilder sb = new();
+        sb.AppendLine($"**Top 10 Button Presses by {user.Username} in {guild.Name}:**");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", entries));
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 
@@ -255,14 +289,21 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync("No button presses found.");
             return;
         }
-        StringBuilder sb = new();
-        sb.AppendLine($"Top 10 Button Presses by Guild:");
-
+        var entries = new List<string>();
+        int idx = 1;
         foreach (var buttonGamePress in buttonGamePresses)
         {
             Guild? guild = await dbContext.Guilds.FindAsync(buttonGamePress.GuildId);
-            sb.AppendLine($"**{guild?.Name}**: {buttonGamePress.Score}");
+            string gname = guild?.Name ?? "(DM)";
+            entries.Add($"[{idx}] | {gname}: {buttonGamePress.Score}");
+            idx++;
         }
+
+        StringBuilder sb = new();
+        sb.AppendLine("**Top 10 Button Presses by Guild:**");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", entries));
+        sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
     }
 
