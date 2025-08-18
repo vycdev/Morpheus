@@ -1,5 +1,6 @@
 using System.Text;
 using Discord.Commands;
+using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -7,7 +8,7 @@ using Morpheus.Extensions;
 
 namespace Morpheus.Modules;
 
-public class AdministratorModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class AdministratorModule(DiscordSocketClient client, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     [Name("Dump Logs")]
     [Summary("Dumps the latest 25 logs from the database (bot owner only).")]
@@ -66,5 +67,30 @@ public class AdministratorModule(DB dbContext) : ModuleBase<SocketCommandContext
         {
             await ReplyAsync("```\n" + sb.ToString().TrimEnd() + "\n```");
         }
+    }
+
+    [Name("Guild Count")]
+    [Summary("Shows how many guilds the bot is currently in (bot owner only).")]
+    [Command("guildcount")]
+    [Alias("guilds", "servers")]
+    [RateLimit(3, 30)]
+    public async Task GuildCountAsync()
+    {
+        // Check OWNER_ID environment variable
+        string? ownerEnv = Environment.GetEnvironmentVariable("OWNER_ID");
+        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        {
+            await ReplyAsync("Owner not configured.");
+            return;
+        }
+
+        if (Context.User.Id != ownerId)
+        {
+            await ReplyAsync("You are not authorized to use this command.");
+            return;
+        }
+
+        int guildCount = client.Guilds.Count;
+        await ReplyAsync($"I am currently in {guildCount} guild(s).");
     }
 }
