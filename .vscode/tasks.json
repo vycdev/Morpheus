@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": ["build", "${workspaceFolder}"],
+            "problemMatcher": "$msCompile",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "dotnet run (background)",
+            "command": "dotnet",
+            "type": "process",
+            "args": ["run", "--project", "${workspaceFolder}"],
+            "isBackground": true,
+            "problemMatcher": []
+        }
+    ]
+}
