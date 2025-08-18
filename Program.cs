@@ -23,6 +23,10 @@ DiscordSocketConfig clientConfig = new()
     AlwaysDownloadUsers = true,
     LogLevel = LogSeverity.Verbose,
     GatewayIntents = GatewayIntents.All,
+
+#if DEBUG
+    UseInteractionSnowflakeDate = false,
+#endif
 };
 
 CommandServiceConfig commandServiceConfig = new()
