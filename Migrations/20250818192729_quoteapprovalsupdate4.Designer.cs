@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20250818192729_quoteapprovalsupdate4")]
+    partial class quoteapprovalsupdate4
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -191,9 +194,6 @@ namespace Morpheus.Migrations
                     b.Property<decimal>("ApprovalMessageId")
                         .HasColumnType("numeric(20,0)");
 
-                    b.Property<bool>("Approved")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("InsertDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -210,7 +210,7 @@ namespace Morpheus.Migrations
 
                     b.HasIndex("QuoteId");
 
-                    b.ToTable("QuoteApproval");
+                    b.ToTable("QuoteApprovals");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.QuoteScore", b =>

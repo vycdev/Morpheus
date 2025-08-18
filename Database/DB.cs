@@ -32,6 +32,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<UserLevels> UserLevels { get; set; }
     public DbSet<Guild> Guilds { get; set; }
     public DbSet<Quote> Quotes { get; set; }
+    public DbSet<QuoteApproval> QuoteApproval { get; set; }
     public DbSet<Log> Logs { get; set; }
     public DbSet<ButtonGamePress> ButtonGamePresses { get; set; }
     public DbSet<Role> Roles { get; set; }

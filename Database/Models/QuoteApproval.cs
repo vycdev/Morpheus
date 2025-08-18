@@ -9,7 +9,7 @@ public enum QuoteApprovalType
     RemoveRequest = 1
 }
 
-public class QuoteApprovals
+public class QuoteApproval
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -29,7 +29,10 @@ public class QuoteApprovals
     [Required]
     public QuoteApprovalType Type { get; set; }
 
+    // Whether this approval entry has been fully approved (threshold reached)
+    public bool Approved { get; set; } = false;
+
     // Navigation / foreign key
     [ForeignKey("QuoteId")]
-    public Quote Quote { get; set; }
+    public Quote? Quote { get; set; }
 }

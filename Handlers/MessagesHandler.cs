@@ -6,10 +6,13 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Services;
 using Morpheus.Utilities;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Utilities.Lists;
 using System.Reflection;
 
 namespace Morpheus.Handlers;
+
 public class MessagesHandler
 {
     private readonly DiscordSocketClient client;
@@ -33,6 +36,8 @@ public class MessagesHandler
         this.usersService = usersService;
 
         client.MessageReceived += HandleMessageAsync;
+        client.ReactionAdded += HandleReactionAdded;
+        client.ReactionRemoved += HandleReactionRemoved;
     }
 
     public async Task InstallCommands()
@@ -84,5 +89,126 @@ public class MessagesHandler
             CommandError.Unsuccessful => await context.Channel.SendMessageAsync("Unsuccessful."),
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
         };
+    }
+
+    private async Task HandleReactionAdded(Cacheable<IUserMessage, ulong> cache, Cacheable<IMessageChannel, ulong> channelCache, SocketReaction reaction)
+    {
+        await ProcessReactionChange(cache, channelCache, reaction, true);
+    }
+
+    private async Task HandleReactionRemoved(Cacheable<IUserMessage, ulong> cache, Cacheable<IMessageChannel, ulong> channelCache, SocketReaction reaction)
+    {
+        await ProcessReactionChange(cache, channelCache, reaction, false);
+    }
+
+    private async Task ProcessReactionChange(Cacheable<IUserMessage, ulong> cache, Cacheable<IMessageChannel, ulong> channelCache, SocketReaction reaction, bool added)
+    {
+        // Only handle the up arrow emoji used for approvals
+        if (reaction.Emote is not Emoji emoji)
+            return;
+
+        if (emoji.Name != "⬆️")
+            return;
+
+        // Try to get the message id
+        var messageId = reaction.MessageId;
+
+        // Look up approval by ApprovalMessageId
+        try
+        {
+            using var scope = serviceProvider.CreateScope();
+            var db = (Database.DB)scope.ServiceProvider.GetRequiredService(typeof(Database.DB));
+
+            var approval = await db.QuoteApproval.FirstOrDefaultAsync(a => a.ApprovalMessageId == (ulong)messageId);
+            if (approval == null)
+                return; // not an approval message
+
+            // ignore if this approval is already finalized
+            if (approval.Approved)
+                return;
+
+            // Recalculate score from message reactions to avoid drift. We only handle the up-arrow
+            var cachedMessage = await cache.GetOrDownloadAsync();
+            var newScore = 0;
+            if (cachedMessage != null)
+            {
+                if (cachedMessage.Reactions.TryGetValue(new Emoji("⬆️"), out var reactionMetadata))
+                {
+                    // Reaction count includes the bot's reaction; subtract 1 if the bot reacted.
+                    newScore = (int)reactionMetadata.ReactionCount;
+                    try
+                    {
+                        var selfUser = client.CurrentUser;
+                        if (reactionMetadata.IsMe)
+                            newScore -= 1;
+                    }
+                    catch { }
+                    if (newScore < 0) newScore = 0;
+                }
+            }
+
+            approval.Score = newScore;
+            db.QuoteApproval.Update(approval);
+            await db.SaveChangesAsync();
+
+            // get guild settings to see required approvals
+            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == approval.QuoteId);
+            if (quote == null)
+                return;
+
+            var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == quote.GuildId);
+            if (guild == null)
+                return;
+
+            // Update the approval message content to show "x out of y"
+            var channel = await channelCache.GetOrDownloadAsync();
+            if (channel is IMessageChannel msgChannel)
+            {
+                var approvalMessage = await cache.GetOrDownloadAsync();
+                if (approvalMessage != null)
+                {
+                    try
+                    {
+                        var required = approval.Type == Database.Models.QuoteApprovalType.AddRequest ? guild.QuoteAddRequiredApprovals : guild.QuoteRemoveRequiredApprovals;
+                        var newContent = $"Quote #{quote.Id} submitted for approval:\n\"{quote.Content}\"\nApprovals: {approval.Score} / {required}";
+                        await approvalMessage.ModifyAsync(m => m.Content = newContent);
+                    }
+                    catch
+                    {
+                        // ignore modify failures
+                    }
+                }
+            }
+
+            // If approvals reached threshold, mark quote approved
+            var requiredApprovals = approval.Type == Database.Models.QuoteApprovalType.AddRequest ? guild.QuoteAddRequiredApprovals : guild.QuoteRemoveRequiredApprovals;
+            if (!approval.Approved && approval.Score >= requiredApprovals)
+            {
+                // mark this approval entry as approved so further reactions are ignored
+                approval.Approved = true;
+                db.QuoteApproval.Update(approval);
+
+                // for add requests, mark the quote approved
+                if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
+                {
+                    quote.Approved = true;
+                    db.Quotes.Update(quote);
+                }
+
+                await db.SaveChangesAsync();
+
+                // notify the channel where the quote was submitted (if available)
+                try
+                {
+                    if (channel is IMessageChannel msgCh)
+                        await msgCh.SendMessageAsync($"Quote #{quote.Id} has been approved.");
+                }
+                catch { }
+            }
+        }
+        catch
+        {
+            // swallow errors to avoid crashing the event
+        }
     }
 }
