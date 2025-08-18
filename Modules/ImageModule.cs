@@ -167,14 +167,36 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(3, 30)]
     public async Task DeepfryAsync()
     {
-        // Check if the user has attached an image
-        if (Context.Message.Attachments.Count == 0)
+        // Determine which attachment to use: either the command message's first attachment
+        // or the first attachment of the message the user replied to.
+        IAttachment? attachment = null;
+        if (Context.Message.Attachments.Count > 0)
         {
-            await ReplyAsync("Please attach an image to deepfry.");
+            attachment = Context.Message.Attachments.First();
+        }
+        else if (Context.Message.ReferencedMessage != null)
+        {
+            // Fetch the referenced message (the one the user replied to) and check for attachments
+            if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+            {
+                await ReplyAsync("You need to reply to a message that contains an image or attach one to this command.");
+                return;
+            }
+
+            if (refMsg.Attachments.Count == 0)
+            {
+                await ReplyAsync("The message you replied to does not contain an attachment. Please attach an image or reply to a message that has one.");
+                return;
+            }
+
+            attachment = refMsg.Attachments.First();
+        }
+
+        if (attachment == null)
+        {
+            await ReplyAsync("Please attach an image to deepfry or reply to a message that contains one.");
             return;
         }
-        // Get the first attachment
-        Attachment attachment = Context.Message.Attachments.First();
         byte[] imageBytes;
 
         try
@@ -287,14 +309,35 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(3, 30)]
     public async Task BlurpifyAsync(int pixelScale = 4, int maxOffset = 6, int smoothPasses = 2)
     {
-        // Need an attached image
-        if (Context.Message.Attachments.Count == 0)
+        // Determine which attachment to use: either the command message's first attachment
+        // or the first attachment of the message the user replied to.
+        IAttachment? attachment = null;
+        if (Context.Message.Attachments.Count > 0)
         {
-            await ReplyAsync("Please attach an image to blurpify.");
-            return;
+            attachment = Context.Message.Attachments.First();
+        }
+        else if (Context.Message.ReferencedMessage != null)
+        {
+            if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+            {
+                await ReplyAsync("You need to reply to a message that contains an image or attach one to this command.");
+                return;
+            }
+
+            if (refMsg.Attachments.Count == 0)
+            {
+                await ReplyAsync("The message you replied to does not contain an attachment. Please attach an image or reply to a message that has one.");
+                return;
+            }
+
+            attachment = refMsg.Attachments.First();
         }
 
-        Attachment attachment = Context.Message.Attachments.First();
+        if (attachment == null)
+        {
+            await ReplyAsync("Please attach an image to blurpify or reply to a message that contains one.");
+            return;
+        }
         byte[] imageBytes;
 
         try
