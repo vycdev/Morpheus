@@ -80,7 +80,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
     }
 
     [Name("Reminder")]
-    [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 5 seconds, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: `reminder 5 days and 3 hours @User Take a break`.")]
+    [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 5 seconds, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: reminder 5 days and 3 hours @User Take a break. Reminders are executed once a minute.")]
     [Command("reminder")]
     [Alias("settimer", "remindme")]
     [RateLimit(3, 10)]
