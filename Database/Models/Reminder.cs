@@ -11,11 +11,14 @@ public class Reminder
 
     [Required]
     public ulong ChannelId { get; set; }
-    public ulong? PingUserId { get; set; }
-    public string? Text { get; set; }
 
+    [Required]
+    public string Text { get; set; } = string.Empty;
+
+    [Required]
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
+    [Required]
     public DateTime DueDate { get; set; }
 
     public int? GuildId { get; set; }

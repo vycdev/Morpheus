@@ -93,18 +93,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
             return;
         }
 
-        // Extract ping mention if present (Discord mention format: <@123456789>)
-        ulong? pingUserId = null;
-        var mentionMatch = Regex.Match(input, "<@!?(\\d+)>");
-        if (mentionMatch.Success)
-        {
-            if (ulong.TryParse(mentionMatch.Groups[1].Value, out var parsed))
-            {
-                pingUserId = parsed;
-            }
-            // remove mention from input
-            input = input.Replace(mentionMatch.Value, " ").Trim();
-        }
+        // No separate ping field — users can include mentions in the reminder text if desired.
 
         // Find all number+unit tokens
         var tokenPattern = new Regex("(\\d+)\\s*(years?|yrs?|y|months?|mos?|mo|weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b", RegexOptions.IgnoreCase);
@@ -186,10 +175,10 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         // After removing tokens and mention, remaining text is the reminder text
         string? text = string.IsNullOrWhiteSpace(input) ? null : input.Trim();
 
-        // Require at least a ping or some text
-        if (!pingUserId.HasValue && string.IsNullOrWhiteSpace(text))
+        // Require some text for the reminder
+        if (string.IsNullOrWhiteSpace(text))
         {
-            await ReplyAsync("You must provide either a user to ping or some text for the reminder.");
+            await ReplyAsync("You must provide some text for the reminder. If you want to mention someone, include the mention in the text.");
             return;
         }
 
@@ -199,7 +188,6 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         var reminder = new Reminder
         {
             ChannelId = Context.Channel.Id,
-            PingUserId = pingUserId,
             Text = text,
             InsertDate = DateTime.UtcNow,
             DueDate = due,

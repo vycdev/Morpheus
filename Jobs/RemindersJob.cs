@@ -42,10 +42,6 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
                 }
 
                 string content = reminder.Text ?? string.Empty;
-                if (reminder.PingUserId.HasValue)
-                {
-                    content = $"<@{reminder.PingUserId.Value}> {content}";
-                }
 
                 if (string.IsNullOrWhiteSpace(content))
                 {
