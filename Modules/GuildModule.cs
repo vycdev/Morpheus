@@ -91,4 +91,113 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
 
         await ReplyAsync($"Pins channel has been set. Your channel is <#{guild.PinsChannelId}>");
     }
+
+    [Name("Toggle Level Up Messages")]
+    [Summary("Toggles whether level up messages are posted in this guild.")]
+    [Command("togglevlevelupmsgs")]
+    [Alias("togglevmsgs", "togglelevelupmessages")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task ToggleLevelUpMessages()
+    {
+        Database.Models.Guild guild = Context.DbGuild!;
+        guild.LevelUpMessages = !guild.LevelUpMessages;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Level up messages are now {(guild.LevelUpMessages ? "enabled" : "disabled")}.");
+    }
+
+    [Name("Toggle Level Up Quotes")]
+    [Summary("Toggles whether level up quotes are posted in this guild.")]
+    [Command("togglelevelupquotes")]
+    [Alias("togglevquotes")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task ToggleLevelUpQuotes()
+    {
+        Database.Models.Guild guild = Context.DbGuild!;
+        guild.LevelUpQuotes = !guild.LevelUpQuotes;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Level up quotes are now {(guild.LevelUpQuotes ? "enabled" : "disabled")}.");
+    }
+
+    [Name("Toggle Use Global Quotes")]
+    [Summary("Toggles whether this guild uses global quotes instead of guild-only quotes.")]
+    [Command("toggleglobalquotes")]
+    [Alias("useglobalquotes", "toggleuseglobalquotes")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task ToggleUseGlobalQuotes()
+    {
+        Database.Models.Guild guild = Context.DbGuild!;
+        guild.UseGlobalQuotes = !guild.UseGlobalQuotes;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Use global quotes is now {(guild.UseGlobalQuotes ? "enabled" : "disabled")}.");
+    }
+
+    [Name("Set Quotes Approval Channel")]
+    [Summary("Sets or removes the channel where quote approvals will be posted.")]
+    [Command("setquotesapprovalchannel")]
+    [Alias("setqapproval", "setquoteschannel")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task SetQuotesApprovalChannel([Remainder] SocketChannel? channel = null)
+    {
+        Database.Models.Guild guild = Context.DbGuild!;
+        guild.QuotesApprovalChannelId = channel?.Id ?? 0;
+        await dbContext.SaveChangesAsync();
+
+        if (guild.QuotesApprovalChannelId == 0)
+        {
+            await ReplyAsync("Quotes approval channel has been removed.");
+            return;
+        }
+
+        await ReplyAsync($"Quotes approval channel set to <#{guild.QuotesApprovalChannelId}>.");
+    }
+
+    [Name("Set Quote Add Required Approvals")]
+    [Summary("Sets how many approvals are required to add a quote.")]
+    [Command("setquoteaddapprovals")]
+    [Alias("setquoteadd", "setaddapprovals")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task SetQuoteAddRequiredApprovals(int approvals)
+    {
+        if (approvals < 1)
+        {
+            await ReplyAsync("Approvals must be at least 1.");
+            return;
+        }
+
+        Database.Models.Guild guild = Context.DbGuild!;
+        guild.QuoteAddRequiredApprovals = approvals;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Quote add required approvals set to {approvals}.");
+    }
+
+    [Name("Set Quote Remove Required Approvals")]
+    [Summary("Sets how many approvals are required to remove a quote.")]
+    [Command("setquoteremoveapprovals")]
+    [Alias("setquoteremove", "setremoveapprovals")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task SetQuoteRemoveRequiredApprovals(int approvals)
+    {
+        if (approvals < 1)
+        {
+            await ReplyAsync("Approvals must be at least 1.");
+            return;
+        }
+
+        Database.Models.Guild guild = Context.DbGuild!;
+        guild.QuoteRemoveRequiredApprovals = approvals;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Quote remove required approvals set to {approvals}.");
+    }
 }
