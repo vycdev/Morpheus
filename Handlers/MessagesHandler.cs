@@ -119,7 +119,7 @@ public class MessagesHandler
             using var scope = serviceProvider.CreateScope();
             var db = (Database.DB)scope.ServiceProvider.GetRequiredService(typeof(Database.DB));
 
-            var approval = await db.QuoteApproval.FirstOrDefaultAsync(a => a.ApprovalMessageId == (ulong)messageId);
+            var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == (ulong)messageId);
             if (approval == null)
                 return; // not an approval message
 
@@ -148,7 +148,7 @@ public class MessagesHandler
             }
 
             approval.Score = newScore;
-            db.QuoteApproval.Update(approval);
+            db.QuoteApprovals.Update(approval);
             await db.SaveChangesAsync();
 
             // get guild settings to see required approvals
@@ -186,7 +186,7 @@ public class MessagesHandler
             {
                 // mark this approval entry as approved so further reactions are ignored
                 approval.Approved = true;
-                db.QuoteApproval.Update(approval);
+                db.QuoteApprovals.Update(approval);
 
                 // for add requests, mark the quote approved
                 if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
