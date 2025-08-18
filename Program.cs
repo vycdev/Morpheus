@@ -71,6 +71,12 @@ services.AddQuartz(q =>
         .StartAt((DateTime.UtcNow.AddSeconds(10)))
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
     );
+
+    q.ScheduleJob<RemindersJob>(trigger => trigger
+        .WithIdentity("reminders", "discord")
+        .StartNow()
+        .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(1)).RepeatForever())
+    );
 });
 
 services.AddQuartzHostedService(options =>
