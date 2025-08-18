@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""
+r"""
 Generate a Markdown file listing bot commands by scanning C# source in Modules/.
 
 Usage:
-  python tools\generate_commands_md.py            # writes COMMANDS.md in repo root
-  python tools\generate_commands_md.py out.md    # write to custom path
+    python tools\generate_commands_md.py            # writes COMMANDS.md in repo root
+    python tools\generate_commands_md.py out.md    # write to custom path
 
 Notes:
  - This script uses simple parsing (regex) of C# source files in Modules/.
