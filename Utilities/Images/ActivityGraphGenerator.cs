@@ -47,17 +47,7 @@ public static class ActivityGraphGenerator
 
         // grid lines and labels
         int yTicks = 5;
-        Font font;
-        {
-            if (SystemFonts.Families.Any())
-            {
-                font = SystemFonts.Families.First().CreateFont(12);
-            }
-            else
-            {
-                font = SystemFonts.CreateFont("Arial", 12);
-            }
-        }
+        Font font = GetFont(12);
 
         image.Mutate(ctx =>
         {
@@ -175,12 +165,67 @@ public static class ActivityGraphGenerator
         // footer
         image.Mutate(ctx =>
         {
-            Font f = SystemFonts.Families.Any() ? SystemFonts.Families.First().CreateFont(10) : SystemFonts.CreateFont("Arial", 10);
+            Font f = GetFont(10);
             ctx.DrawText($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", f, Color.Gray, new PointF(8, height - marginBottom + 20));
         });
 
         using MemoryStream ms = new();
         image.SaveAsPng(ms);
         return ms.ToArray();
+    }
+
+    private static Font GetFont(float size)
+    {
+        // Prefer system fonts if available
+        try
+        {
+            if (SystemFonts.Families != null && SystemFonts.Families.Any())
+            {
+                return SystemFonts.Families.First().CreateFont(size);
+            }
+        }
+        catch { /* fallthrough */ }
+
+        // Try common Linux font paths
+        string[] candidates = new[] {
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf"
+        };
+
+        foreach (var path in candidates)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var fc = new FontCollection();
+                    var family = fc.Add(path);
+                    return family.CreateFont(size);
+                }
+            }
+            catch { }
+        }
+
+        // Try scanning the usual truetype folder for any .ttf
+        try
+        {
+            string root = "/usr/share/fonts/truetype";
+            if (Directory.Exists(root))
+            {
+                var first = Directory.EnumerateFiles(root, "*.ttf", SearchOption.AllDirectories).FirstOrDefault();
+                if (!string.IsNullOrEmpty(first))
+                {
+                    var fc = new FontCollection();
+                    var family = fc.Add(first);
+                    return family.CreateFont(size);
+                }
+            }
+        }
+        catch { }
+
+        // If nothing found, provide a helpful exception so caller can log and skip rendering
+        throw new InvalidOperationException("No usable font found on the system. Please install a TTF font such as DejaVuSans in the container (e.g. package 'fonts-dejavu').");
     }
 }
