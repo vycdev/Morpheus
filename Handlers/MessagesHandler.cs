@@ -103,117 +103,99 @@ public class MessagesHandler
 
     private async Task ProcessReactionChange(Cacheable<IUserMessage, ulong> cache, Cacheable<IMessageChannel, ulong> channelCache, SocketReaction reaction, bool added)
     {
-        // Only handle the up arrow emoji used for approvals
-        if (reaction.Emote is not Emoji emoji)
+        // Only process the up-arrow emoji used for approvals
+        if (reaction.Emote is not Emoji emote || emote.Name != "⬆️")
             return;
 
-        if (emoji.Name != "⬆️")
-            return;
-
-        // Try to get the message id
         var messageId = reaction.MessageId;
 
-        // Look up approval by ApprovalMessageId
         try
         {
             using var scope = serviceProvider.CreateScope();
             var db = (Database.DB)scope.ServiceProvider.GetRequiredService(typeof(Database.DB));
 
             var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == (ulong)messageId);
-            if (approval == null)
-                return; // not an approval message
+            if (approval == null) return; // not an approval message
+            if (approval.Approved) return; // already finalized
 
-            // ignore if this approval is already finalized
-            if (approval.Approved)
-                return;
-
-            // Recalculate score from message reactions to avoid drift. We only handle the up-arrow
+            // Recompute score from message reactions
             var cachedMessage = await cache.GetOrDownloadAsync();
             var newScore = 0;
-            if (cachedMessage != null)
+            if (cachedMessage != null && cachedMessage.Reactions.TryGetValue(new Emoji("⬆️"), out var reactionMeta))
             {
-                if (cachedMessage.Reactions.TryGetValue(new Emoji("⬆️"), out var reactionMetadata))
-                {
-                    // Reaction count includes the bot's reaction; subtract 1 if the bot reacted.
-                    newScore = (int)reactionMetadata.ReactionCount;
-                    try
-                    {
-                        var selfUser = client.CurrentUser;
-                        if (reactionMetadata.IsMe)
-                            newScore -= 1;
-                    }
-                    catch { }
-                    if (newScore < 0) newScore = 0;
-                }
+                newScore = (int)reactionMeta.ReactionCount;
+                try { if (reactionMeta.IsMe) newScore -= 1; } catch { }
+                if (newScore < 0) newScore = 0;
             }
 
             approval.Score = newScore;
             db.QuoteApprovals.Update(approval);
             await db.SaveChangesAsync();
 
-            // get guild settings to see required approvals
             var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == approval.QuoteId);
-            if (quote == null)
-                return;
-
+            if (quote == null) return;
             var guild = await db.Guilds.FirstOrDefaultAsync(g => g.Id == quote.GuildId);
-            if (guild == null)
-                return;
+            if (guild == null) return;
 
-            // Update the approval message content to show "x out of y"
-            var channel = await channelCache.GetOrDownloadAsync();
-            if (channel is IMessageChannel msgChannel)
+            // Live-update: replace or append the Approvals line in the existing message content
+            IUserMessage? approvalMessage = await cache.GetOrDownloadAsync();
+            if (approvalMessage != null)
             {
-                var approvalMessage = await cache.GetOrDownloadAsync();
-                if (approvalMessage != null)
+                try
                 {
-                    try
-                    {
-                        var required = approval.Type == Database.Models.QuoteApprovalType.AddRequest ? guild.QuoteAddRequiredApprovals : guild.QuoteRemoveRequiredApprovals;
-                        var newContent = $"Quote #{quote.Id} submitted for approval:\n\"{quote.Content}\"\nApprovals: {approval.Score} / {required}";
-                        await approvalMessage.ModifyAsync(m => m.Content = newContent);
-                    }
-                    catch
-                    {
-                        // ignore modify failures
-                    }
+                    var required = approval.Type == Database.Models.QuoteApprovalType.AddRequest ? guild.QuoteAddRequiredApprovals : guild.QuoteRemoveRequiredApprovals;
+                    var content = approvalMessage.Content ?? string.Empty;
+                    var lines = content.Split('\n').ToList();
+                    var idx = lines.FindLastIndex(l => l.TrimStart().StartsWith("Approvals:", StringComparison.OrdinalIgnoreCase));
+                    var approvalsLine = $"Approvals: {approval.Score} / {required}";
+                    if (idx >= 0) lines[idx] = approvalsLine; else lines.Add(approvalsLine);
+                    var newContent = string.Join('\n', lines);
+                    await approvalMessage.ModifyAsync(m => m.Content = newContent);
                 }
+                catch { }
             }
 
-            // If approvals reached threshold, mark quote approved
             var requiredApprovals = approval.Type == Database.Models.QuoteApprovalType.AddRequest ? guild.QuoteAddRequiredApprovals : guild.QuoteRemoveRequiredApprovals;
             if (!approval.Approved && approval.Score >= requiredApprovals)
             {
-                // mark this approval entry as approved so further reactions are ignored
                 approval.Approved = true;
                 db.QuoteApprovals.Update(approval);
 
-                // for add requests, mark the quote approved
                 if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
                 {
                     quote.Approved = true;
                     db.Quotes.Update(quote);
                 }
+                else if (approval.Type == Database.Models.QuoteApprovalType.RemoveRequest)
+                {
+                    quote.Removed = true;
+                    db.Quotes.Update(quote);
+                }
 
                 await db.SaveChangesAsync();
 
-                // edit the original approval message to indicate approval and remove reactions
+                // Finalize: remove Approvals line and prefix with APPROVED/REMOVED while preserving body
                 try
                 {
-                    var approvalMsg = await cache.GetOrDownloadAsync();
-                    if (approvalMsg != null)
+                    approvalMessage ??= await cache.GetOrDownloadAsync();
+                    if (approvalMessage != null)
                     {
-                        var approvedContent = $"✅ Quote #{quote.Id} APPROVED:\n\"{quote.Content}\"\nFinal approvals: {approval.Score} / {requiredApprovals}";
-                        await approvalMsg.ModifyAsync(m => m.Content = approvedContent);
-                        try { await approvalMsg.RemoveAllReactionsAsync(); } catch { }
+                        var orig = approvalMessage.Content ?? string.Empty;
+                        var lines = orig.Split('\n').Where(l => !l.TrimStart().StartsWith("Approvals:", StringComparison.OrdinalIgnoreCase)).ToList();
+                        var body = string.Join('\n', lines);
+                        string finalContent;
+                        if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
+                            finalContent = $"✅ Quote #{quote.Id} APPROVED:\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
+                        else
+                            finalContent = $"🗑️ Quote #{quote.Id} REMOVED:\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
+
+                        await approvalMessage.ModifyAsync(m => m.Content = finalContent);
+                        try { await approvalMessage.RemoveAllReactionsAsync(); } catch { }
                     }
                 }
                 catch { }
             }
         }
-        catch
-        {
-            // swallow errors to avoid crashing the event
-        }
+        catch { }
     }
 }

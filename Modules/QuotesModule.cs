@@ -41,7 +41,8 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         if (page < 1) page = 1;
         if (page > totalPages) page = totalPages;
 
-        var quotesQuery = db.Quotes.Where(q => q.GuildId == guildDb.Id);
+        // Exclude removed quotes from listings
+        var quotesQuery = db.Quotes.Where(q => q.GuildId == guildDb.Id && !q.Removed);
         if (approvedOnly)
             quotesQuery = quotesQuery.Where(q => q.Approved && !q.Removed);
 
@@ -145,6 +146,13 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     {
         // Must be in a guild (RequireDbGuild ensures Context.DbGuild exists)
         var guildDb = Context.DbGuild!;
+        // support admin force flag by leading "force" token (e.g. `addquote force <text>`)
+        var forceFlag = false;
+        if (!string.IsNullOrWhiteSpace(text) && text.StartsWith("force ", StringComparison.OrdinalIgnoreCase))
+        {
+            forceFlag = true;
+            text = text.Substring("force ".Length).TrimStart();
+        }
 
         // Ensure user exists in DB
         var userDb = await usersService.TryGetCreateUser(Context.User);
@@ -164,10 +172,17 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         await db.SaveChangesAsync(); // need Id
 
         // If no approval channel is set, admins can bypass and approve immediately
+        var isAdmin = Context.User is SocketGuildUser guUser && guUser.GuildPermissions.Administrator;
+
+        // only administrators may use the force flag
+        if (forceFlag && !isAdmin)
+        {
+            await ReplyAsync("You cannot use the force flag unless you are an administrator.");
+            return;
+        }
         if (guildDb.QuotesApprovalChannelId == 0)
         {
-            // Check if caller is an administrator
-            if (Context.User is SocketGuildUser gu && gu.GuildPermissions.Administrator)
+            if (isAdmin)
             {
                 quote.Approved = true;
                 db.Quotes.Update(quote);
@@ -178,6 +193,16 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
 
             // No approval channel but non-admin => treat as submitted but no approvals will happen
             await ReplyAsync("Quote submitted for approval, but this server has no approval channel configured. An administrator can approve it manually.");
+            return;
+        }
+
+        // Approval channel exists: allow admin force to bypass approvals
+        if (isAdmin && forceFlag)
+        {
+            quote.Approved = true;
+            db.Quotes.Update(quote);
+            await db.SaveChangesAsync();
+            await ReplyAsync("Quote added and automatically approved (admin force).");
             return;
         }
 
@@ -215,5 +240,113 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         await ReplyAsync("Quote submitted for approval.");
+    }
+
+    [Name("Remove Quote")]
+    [Summary("Requests removal of a quote (may require approval).")]
+    [Command("removequote")]
+    [Alias("quoteremove", "qremove", "remove")]
+    [RateLimit(3, 10)]
+    [RequireDbGuild]
+    public async Task RemoveQuote(int id, [Remainder] string reason = "")
+    {
+        var guildDb = Context.DbGuild!;
+
+        // support admin force flag by trailing " force" on the reason
+        var forceFlag = false;
+        if (!string.IsNullOrWhiteSpace(reason) && reason.EndsWith(" force", StringComparison.OrdinalIgnoreCase))
+        {
+            forceFlag = true;
+            reason = reason.Substring(0, reason.Length - " force".Length).TrimEnd();
+        }
+
+        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == id);
+        if (quote == null)
+        {
+            await ReplyAsync("Quote not found.");
+            return;
+        }
+
+        if (quote.GuildId != guildDb.Id)
+        {
+            await ReplyAsync("You cannot remove a quote from another guild.");
+            return;
+        }
+
+        if (quote.Removed)
+        {
+            await ReplyAsync("This quote is already removed.");
+            return;
+        }
+
+        var isAdmin = Context.User is SocketGuildUser gu && gu.GuildPermissions.Administrator;
+
+        // only administrators may use the force flag
+        if (forceFlag && !isAdmin)
+        {
+            await ReplyAsync("You cannot use the force flag unless you are an administrator.");
+            return;
+        }
+
+        // Disallow removal requests for quotes that aren't approved yet unless forced by admin
+        if (!quote.Approved && !(isAdmin && forceFlag) && !forceFlag)
+        {
+            await ReplyAsync("This quote has not been approved yet and cannot be removed. An administrator may force removal with the force flag.");
+            return;
+        }
+
+        // If no approval channel is set, admins can bypass and remove immediately
+        if (guildDb.QuotesApprovalChannelId == 0)
+        {
+            if (isAdmin)
+            {
+                quote.Removed = true;
+                db.Quotes.Update(quote);
+                await db.SaveChangesAsync();
+                await ReplyAsync("Quote removed (admin bypass).");
+                return;
+            }
+
+            await ReplyAsync("Quote removal submitted for approval, but this server has no approval channel configured. An administrator can remove it manually.");
+            return;
+        }
+
+        // If approval channel exists, allow admin force to bypass approvals
+        if (isAdmin && forceFlag)
+        {
+            quote.Removed = true;
+            db.Quotes.Update(quote);
+            await db.SaveChangesAsync();
+            await ReplyAsync("Quote removed (admin force).");
+            return;
+        }
+
+        var approval = new QuoteApproval
+        {
+            QuoteId = quote.Id,
+            Score = 0,
+            Type = QuoteApprovalType.RemoveRequest,
+            InsertDate = DateTime.UtcNow
+        };
+
+        await db.QuoteApprovals.AddAsync(approval);
+        await db.SaveChangesAsync();
+
+        var channel = Context.Client.GetChannel(guildDb.QuotesApprovalChannelId) as IMessageChannel;
+        if (channel != null)
+        {
+            try
+            {
+                var sent = await channel.SendMessageAsync($"Removal requested for Quote #{quote.Id} by {Context.User.Mention}:\n\"{quote.Content}\"\nApprovals: 0 / {guildDb.QuoteRemoveRequiredApprovals}");
+                await sent.AddReactionAsync(new Emoji("⬆️"));
+
+                approval.ApprovalMessageId = sent.Id;
+                db.QuoteApprovals.Update(approval);
+                await db.SaveChangesAsync();
+            }
+            catch { }
+        }
+
+        await ReplyAsync("Quote removal submitted for approval.");
     }
 }
