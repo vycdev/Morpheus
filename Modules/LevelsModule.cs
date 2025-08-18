@@ -164,12 +164,12 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .Where(ua => ua.InsertDate >= start)
             .AsEnumerable()
             .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
-            .Select(g => new
-            {
-                UserId = g.Key.UserId,
-                Day = g.Key.Day,
-                Xp = g.Sum(x => x.XpGained)
-            })
+        .Select(g => new
+        {
+            UserId = g.Key.UserId,
+            Day = g.Key.Day,
+            Xp = g.Sum(x => x.XpGained)
+        })
             .ToList();
 
         var perUser = q.GroupBy(x => x.UserId)
