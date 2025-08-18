@@ -9,6 +9,7 @@ using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
 using System.IO.Compression;
+using System.Reflection;
 
 namespace Morpheus.Modules;
 
@@ -37,6 +38,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     {
         if (interaction is SocketMessageComponent messageComponent)
         {
+            await interaction.DeferAsync();
             if (messageComponent.Data.CustomId == "module_selector")
             {
                 Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == interaction.GuildId);
@@ -50,7 +52,6 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
                 if (await messageComponent.Channel.GetMessageAsync(messageComponent.Message.Id) is IUserMessage message)
                 {
                     await message.ModifyAsync(prop => prop.Embed = embed); // Sends a private message
-                    await messageComponent.DeferAsync();
                 }
             }
         }
@@ -109,8 +110,105 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     [Command("help")]
     [Alias("commands", "cmds", "h")]
     [RateLimit(1, 30)]
-    public async Task Help()
+    public async Task Help(string? command = null)
     {
+        // Determine command prefix for this guild
+        Guild? guild = null;
+        if (Context.Guild != null)
+            guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        string commandPrefix = guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"];
+
+        // If a specific command or alias was provided, show detailed info
+        if (!string.IsNullOrWhiteSpace(command))
+        {
+            // find command by name or alias (case-insensitive)
+            CommandInfo? found = commands.Commands.FirstOrDefault(c =>
+                c.Aliases.Any(a => string.Equals(a, command, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(c.Name, command, StringComparison.OrdinalIgnoreCase));
+
+            if (found == null)
+            {
+                await ReplyAsync($"No command or alias found matching '{command}'.");
+                return;
+            }
+
+            EmbedBuilder detail = new()
+            {
+                Color = Colors.Blue,
+                Title = $"{commandPrefix}{found.Aliases[0]}",
+                Description = found.Summary ?? "No description available."
+            };
+
+            // Name and aliases
+            detail.AddField("Name", found.Name, true);
+            string aliases = found.Aliases != null && found.Aliases.Count > 0
+                ? string.Join(", ", found.Aliases.Select(a => commandPrefix + a))
+                : "(none)";
+            detail.AddField("Aliases", aliases, true);
+
+            // Usage
+            string usage;
+            string primaryAlias = (found.Aliases != null && found.Aliases.Count > 0) ? found.Aliases[0] : found.Name;
+            if (found.Parameters != null && found.Parameters.Count > 0)
+            {
+                var parts = found.Parameters.Select(p =>
+                {
+                    string def = p.DefaultValue != null ? $" = {p.DefaultValue}" : "";
+                    string opt = p.IsOptional ? "?" : "";
+                    return $"[{p.Name}{opt}{def}]";
+                });
+                usage = $"{commandPrefix}{primaryAlias} {string.Join(" ", parts)}";
+            }
+            else
+            {
+                usage = $"{commandPrefix}{primaryAlias}";
+            }
+            detail.AddField("Usage", usage, false);
+
+            // Rate limit (inspect custom attribute data)
+            string rateLimitText = "None";
+            // RateLimitAttribute derives from PreconditionAttribute and is exposed via CommandInfo.Preconditions
+            var rateAttrInstance = found.Preconditions?.OfType<RateLimitAttribute>().FirstOrDefault()
+                ?? found.Attributes.OfType<RateLimitAttribute>().FirstOrDefault();
+
+            if (rateAttrInstance != null)
+            {
+                // Try to read backing int fields (compiler-generated from primary constructor)
+                var intFields = rateAttrInstance.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+                    .Where(f => f.FieldType == typeof(int)).ToArray();
+                if (intFields.Length >= 2)
+                {
+                    try
+                    {
+                        var uses = (int)intFields[0].GetValue(rateAttrInstance)!;
+                        var seconds = (int)intFields[1].GetValue(rateAttrInstance)!;
+                        rateLimitText = $"{uses} use(s) per {seconds} second(s)";
+                    }
+                    catch { rateLimitText = "Rate limit present"; }
+                }
+                else
+                {
+                    rateLimitText = "Rate limit present";
+                }
+            }
+            detail.AddField("Rate limit", rateLimitText, true);
+
+            // Parameters detail
+            if (found.Parameters != null && found.Parameters.Count > 0)
+            {
+                var paramLines = found.Parameters.Select(p =>
+                {
+                    string opt = p.IsOptional ? "Optional" : "Required";
+                    string def = p.DefaultValue != null ? $" (default: {p.DefaultValue})" : "";
+                    return $"`{p.Name}` — {p.Summary ?? "No description."} — {opt}{def}";
+                });
+                detail.AddField("Parameters", string.Join('\n', paramLines), false);
+            }
+
+            await ReplyAsync(embed: detail.Build());
+            return;
+        }
+
         EmbedBuilder builder = new()
         {
             Color = Colors.Blue,
