@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Morpheus.Database.Models;
+
 public class Guild
 {
     [Key]
@@ -18,10 +19,10 @@ public class Guild
     // Channels 
     public ulong WelcomeChannelId { get; set; }
     public ulong PinsChannelId { get; set; }
-    public ulong LevelUpMessagesChannelId { get; set; }
-    public ulong LevelUpQuotesChannelId { get; set; }
 
     // Leveling and Quotes system settings 
+    public ulong LevelUpMessagesChannelId { get; set; }
+    public ulong LevelUpQuotesChannelId { get; set; }
     public bool LevelUpMessages { get; set; } = false;
     public bool LevelUpQuotes { get; set; } = false;
     public bool UseGlobalQuotes { get; set; } = false;

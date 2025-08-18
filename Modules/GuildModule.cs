@@ -92,6 +92,52 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         await ReplyAsync($"Pins channel has been set. Your channel is <#{guild.PinsChannelId}>");
     }
 
+    [Name("Set Level Up Messages Channel")]
+    [Summary("Sets or removes the channel where level up messages will be posted.")]
+    [Command("setlevelupmessageschannel")]
+    [Alias("setlumchannel", "setlevelupmsgschannel")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketChannel? channel = null)
+    {
+        Database.Models.Guild guild = Context.DbGuild!;
+
+        guild.LevelUpMessagesChannelId = channel?.Id ?? 0;
+        await dbContext.SaveChangesAsync();
+
+        if (guild.LevelUpMessagesChannelId == 0)
+        {
+            await ReplyAsync("Level up messages channel has been removed.");
+            return;
+        }
+
+        await ReplyAsync($"Level up messages channel set to <#{guild.LevelUpMessagesChannelId}>.");
+    }
+
+    [Name("Set Level Up Quotes Channel")]
+    [Summary("Sets or removes the channel where level up quotes will be posted.")]
+    [Command("setlevelupquoteschannel")]
+    [Alias("setluqchannel", "setlevelupquoteschan")]
+    [RequireUserPermission(Discord.GuildPermission.Administrator)]
+    [RateLimit(1, 10)]
+    [RequireDbGuild]
+    public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketChannel? channel = null)
+    {
+        Database.Models.Guild guild = Context.DbGuild!;
+
+        guild.LevelUpQuotesChannelId = channel?.Id ?? 0;
+        await dbContext.SaveChangesAsync();
+
+        if (guild.LevelUpQuotesChannelId == 0)
+        {
+            await ReplyAsync("Level up quotes channel has been removed.");
+            return;
+        }
+
+        await ReplyAsync($"Level up quotes channel set to <#{guild.LevelUpQuotesChannelId}>.");
+    }
+
     [Name("Toggle Level Up Messages")]
     [Summary("Toggles whether level up messages are posted in this guild.")]
     [Command("togglevlevelupmsgs")]
