@@ -35,7 +35,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         var guildDb = Context.DbGuild!;
         const int pageSize = 10;
 
-        var total = await db.Quotes.Where(q => q.GuildId == guildDb.Id).CountAsync();
+        var total = await db.Quotes.Where(q => q.GuildId == guildDb.Id && !q.Removed).CountAsync();
         var totalPages = (int)Math.Ceiling(total / (double)pageSize);
         if (totalPages == 0) totalPages = 1;
         if (page < 1) page = 1;
@@ -111,7 +111,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     public async Task ShowQuote(int id)
     {
         var guildDb = Context.DbGuild!;
-        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == id && q.GuildId == guildDb.Id);
+        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == id && q.GuildId == guildDb.Id && !q.Removed);
         if (quote == null)
         {
             await ReplyAsync("Quote not found.");
