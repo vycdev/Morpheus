@@ -144,6 +144,99 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         await Context.Channel.SendFileAsync(ms, "activity_graph.png", $"Top {series.Count} users activity for the last {days} days");
     }
 
+    [Name("Activity Graph (Cumulative)")]
+    [Summary("Generates a cumulative activity graph (running total) for the top 10 users over the past n days.")]
+    [Command("activitygraphcumulative")]
+    [Alias("actgraphcum", "agcum")]
+    [RateLimit(2, 60)]
+    public async Task ActivityGraphCumulativeAsync(int days = 7)
+    {
+        Guild? guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        if (days <= 0 || days > 90)
+        {
+            await ReplyAsync("Please provide a number of days between 1 and 90.");
+            return;
+        }
+
+        DateTime start = DateTime.UtcNow.Date.AddDays(-(days - 1));
+
+        var q = dbContext.UserActivity
+            .Where(ua => ua.GuildId == guild.Id && ua.InsertDate >= start)
+            .AsEnumerable()
+            .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
+            .Select(g => new
+            {
+                UserId = g.Key.UserId,
+                Day = g.Key.Day,
+                Xp = g.Sum(x => x.XpGained)
+            })
+            .ToList();
+
+        var perUser = q.GroupBy(x => x.UserId)
+            .Select(g => new
+            {
+                UserId = g.Key,
+                Total = g.Sum(x => x.Xp),
+                ByDay = g.ToDictionary(x => x.Day, x => x.Xp)
+            })
+            .OrderByDescending(x => x.Total)
+            .Take(10)
+            .ToList();
+
+        if (perUser.Count == 0)
+        {
+            await ReplyAsync("No activity data found for the requested period.");
+            return;
+        }
+
+        var series = new Dictionary<string, List<int>>();
+
+        foreach (var userAgg in perUser)
+        {
+            var dbUser = dbContext.Users.Find(userAgg.UserId);
+            string label = dbUser != null ? dbUser.Username : userAgg.UserId.ToString();
+            List<int> daily = new List<int>(new int[days]);
+            for (int i = 0; i < days; i++)
+            {
+                DateTime day = start.AddDays(i);
+                if (userAgg.ByDay.TryGetValue(day, out int xp)) daily[i] = xp;
+                else daily[i] = 0;
+            }
+
+            // convert to running total (cumulative)
+            List<int> cumulative = new List<int>(days);
+            int running = 0;
+            for (int i = 0; i < days; i++)
+            {
+                running += daily[i];
+                cumulative.Add(running);
+            }
+
+            series[label] = cumulative;
+        }
+
+        byte[] png;
+        try
+        {
+            png = ActivityGraphGenerator.GenerateLineChart(series, days);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ACTIVITY GRAPH CUMULATIVE ERROR] {ex}");
+            await ReplyAsync("Failed to generate cumulative activity graph. Try again later.");
+            return;
+        }
+
+        using var ms = new MemoryStream(png);
+        await Context.Channel.SendFileAsync(ms, "activity_graph_cumulative.png", $"Top {series.Count} users cumulative activity for the last {days} days");
+    }
+
     [Name("Global Activity Graph")]
     [Summary("Generates a global activity graph for the top 10 users across all guilds over the past n days.")]
     [Command("globalactivitygraph")]
@@ -220,6 +313,92 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         using var ms2 = new MemoryStream(png);
         await Context.Channel.SendFileAsync(ms2, "global_activity_graph.png", $"Top {series.Count} users global activity for the last {days} days");
+    }
+
+    [Name("Global Activity Graph (Cumulative)")]
+    [Summary("Generates a global cumulative activity graph (running total) for the top 10 users across all guilds over the past n days.")]
+    [Command("globalactivitygraphcumulative")]
+    [Alias("globalactgraphcum", "gactcum")]
+    [RateLimit(2, 60)]
+    public async Task GlobalActivityGraphCumulativeAsync(int days = 7)
+    {
+        if (days <= 0 || days > 90)
+        {
+            await ReplyAsync("Please provide a number of days between 1 and 90.");
+            return;
+        }
+
+        DateTime start = DateTime.UtcNow.Date.AddDays(-(days - 1));
+
+        var q = dbContext.UserActivity
+            .Where(ua => ua.InsertDate >= start)
+            .AsEnumerable()
+            .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
+            .Select(g => new
+            {
+                UserId = g.Key.UserId,
+                Day = g.Key.Day,
+                Xp = g.Sum(x => x.XpGained)
+            })
+            .ToList();
+
+        var perUser = q.GroupBy(x => x.UserId)
+            .Select(g => new
+            {
+                UserId = g.Key,
+                Total = g.Sum(x => x.Xp),
+                ByDay = g.ToDictionary(x => x.Day, x => x.Xp)
+            })
+            .OrderByDescending(x => x.Total)
+            .Take(10)
+            .ToList();
+
+        if (perUser.Count == 0)
+        {
+            await ReplyAsync("No activity data found for the requested period.");
+            return;
+        }
+
+        var series = new Dictionary<string, List<int>>();
+
+        foreach (var userAgg in perUser)
+        {
+            var dbUser = dbContext.Users.Find(userAgg.UserId);
+            string label = dbUser != null ? dbUser.Username : userAgg.UserId.ToString();
+            List<int> daily = new List<int>(new int[days]);
+            for (int i = 0; i < days; i++)
+            {
+                DateTime day = start.AddDays(i);
+                if (userAgg.ByDay.TryGetValue(day, out int xp)) daily[i] = xp;
+                else daily[i] = 0;
+            }
+
+            // cumulative
+            List<int> cumulative = new List<int>(days);
+            int running = 0;
+            for (int i = 0; i < days; i++)
+            {
+                running += daily[i];
+                cumulative.Add(running);
+            }
+
+            series[label] = cumulative;
+        }
+
+        byte[] png;
+        try
+        {
+            png = ActivityGraphGenerator.GenerateLineChart(series, days);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GLOBAL ACTIVITY GRAPH CUMULATIVE ERROR] {ex}");
+            await ReplyAsync("Failed to generate global cumulative activity graph. Try again later.");
+            return;
+        }
+
+        using var ms = new MemoryStream(png);
+        await Context.Channel.SendFileAsync(ms, "global_activity_graph_cumulative.png", $"Top {series.Count} users global cumulative activity for the last {days} days");
     }
 
     [Name("Leaderboard")]
