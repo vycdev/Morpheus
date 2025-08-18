@@ -35,14 +35,14 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         var guildDb = Context.DbGuild!;
         const int pageSize = 10;
 
-        var total = await db.Quotes.Where(q => q.GuildId == guildDb.Id && !q.Removed).CountAsync();
+        var total = await db.Quotes.AsNoTracking().Where(q => q.GuildId == guildDb.Id && !q.Removed).CountAsync();
         var totalPages = (int)Math.Ceiling(total / (double)pageSize);
         if (totalPages == 0) totalPages = 1;
         if (page < 1) page = 1;
         if (page > totalPages) page = totalPages;
 
         // Exclude removed quotes from listings
-        var quotesQuery = db.Quotes.Where(q => q.GuildId == guildDb.Id && !q.Removed);
+        var quotesQuery = db.Quotes.AsNoTracking().Where(q => q.GuildId == guildDb.Id && !q.Removed);
         if (approvedOnly)
             quotesQuery = quotesQuery.Where(q => q.Approved && !q.Removed);
 
@@ -66,7 +66,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         var quoteIds = quotes.Select(q => q.Id).ToList();
-        var scores = await db.QuoteScores
+        var scores = await db.QuoteScores.AsNoTracking()
             .Where(s => quoteIds.Contains(s.QuoteId))
             .GroupBy(s => s.QuoteId)
             .Select(g => new { Id = g.Key, Score = g.Sum(x => x.Score) })
@@ -74,7 +74,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         var scoreMap = scores.ToDictionary(s => s.Id, s => s.Score);
 
         var userIds = quotes.Select(q => q.UserId).Distinct().ToList();
-        var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToListAsync();
+        var users = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToListAsync();
         var userMap = users.ToDictionary(u => u.Id, u => u.Username);
 
         var embed = new Discord.EmbedBuilder()
@@ -111,15 +111,15 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     public async Task ShowQuote(int id)
     {
         var guildDb = Context.DbGuild!;
-        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == id && q.GuildId == guildDb.Id && !q.Removed);
+        var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == id && q.GuildId == guildDb.Id && !q.Removed);
         if (quote == null)
         {
             await ReplyAsync("Quote not found.");
             return;
         }
 
-        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == quote.Id).SumAsync(s => (int?)s.Score) ?? 0;
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == quote.UserId);
+        var totalScore = await db.QuoteScores.AsNoTracking().Where(s => s.QuoteId == quote.Id).SumAsync(s => (int?)s.Score) ?? 0;
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == quote.UserId);
         var author = user?.Username ?? "Unknown";
 
         var embed = new Discord.EmbedBuilder()
@@ -185,7 +185,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             if (isAdmin)
             {
                 quote.Approved = true;
-                db.Quotes.Update(quote);
                 await db.SaveChangesAsync();
                 await ReplyAsync("Quote added and automatically approved (admin bypass).");
                 return;
@@ -200,7 +199,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         if (isAdmin && forceFlag)
         {
             quote.Approved = true;
-            db.Quotes.Update(quote);
             await db.SaveChangesAsync();
             await ReplyAsync("Quote added and automatically approved (admin force).");
             return;
@@ -230,7 +228,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
 
                 // store the approval message id so reaction handlers can map message -> approval
                 approval.ApprovalMessageId = sent.Id;
-                db.QuoteApprovals.Update(approval);
                 await db.SaveChangesAsync();
             }
             catch
@@ -260,7 +257,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             reason = reason.Substring(0, reason.Length - " force".Length).TrimEnd();
         }
 
-        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == id);
+        var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == id);
         if (quote == null)
         {
             await ReplyAsync("Quote not found.");
@@ -315,7 +312,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         if (isAdmin && forceFlag)
         {
             quote.Removed = true;
-            db.Quotes.Update(quote);
             await db.SaveChangesAsync();
             await ReplyAsync("Quote removed (admin force).");
             return;
@@ -341,7 +337,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
                 await sent.AddReactionAsync(new Emoji("⬆️"));
 
                 approval.ApprovalMessageId = sent.Id;
-                db.QuoteApprovals.Update(approval);
                 await db.SaveChangesAsync();
             }
             catch { }
@@ -393,7 +388,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         else
         {
             existing.Score = 5;
-            db.QuoteScores.Update(existing);
         }
 
         await db.SaveChangesAsync();
@@ -444,7 +438,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         else
         {
             existing.Score = -5;
-            db.QuoteScores.Update(existing);
         }
 
         await db.SaveChangesAsync();
@@ -506,7 +499,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         else
         {
             existing.Score = mapInt;
-            db.QuoteScores.Update(existing);
         }
 
         await db.SaveChangesAsync();

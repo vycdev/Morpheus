@@ -129,7 +129,6 @@ public class MessagesHandler
             }
 
             approval.Score = newScore;
-            db.QuoteApprovals.Update(approval);
             await db.SaveChangesAsync();
 
             var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == approval.QuoteId);
@@ -159,18 +158,11 @@ public class MessagesHandler
             if (!approval.Approved && approval.Score >= requiredApprovals)
             {
                 approval.Approved = true;
-                db.QuoteApprovals.Update(approval);
 
                 if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
-                {
                     quote.Approved = true;
-                    db.Quotes.Update(quote);
-                }
                 else if (approval.Type == Database.Models.QuoteApprovalType.RemoveRequest)
-                {
                     quote.Removed = true;
-                    db.Quotes.Update(quote);
-                }
 
                 await db.SaveChangesAsync();
 
