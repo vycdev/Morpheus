@@ -1,9 +1,15 @@
 ﻿using System;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Text;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using System.Linq;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Drawing.Processing;
+using SixLabors.ImageSharp.Drawing;
+using SixLabors.Fonts;
+
+namespace Morpheus.Utilities.Images;
 
 public class CaptchaResult(string captchaText, byte[] captchaImageBytes)
 {
@@ -20,10 +26,13 @@ public class CaptchaGenerator
     private readonly Random _random = new();
 
     private readonly string _charSet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-    private readonly string[] _fontFamilies = ["Arial", "Verdana", "Times New Roman", "Courier New", "Tahoma", "Georgia", "Comic Sans MS"];
-    private readonly Color[] _backgroundColors = [Color.WhiteSmoke, Color.LightGray, Color.FromArgb(240, 240, 240), Color.AliceBlue, Color.Lavender];
+    private readonly string[] _fontFamilies = new[] { "Arial", "Verdana", "Times New Roman", "Courier New", "Tahoma", "Georgia", "Comic Sans MS" };
+    private readonly Color[] _backgroundColors = new[] { Color.WhiteSmoke, Color.LightGray, Color.FromRgb(240, 240, 240), Color.AliceBlue, Color.Lavender };
 
-    public CaptchaGenerator(int width = 400, int height = 70, int textLength = 8)
+    private readonly FontCollection _fontCollection = new();
+    private readonly FontFamily _defaultFamily;
+
+    public CaptchaGenerator(int width = 230, int height = 70, int textLength = 8)
     {
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width), "Width must be positive.");
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height), "Height must be positive.");
@@ -32,170 +41,141 @@ public class CaptchaGenerator
         _width = width;
         _height = height;
         _textLength = textLength;
+
+        // Register a default system font fallback; ImageSharp won't find system fonts by family name reliably in containers
+        // We embed a fallback using the default fonts from the runtime if available
+        _defaultFamily = SystemFonts.Families.Any() ? SystemFonts.Families.First() : throw new InvalidOperationException("No system fonts available");
     }
 
     public CaptchaResult GenerateCaptcha()
     {
         string captchaText = GenerateRandomText();
-        using Bitmap bitmap = new(_width, _height, PixelFormat.Format32bppArgb);
-        using Graphics graphics = Graphics.FromImage(bitmap);
-        graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias; // Better text
-        graphics.Clear(_backgroundColors[_random.Next(_backgroundColors.Length)]);
 
-        string actualDrawnText = DrawCaptchaTextAndReturnDrawn(graphics, captchaText);
-        AddDistortionAndNoise(graphics, bitmap);
+        using Image<Rgba32> image = new(_width, _height, _backgroundColors[_random.Next(_backgroundColors.Length)]);
+
+        string drawn = DrawText(image, captchaText);
+        AddDistortionAndNoise(image);
 
         using MemoryStream ms = new();
-        bitmap.Save(ms, ImageFormat.Png);
-        // Return the text that was actually drawn, in case it's less than _textLength
-        return new CaptchaResult(actualDrawnText, ms.ToArray());
+        image.SaveAsPng(ms);
+        return new CaptchaResult(drawn, ms.ToArray());
     }
 
     private string GenerateRandomText()
     {
         StringBuilder sb = new(_textLength);
-        for (int i = 0; i < _textLength; i++)
-        {
-            sb.Append(_charSet[_random.Next(_charSet.Length)]);
-        }
+        for (int i = 0; i < _textLength; i++) sb.Append(_charSet[_random.Next(_charSet.Length)]);
         return sb.ToString();
     }
 
-    private string DrawCaptchaTextAndReturnDrawn(Graphics graphics, string text)
+    private string DrawText(Image<Rgba32> image, string text)
     {
-        float currentX = _random.Next(5, 10); // Initial X padding
-        StringBuilder drawnTextBuilder = new();
+        float currentX = _random.Next(5, 10);
+        StringBuilder drawn = new();
 
         for (int i = 0; i < text.Length; i++)
         {
-            char characterToDraw = text[i];
-            string fontFamily = _fontFamilies[_random.Next(_fontFamilies.Length)];
-            // Ensure font size is not excessively large for the height
+            char ch = text[i];
+            string familyName = _fontFamilies[_random.Next(_fontFamilies.Length)];
+            FontFamily? family = SystemFonts.Families.FirstOrDefault(f => string.Equals(f.Name, familyName, StringComparison.OrdinalIgnoreCase));
+            FontFamily resolvedFamily = family ?? _defaultFamily;
+
             int fontSize = _random.Next(Math.Max(16, _height / 3), Math.Min(_height * 2 / 3, _height - 10));
-            if (fontSize <= 0) fontSize = 16; // Safety for very small heights
+            if (fontSize <= 0) fontSize = 16;
 
-            FontStyle fontStyle = FontStyle.Regular;
+            FontStyle style = FontStyle.Regular;
             int styleRoll = _random.Next(10);
-            if (styleRoll < 3) fontStyle = FontStyle.Bold;
-            else if (styleRoll < 5) fontStyle = FontStyle.Italic;
-            else if (styleRoll < 6 && (fontStyle & FontStyle.Bold) == 0) fontStyle |= FontStyle.Italic; // BoldItalic less frequent
+            if (styleRoll < 3) style = FontStyle.Bold;
+            else if (styleRoll < 5) style = FontStyle.Italic;
 
-            Font chosenFont = null;
-            SizeF charSize;
-            try
-            {
-                chosenFont = new Font(fontFamily, fontSize, fontStyle);
-                charSize = graphics.MeasureString(characterToDraw.ToString(), chosenFont);
-            }
-            catch (ArgumentException) // Font creation failed (e.g., not found, invalid style combination)
-            {
-                chosenFont?.Dispose();
-                // Fallback font
-                int fallbackFontSize = Math.Max(16, Math.Min(fontSize, _height * 3 / 5));
-                chosenFont = new Font("Arial", fallbackFontSize, FontStyle.Bold); // Arial Bold is widely available
-                charSize = graphics.MeasureString(characterToDraw.ToString(), chosenFont);
-            }
+            Font font = resolvedFamily.CreateFont(fontSize, style);
 
-            using (chosenFont) // Manages dispose for original or fallback font
-            using (Brush brush = new SolidBrush(GetRandomDarkColor()))
-            {
-                // Check if the current character (with its measured size) can fit
-                // Add a small margin (e.g., 5px) at the right edge of the image
-                if (currentX + charSize.Width + 5 > _width)
-                {
-                    break; // Not enough space for this character, so stop.
-                }
+            // Approximate character measurement: width = size * 0.6, height = size
+            float approxWidth = font.Size * 0.6f;
+            float approxHeight = font.Size;
 
-                // Vertical placement
-                float maxCharTopY = Math.Max(5f, _height - charSize.Height - 5f); // Max Y for top of char
-                float charTopY = (float)_random.NextDouble() * (maxCharTopY - 5f) + 5f; // Random Y for top of char
-                if (charTopY < 0) charTopY = 0; // Safety
+            if (currentX + approxWidth + 5 > _width) break;
 
-                // Center of the character for rotation
-                float charCenterX = currentX + charSize.Width / 2;
-                float charCenterY = charTopY + charSize.Height / 2;
+            float maxTop = Math.Max(5f, _height - approxHeight - 5f);
+            float top = (float)(_random.NextDouble() * (maxTop - 5f) + 5f);
 
-                GraphicsState state = graphics.Save();
-                graphics.TranslateTransform(charCenterX, charCenterY);
+            var rndCol = GetRandomDarkRgba();
+            var textColor = Color.FromRgba(rndCol.R, rndCol.G, rndCol.B, rndCol.A);
+            image.Mutate(ctx => ctx.DrawText(ch.ToString(), font, textColor, new PointF(currentX, top)));
 
-                float angle = _random.Next(-20, 21); // Reduced max angle slightly
-                graphics.RotateTransform(angle);
+            currentX += approxWidth * (0.9f + (float)_random.NextDouble() * 0.25f);
+            currentX += _random.Next(1, Math.Max(2, _height / 20));
 
-                // Draw string centered at the (now transformed) origin (0,0)
-                // Add slight vertical jitter relative to character's own height to make it less uniform
-                float verticalJitter = (float)(_random.NextDouble() * 0.2 - 0.1) * charSize.Height; // +/- 10% of char height
-                graphics.DrawString(characterToDraw.ToString(), chosenFont, brush, -charSize.Width / 2, -charSize.Height / 2 + verticalJitter);
-
-                graphics.Restore(state);
-
-                // Advance currentX for the next character
-                currentX += charSize.Width * (0.9f + (float)_random.NextDouble() * 0.25f); // Range 0.9 to 1.15
-                currentX += _random.Next(1, Math.Max(2, _height / 20)); // Add a small absolute random gap
-
-                drawnTextBuilder.Append(characterToDraw);
-            }
-
-            if (currentX >= _width - 5) // Check if we've essentially run out of horizontal space
-            {
-                break;
-            }
+            drawn.Append(ch);
+            if (currentX >= _width - 5) break;
         }
-        return drawnTextBuilder.ToString();
+
+        return drawn.ToString();
     }
 
-    private void AddDistortionAndNoise(Graphics graphics, Bitmap bitmap)
+    private void AddDistortionAndNoise(Image<Rgba32> image)
     {
-        // Add curved lines (distortions)
+        // Draw bezier-like curves using shapes
         int numDistortionLines = _random.Next(2, 5);
         for (int i = 0; i < numDistortionLines; i++)
         {
-            Point p1 = new(_random.Next(_width), _random.Next(_height));
-            Point p2 = new(_random.Next(_width), _random.Next(_height));
-            Point ctrl1 = new(_random.Next(_width), _random.Next(_height));
-            Point ctrl2 = new(_random.Next(_width), _random.Next(_height));
-            int alpha = _random.Next(70, 130);
-            using Pen pen = new(Color.FromArgb(alpha, GetRandomDarkColor(150)), Math.Max(1, _height / 35));
-            try { graphics.DrawBezier(pen, p1, ctrl1, ctrl2, p2); }
-            catch { /* GDI+ can sometimes throw generic errors with complex paths */ }
+            var p1 = new PointF(_random.Next(_width), _random.Next(_height));
+            var p2 = new PointF(_random.Next(_width), _random.Next(_height));
+            var ctrl1 = new PointF(_random.Next(_width), _random.Next(_height));
+            var ctrl2 = new PointF(_random.Next(_width), _random.Next(_height));
+            // Draw a bezier by sampling points and drawing small filled ellipses along the curve
+            int steps = 24;
+            for (int s = 0; s <= steps; s++)
+            {
+                float t = s / (float)steps;
+                float u = 1 - t;
+                float bx = u * u * u * p1.X + 3 * u * u * t * ctrl1.X + 3 * u * t * t * ctrl2.X + t * t * t * p2.X;
+                float by = u * u * u * p1.Y + 3 * u * u * t * ctrl1.Y + 3 * u * t * t * ctrl2.Y + t * t * t * p2.Y;
+                var c = GetRandomDarkRgba(150);
+                // Draw a small filled rectangle as a dot
+                float size = Math.Max(1, _height / 120);
+                image.Mutate(ctx => ctx.Fill(Color.FromRgba(c.R, c.G, c.B, c.A), new SixLabors.ImageSharp.Drawing.RectangularPolygon(bx - size / 2, by - size / 2, size, size)));
+            }
         }
 
-        // Add straight noise lines
-        int numNoiseLines = _random.Next(_width / 20, _width / 10); // More lines based on width
+        // Straight noise lines
+        int numNoiseLines = _random.Next(_width / 20, Math.Max(1, _width / 10));
         for (int i = 0; i < numNoiseLines; i++)
         {
-            int x1 = _random.Next(_width);
-            int y1 = _random.Next(_height);
-            int x2 = _random.Next(_width);
-            int y2 = _random.Next(_height);
-            int alpha = _random.Next(40, 100);
-            using Pen pen = new(Color.FromArgb(alpha, GetRandomGrayColorValue(180), GetRandomGrayColorValue(180), GetRandomGrayColorValue(180)), 1);
-            try { graphics.DrawLine(pen, x1, y1, x2, y2); } catch { }
+            var p1 = new PointF(_random.Next(_width), _random.Next(_height));
+            var p2 = new PointF(_random.Next(_width), _random.Next(_height));
+            // Draw line by sampling points and filling small circles
+            int segments = 12;
+            for (int s = 0; s <= segments; s++)
+            {
+                float t = s / (float)segments;
+                float lx = p1.X + (p2.X - p1.X) * t;
+                float ly = p1.Y + (p2.Y - p1.Y) * t;
+                var c = GetRandomGrayRgba(180);
+                image.Mutate(ctx => ctx.Fill(Color.FromRgba(c.R, c.G, c.B, c.A), new SixLabors.ImageSharp.Drawing.RectangularPolygon(lx - 0.5f, ly - 0.5f, 1, 1)));
+            }
         }
 
-        // Add pixel noise ("salt and pepper")
-        int numNoiseDots = (int)(_width * _height * (_random.NextDouble() * 0.005 + 0.005)); // 0.5% to 1% pixel noise
+        // Pixel noise
+        int numNoiseDots = (int)(_width * _height * (_random.NextDouble() * 0.005 + 0.005));
         for (int i = 0; i < numNoiseDots; i++)
         {
             int x = _random.Next(_width);
             int y = _random.Next(_height);
-            int alpha = _random.Next(70, 180);
-            try { bitmap.SetPixel(x, y, Color.FromArgb(alpha, GetRandomGrayColorValue(200), GetRandomGrayColorValue(200), GetRandomGrayColorValue(200))); } catch { }
+            var col = GetRandomGrayRgba(200);
+            image[x, y] = col;
         }
     }
 
-    private Color GetRandomDarkColor(int maxComponentValue = 120)
+    private Rgba32 GetRandomDarkRgba(int max = 120)
     {
-        return Color.FromArgb(
-            _random.Next(0, maxComponentValue),
-            _random.Next(0, maxComponentValue),
-            _random.Next(0, maxComponentValue)
-        );
+        return new Rgba32((byte)_random.Next(0, max), (byte)_random.Next(0, max), (byte)_random.Next(0, max));
     }
 
-    private int GetRandomGrayColorValue(int max = 255)
+    private Rgba32 GetRandomGrayRgba(int max = 255)
     {
-        return _random.Next(0, max + 1);
+        byte v = (byte)_random.Next(0, max + 1);
+        return new Rgba32(v, v, v);
     }
 }
 

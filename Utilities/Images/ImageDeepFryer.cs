@@ -1,7 +1,9 @@
 ﻿using System;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.Processing;
 
 namespace Morpheus.Utilities.Images;
 
@@ -22,94 +24,74 @@ public static class ImageDeepFryer
             throw new ArgumentNullException(nameof(imageData));
         }
 
-        Bitmap originalBitmap;
+        IImageFormat? originalFormat = null;
         try
         {
             using MemoryStream ms = new(imageData);
-            originalBitmap = new Bitmap(ms);
-        }
-        catch (Exception ex)
-        {
-            // Consider specific exception handling or re-throwing
-            throw new ArgumentException("Invalid image data.", nameof(imageData), ex);
-        }
+            // Detect format first (API changed between ImageSharp versions)
+            ms.Position = 0;
+            originalFormat = Image.DetectFormat(ms);
+            ms.Position = 0;
+            using Image<Rgba32> input = Image.Load<Rgba32>(ms);
 
-        using (originalBitmap)
-        {
-            Bitmap friedBitmap = new(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+            int width = input.Width;
+            int height = input.Height;
+            using Image<Rgba32> output = input.Clone();
+
             Random random = new();
 
-            for (int y = 0; y < originalBitmap.Height; y++)
+            for (int y = 0; y < height; y++)
             {
-                for (int x = 0; x < originalBitmap.Width; x++)
+                for (int x = 0; x < width; x++)
                 {
-                    Color originalColor = originalBitmap.GetPixel(x, y);
+                    Rgba32 orig = input[x, y];
 
-                    // 1. Apply Contrast
-                    double rC = (originalColor.R / 255.0 - 0.5) * contrastFactor + 0.5;
-                    double gC = (originalColor.G / 255.0 - 0.5) * contrastFactor + 0.5;
-                    double bC = (originalColor.B / 255.0 - 0.5) * contrastFactor + 0.5;
+                    // 1. Contrast
+                    double rC = (orig.R / 255.0 - 0.5) * contrastFactor + 0.5;
+                    double gC = (orig.G / 255.0 - 0.5) * contrastFactor + 0.5;
+                    double bC = (orig.B / 255.0 - 0.5) * contrastFactor + 0.5;
 
-                    // Convert back to 0-255 range and clamp
                     float rContrast = (float)(rC * 255.0);
                     float gContrast = (float)(gC * 255.0);
                     float bContrast = (float)(bC * 255.0);
 
-                    // 2. Apply Saturation (simple method)
-                    float L = 0.299f * rContrast + 0.587f * gContrast + 0.114f * bContrast; // Luminance
+                    // 2. Saturation (approx)
+                    float L = 0.299f * rContrast + 0.587f * gContrast + 0.114f * bContrast;
                     float rSat = L + saturationFactor * (rContrast - L);
                     float gSat = L + saturationFactor * (gContrast - L);
                     float bSat = L + saturationFactor * (bContrast - L);
 
-                    // 3. Apply Noise
+                    // 3. Noise
                     int rN = ClampToByte(rSat + random.Next(-noiseAmount, noiseAmount + 1));
                     int gN = ClampToByte(gSat + random.Next(-noiseAmount, noiseAmount + 1));
                     int bN = ClampToByte(bSat + random.Next(-noiseAmount, noiseAmount + 1));
 
-                    friedBitmap.SetPixel(x, y, Color.FromArgb(originalColor.A, rN, gN, bN));
+                    output[x, y] = new Rgba32((byte)rN, (byte)gN, (byte)bN, orig.A);
                 }
             }
 
             using MemoryStream outputMs = new();
-            // Try to preserve original format, with fallbacks
-            ImageFormat outputFormat = originalBitmap.RawFormat;
-            if (outputFormat.Guid.Equals(ImageFormat.MemoryBmp.Guid))
-            {
-                // MemoryBmp is not a savable format, default to Png or Jpeg
-                outputFormat = ImageFormat.Png;
-            }
-            else if (IsPixelFormatIndexed(originalBitmap.PixelFormat) && !outputFormat.Equals(ImageFormat.Gif))
-            {
-                // If original was indexed (like some PNGs) but not GIF, PNG is a good choice
-                // GIF manipulation often better saved as PNG if frames aren't handled
-                outputFormat = ImageFormat.Png;
-            }
-            else if (!outputFormat.Equals(ImageFormat.Jpeg) && !outputFormat.Equals(ImageFormat.Png) && !outputFormat.Equals(ImageFormat.Bmp) && !outputFormat.Equals(ImageFormat.Gif) && !outputFormat.Equals(ImageFormat.Tiff))
-            {
-                // If it's an unknown or less common format, default to Jpeg for deep fry (lossy is often fine)
-                outputFormat = ImageFormat.Jpeg;
-            }
 
-
-            // For deep-fried effect, JPEG is often acceptable due to its lossy nature.
-            // If transparency is critical, PNG would be better.
-            // Here, we try to use original or a sensible default like JPEG.
-            if (outputFormat.Equals(ImageFormat.Gif))
+            // Prefer to save as PNG for safety; if original is JPEG and doesn't have alpha, save as JPEG
+            if (originalFormat != null && string.Equals(originalFormat.Name, "JPEG", StringComparison.OrdinalIgnoreCase))
             {
-                // If it was a GIF, saving as PNG is usually better after pixel manipulation unless handling frames.
-                friedBitmap.Save(outputMs, ImageFormat.Png);
+                output.SaveAsJpeg(outputMs);
             }
-            else if (outputFormat.Equals(ImageFormat.Jpeg))
+            else if (originalFormat != null && string.Equals(originalFormat.Name, "GIF", StringComparison.OrdinalIgnoreCase))
             {
-                friedBitmap.Save(outputMs, ImageFormat.Jpeg);
+                // animated GIFs are not handled; save as PNG
+                output.SaveAsPng(outputMs);
             }
             else
             {
-                // For most other cases (PNG, BMP, TIFF that wasn't MemoryBMP)
-                // or if we defaulted, PNG is a good versatile choice.
-                friedBitmap.Save(outputMs, outputFormat);
+                output.SaveAsPng(outputMs);
             }
+
             return outputMs.ToArray();
+        }
+        catch (Exception ex)
+        {
+            throw new ArgumentException("Invalid image data or processing failed.", nameof(imageData), ex);
         }
     }
 
@@ -126,14 +108,7 @@ public static class ImageDeepFryer
         return (byte)val;
     }
 
-    private static bool IsPixelFormatIndexed(PixelFormat pixFormat)
-    {
-        // These are the indexed pixel formats
-        return pixFormat == PixelFormat.Format1bppIndexed ||
-               pixFormat == PixelFormat.Format4bppIndexed ||
-               pixFormat == PixelFormat.Format8bppIndexed ||
-               (pixFormat & PixelFormat.Indexed) == PixelFormat.Indexed; // General check
-    }
+    // ImageSharp implementation does not need PixelFormat helpers
 }
 
 /*
