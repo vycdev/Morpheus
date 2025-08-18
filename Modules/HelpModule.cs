@@ -20,6 +20,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     private readonly DB dbContext;
 
     private const int HelpPageSize = 10;
+    private const int CommandDescriptionMaxLength = 120;
 
     SelectMenuBuilder? helpMenu = null;
     readonly Dictionary<string, Embed> helpModules = [];
@@ -85,6 +86,10 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
                     : "No aliases available.";
 
                 string commandDescription = cmd.Summary ?? "No description available.";
+                if (commandDescription.Length > CommandDescriptionMaxLength)
+                {
+                    commandDescription = commandDescription.Substring(0, CommandDescriptionMaxLength).TrimEnd() + "…";
+                }
 
                 string commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
                     ? $"Usage: `{commandPrefix}{cmd.Aliases[0]} {string.Join(" ", cmd.Parameters.Select(p => $"[{p.Name}{(p.IsOptional ? "?" : "")}{(!string.IsNullOrEmpty(p.DefaultValue?.ToString()) ? " = " + p.DefaultValue.ToString() : "")}]"))}`"
