@@ -349,4 +349,168 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
 
         await ReplyAsync("Quote removal submitted for approval.");
     }
+
+    [Name("Upvote Quote")]
+    [Summary("Upvotes a quote by replying to the bot message (adds or updates your +5 score).")]
+    [Command("upvote")]
+    [Alias("uv")]
+    [RateLimit(5, 10)]
+    [RequireDbGuild]
+    public async Task Upvote()
+    {
+        if (Context.Message.ReferencedMessage == null)
+        {
+            await ReplyAsync("Reply to the bot's approval message to upvote.");
+            return;
+        }
+
+        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+        {
+            await ReplyAsync("Couldn't find the referenced message.");
+            return;
+        }
+
+        if (refMsg.Author.Id != Context.Client.CurrentUser.Id)
+        {
+            await ReplyAsync("You must reply to a message from the bot to vote.");
+            return;
+        }
+
+        var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
+        if (approval == null)
+        {
+            await ReplyAsync("No quote associated with that message.");
+            return;
+        }
+
+        var userDb = await usersService.TryGetCreateUser(Context.User);
+        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == approval.QuoteId && s.UserId == userDb.Id);
+        if (existing == null)
+        {
+            var score = new QuoteScore { QuoteId = approval.QuoteId, UserId = userDb.Id, Score = 5, InsertDate = DateTime.UtcNow };
+            await db.QuoteScores.AddAsync(score);
+        }
+        else
+        {
+            existing.Score = 5;
+            db.QuoteScores.Update(existing);
+        }
+
+        await db.SaveChangesAsync();
+        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == approval.QuoteId).SumAsync(s => (int?)s.Score) ?? 0;
+        await ReplyAsync($"Upvoted quote #{approval.QuoteId} (+5). Current score: {totalScore}.");
+    }
+
+    [Name("Downvote Quote")]
+    [Summary("Downvotes a quote by replying to the bot message (adds or updates your -5 score).")]
+    [Command("downvote")]
+    [Alias("dv")]
+    [RateLimit(5, 10)]
+    [RequireDbGuild]
+    public async Task Downvote()
+    {
+        if (Context.Message.ReferencedMessage == null)
+        {
+            await ReplyAsync("Reply to the bot's approval message to downvote.");
+            return;
+        }
+
+        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+        {
+            await ReplyAsync("Couldn't find the referenced message.");
+            return;
+        }
+
+        if (refMsg.Author.Id != Context.Client.CurrentUser.Id)
+        {
+            await ReplyAsync("You must reply to a message from the bot to vote.");
+            return;
+        }
+
+        var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
+        if (approval == null)
+        {
+            await ReplyAsync("No quote associated with that message.");
+            return;
+        }
+
+        var userDb = await usersService.TryGetCreateUser(Context.User);
+        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == approval.QuoteId && s.UserId == userDb.Id);
+        if (existing == null)
+        {
+            var score = new QuoteScore { QuoteId = approval.QuoteId, UserId = userDb.Id, Score = -5, InsertDate = DateTime.UtcNow };
+            await db.QuoteScores.AddAsync(score);
+        }
+        else
+        {
+            existing.Score = -5;
+            db.QuoteScores.Update(existing);
+        }
+
+        await db.SaveChangesAsync();
+        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == approval.QuoteId).SumAsync(s => (int?)s.Score) ?? 0;
+        await ReplyAsync($"Downvoted quote #{approval.QuoteId} (-5). Current score: {totalScore}.");
+    }
+
+    [Name("Rate Quote")]
+    [Summary("Rates a quote 1-10 by replying to the bot message; 1 => -5, 10 => +5.")]
+    [Command("rate")]
+    [RateLimit(5, 10)]
+    [RequireDbGuild]
+    public async Task Rate(int rating)
+    {
+        if (rating < 1 || rating > 10)
+        {
+            await ReplyAsync("Rating must be between 1 and 10.");
+            return;
+        }
+
+        if (Context.Message.ReferencedMessage == null)
+        {
+            await ReplyAsync("Reply to the bot's approval message to rate.");
+            return;
+        }
+
+        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+        {
+            await ReplyAsync("Couldn't find the referenced message.");
+            return;
+        }
+
+        if (refMsg.Author.Id != Context.Client.CurrentUser.Id)
+        {
+            await ReplyAsync("You must reply to a message from the bot to rate.");
+            return;
+        }
+
+        var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
+        if (approval == null)
+        {
+            await ReplyAsync("No quote associated with that message.");
+            return;
+        }
+
+        // Map 1..10 -> -5..+5 linearly
+        double mapped = -5 + (rating - 1) * (10.0 / 9.0);
+        var mapInt = (int)Math.Round(mapped);
+        if (mapInt < -5) mapInt = -5;
+        if (mapInt > 5) mapInt = 5;
+
+        var userDb = await usersService.TryGetCreateUser(Context.User);
+        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == approval.QuoteId && s.UserId == userDb.Id);
+        if (existing == null)
+        {
+            var score = new QuoteScore { QuoteId = approval.QuoteId, UserId = userDb.Id, Score = mapInt, InsertDate = DateTime.UtcNow };
+            await db.QuoteScores.AddAsync(score);
+        }
+        else
+        {
+            existing.Score = mapInt;
+            db.QuoteScores.Update(existing);
+        }
+
+        await db.SaveChangesAsync();
+        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == approval.QuoteId).SumAsync(s => (int?)s.Score) ?? 0;
+        await ReplyAsync($"Rated quote #{approval.QuoteId} as {rating} ({(mapInt >= 0 ? "+" : "")}{mapInt}). Current score: {totalScore}.");
+    }
 }
