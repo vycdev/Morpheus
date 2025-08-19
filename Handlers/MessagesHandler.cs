@@ -120,6 +120,45 @@ public class MessagesHandler
             if (approval == null) return; // not an approval message
             if (approval.Approved) return; // already finalized
 
+            // Enforce an approval window: requests older than 5 days expire and cannot be approved.
+            var expiry = approval.InsertDate.AddDays(5);
+            if (DateTime.UtcNow > expiry)
+            {
+                try
+                {
+                    // Mark the approval as expired in the message and remove reactions so it can't be acted on anymore.
+                    var expiredMsg = await cache.GetOrDownloadAsync();
+                    if (expiredMsg != null)
+                    {
+                        try
+                        {
+                            var orig = expiredMsg.Content ?? string.Empty;
+                            var lines = orig.Split('\n').Where(l => !l.TrimStart().StartsWith("Approvals:", StringComparison.OrdinalIgnoreCase)).ToList();
+                            var body = string.Join('\n', lines);
+                            var finalContent = $"⏳ **APPROVAL EXPIRED — Quote #{approval.QuoteId}**\n\n{body}\nThis approval request expired after 5 days and can no longer be approved.";
+                            await expiredMsg.ModifyAsync(m => m.Content = finalContent);
+                            try { await expiredMsg.RemoveAllReactionsAsync(); }
+                            catch (Exception rex)
+                            {
+                                logsService.Log($"Failed to remove reactions from expired approval message: {rex}", LogSeverity.Warning);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logsService.Log($"Error finalizing expired approval message: {ex}", LogSeverity.Error);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logsService.Log($"Error while handling expired approval: {ex}", LogSeverity.Error);
+                }
+
+                // Persist any changes and stop processing this reaction change.
+                await db.SaveChangesAsync();
+                return;
+            }
+
             // Recompute score from message reactions
             var cachedMessage = await cache.GetOrDownloadAsync();
             var newScore = 0;
