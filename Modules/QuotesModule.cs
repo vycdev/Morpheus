@@ -6,6 +6,8 @@ using Morpheus.Extensions;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using Morpheus.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Discord.WebSocket;
 using Morpheus.Services;
@@ -25,6 +27,8 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         this.usersService = usersService;
         this.logsService = logsService;
     }
+
+    // URL detection moved to Morpheus.Utilities.ContentUtils
 
     [Name("List Quotes")]
     [Summary("Lists quotes for the current guild (paginated).")]
@@ -231,6 +235,26 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         {
             forceFlag = true;
             text = text.Substring("force ".Length).TrimStart();
+        }
+
+        // Prevent quotes that include attachments, embeds, or links
+        if (Context.Message.Attachments != null && Context.Message.Attachments.Count > 0)
+        {
+            await ReplyAsync("Quotes cannot include attachments or images. Please provide only text.");
+            return;
+        }
+
+        if (Context.Message.Embeds != null && Context.Message.Embeds.Any())
+        {
+            await ReplyAsync("Quotes cannot include embeds. Please provide only text.");
+            return;
+        }
+
+        // reject obvious links using a more robust check (scheme urls, markdown links, bare domains, IPs)
+        if (!string.IsNullOrWhiteSpace(text) && Utils.ContainsUrl(text))
+        {
+            await ReplyAsync("Quotes cannot contain links or URLs. Please remove any links and try again.");
+            return;
         }
 
         // Ensure user exists in DB
