@@ -1,4 +1,5 @@
-﻿using Discord.Commands;
+﻿using Discord;
+using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
 using Morpheus.Database;
@@ -63,7 +64,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraph")]
     [Alias("actgraph", "ag")]
     [RateLimit(2, 60)]
-    public async Task ActivityGraphAsync(int days = 7)
+    public async Task ActivityGraphAsync(int days = 7, params IUser[] mentionedUsers)
     {
         if (!ValidateDays(days)) return;
 
@@ -76,7 +77,11 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         DateTime start = GetStartDate(days);
 
-        var perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, days, guildId: guild.Id, global: false, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
@@ -92,7 +97,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraphcumulative")]
     [Alias("actgraphcum", "agcum")]
     [RateLimit(2, 60)]
-    public async Task ActivityGraphCumulativeAsync(int days = 7)
+    public async Task ActivityGraphCumulativeAsync(int days = 7, params IUser[] mentionedUsers)
     {
         if (!ValidateDays(days)) return;
 
@@ -105,7 +110,11 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         DateTime start = GetStartDate(days);
 
-        var perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, days, guildId: guild.Id, global: false, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
@@ -121,13 +130,17 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("globalactivitygraph")]
     [Alias("globalactgraph", "gact")]
     [RateLimit(2, 60)]
-    public async Task GlobalActivityGraphAsync(int days = 7)
+    public async Task GlobalActivityGraphAsync(int days = 7, params IUser[] mentionedUsers)
     {
         if (!ValidateDays(days)) return;
 
         DateTime start = GetStartDate(days);
 
-        var perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, days, guildId: null, global: true, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
@@ -143,13 +156,17 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("globalactivitygraphcumulative")]
     [Alias("globalactgraphcum", "gactcum")]
     [RateLimit(2, 60)]
-    public async Task GlobalActivityGraphCumulativeAsync(int days = 7)
+    public async Task GlobalActivityGraphCumulativeAsync(int days = 7, params IUser[] mentionedUsers)
     {
         if (!ValidateDays(days)) return;
 
         DateTime start = GetStartDate(days);
 
-        var perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, days, guildId: null, global: true, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
@@ -484,7 +501,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraph7day")]
     [Alias("actgraph7", "ag7")]
     [RateLimit(2, 60)]
-    public async Task ActivityGraph7DayAsync(int days = 7)
+    public async Task ActivityGraph7DayAsync(int days = 7, params IUser[] mentionedUsers)
     {
         if (!ValidateDays(days)) return;
 
@@ -497,7 +514,11 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         DateTime start = GetStartDate(days);
 
-        var perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, days, guildId: guild.Id, global: false, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
@@ -514,13 +535,17 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("globalactivitygraph7day")]
     [Alias("globalactgraph7", "gact7")]
     [RateLimit(2, 60)]
-    public async Task GlobalActivityGraph7DayAsync(int days = 7)
+    public async Task GlobalActivityGraph7DayAsync(int days = 7, params IUser[] mentionedUsers)
     {
         if (!ValidateDays(days)) return;
 
         DateTime start = GetStartDate(days);
 
-        var perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, days, guildId: null, global: true, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
@@ -548,5 +573,41 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         using var ms = new MemoryStream(png);
         await Context.Channel.SendFileAsync(ms, filename, message);
+    }
+
+    // Build the per-user aggregate list based on explicitly mentioned Discord users.
+    // This returns the same anonymous-typed shape as GetTopUsersByWindow: { UserId, Total, ByDay }
+    private List<dynamic> GetTopUsersByWindowForMentions(DateTime start, int days, int? guildId, bool global, IUser[] mentionedUsers)
+    {
+        var list = new List<dynamic>();
+
+        foreach (var mu in mentionedUsers)
+        {
+            if (mu == null) continue;
+            // Find DB user by DiscordId
+            var dbUser = dbContext.Users.FirstOrDefault(u => u.DiscordId == mu.Id);
+            if (dbUser == null) continue;
+
+            int userId = dbUser.Id;
+
+            var activityQuery = dbContext.UserActivity.AsQueryable().Where(ua => ua.UserId == userId);
+            if (!global && guildId.HasValue)
+                activityQuery = activityQuery.Where(ua => ua.GuildId == guildId.Value);
+
+            var byDayList = activityQuery
+                .Where(ua => ua.InsertDate >= start)
+                .AsEnumerable()
+                .GroupBy(ua => ua.InsertDate.Date)
+                .Select(g => new { Day = g.Key, Xp = g.Sum(x => x.XpGained) })
+                .ToList();
+
+            var byDayDict = byDayList.ToDictionary(x => x.Day, x => (int)x.Xp);
+            int total = byDayList.Sum(x => (int)x.Xp);
+
+            // Ensure we include users even if they have no activity in the window
+            list.Add(new { UserId = userId, Total = total, ByDay = (IDictionary<DateTime, int>)byDayDict });
+        }
+
+        return list;
     }
 }
