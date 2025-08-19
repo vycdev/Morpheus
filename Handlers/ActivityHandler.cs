@@ -6,6 +6,7 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Services;
 using Morpheus.Utilities;
+using Morpheus.Utilities.Lists;
 using System;
 using System.Collections.Generic;
 using System.IO.Hashing;
@@ -24,6 +25,7 @@ public class ActivityHandler
     private readonly GuildService guildService;
     private readonly UsersService usersService;
     private readonly DB dbContext;
+    private readonly RandomBag happyEmojisBag = new(EmojiList.EmojisHappy);
     private readonly bool started = false;
 
     public ActivityHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService, DB db)
@@ -119,6 +121,7 @@ public class ActivityHandler
             .FirstOrDefault(ul => ul.UserId == user.Id && ul.GuildId == guild.Id);
 
         bool newUserLevel = false;
+        var postSaveActions = new List<Func<Task>>();
 
         if (userLevel == null)
             newUserLevel = true;
@@ -136,13 +139,93 @@ public class ActivityHandler
         if (userLevel.Level != newLevel)
         {
             userLevel.Level = newLevel;
-            // TODO: Level up message / quote 
+
+            // Prepare level up message and optional quote to be sent after successful save
+            int levelToAnnounce = newLevel;
+            postSaveActions.Add(async () =>
+            {
+                try
+                {
+                    // Discord guild and channel context
+                    var discordGuild = guildChannel.Guild;
+
+                    // LEVEL MESSAGE
+                    if (guild.LevelUpMessages)
+                    {
+                        // Choose target channel: configured channel id or current channel
+                        SocketTextChannel? target = null;
+                        if (guild.LevelUpMessagesChannelId != 0)
+                        {
+                            target = discordGuild.GetTextChannel(guild.LevelUpMessagesChannelId);
+                        }
+
+                        if (target == null)
+                        {
+                            // fallback to current channel if it's a text channel
+                            target = message.Channel as SocketTextChannel;
+                        }
+
+                        if (target != null)
+                        {
+                            await target.SendMessageAsync($"{message.Author.Mention} leveled up to level {levelToAnnounce}! {happyEmojisBag.Random()}");
+                        }
+                    }
+
+                    // QUOTE MESSAGE
+                    if (guild.LevelUpQuotes)
+                    {
+                        // build quote query: approved && !removed
+                        List<Quote> quotes;
+                        if (guild.UseGlobalQuotes)
+                        {
+                            quotes = dbContext.Quotes.Where(q => q.Approved && !q.Removed).ToList();
+                        }
+                        else
+                        {
+                            quotes = dbContext.Quotes.Where(q => q.Approved && !q.Removed && q.GuildId == guild.Id).ToList();
+                        }
+
+                        if (quotes != null && quotes.Count > 0)
+                        {
+                            var random = new Random();
+                            var pick = quotes[random.Next(quotes.Count)];
+                            string content = pick.Content ?? string.Empty;
+
+                            SocketTextChannel? quoteTarget = null;
+                            if (guild.LevelUpQuotesChannelId != 0)
+                            {
+                                quoteTarget = discordGuild.GetTextChannel(guild.LevelUpQuotesChannelId);
+                            }
+                            if (quoteTarget == null)
+                            {
+                                quoteTarget = message.Channel as SocketTextChannel;
+                            }
+
+                            if (quoteTarget != null)
+                            {
+                                // send raw content only
+                                await quoteTarget.SendMessageAsync(content);
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // don't let messaging errors bubble up and break activity handling
+                }
+            });
         }
 
         if (newUserLevel)
             dbContext.Add(userLevel);
 
         await dbContext.SaveChangesAsync();
+
+        // Execute any post-save actions (send level up messages and quotes)
+        foreach (var action in postSaveActions)
+        {
+            _ = Task.Run(action);
+        }
     }
 
     public static int CalculateLevel(long xp)
