@@ -1,6 +1,10 @@
 # Morpheus
 [![Join the chat at https://discord.gg/nU63sFMcnX](https://img.shields.io/discord/1165553796223602708?style=flat-square&logo=discord&logoColor=white&label=Discord&color=%237289DA&link=https%3A%2F%2Fdiscord.gg%2FnU63sFMcnX)](https://discord.gg/nU63sFMcnX) 
 
+Morpheus is a feature-rich Discord bot written in C# using Discord.NET and Entity Framework Core. It provides moderation helpers, a quotes subsystem with approval workflows, activity tracking, interactions (buttons/menus), and utility commands — all driven by a PostgreSQL database.
+
+Key features include: quote submission & approval, per-quote voting/rating, guild-configurable approval channels, user activity jobs, and extensible command modules.
+
 ## Commands
 
 A full, auto-generated list of bot commands and metadata is available in the repository: [COMMANDS.md](./COMMANDS.md).
