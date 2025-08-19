@@ -487,6 +487,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         else
         {
             existing.Score = 5;
+            existing.UpdateDate = DateTime.UtcNow;
         }
 
         await db.SaveChangesAsync();
@@ -554,6 +555,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         else
         {
             existing.Score = -5;
+            existing.UpdateDate = DateTime.UtcNow;
         }
 
         await db.SaveChangesAsync();
@@ -632,10 +634,119 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         else
         {
             existing.Score = mapInt;
+            existing.UpdateDate = DateTime.UtcNow;
         }
 
         await db.SaveChangesAsync();
         var totalScore = await db.QuoteScores.Where(s => s.QuoteId == quote.Id).SumAsync(s => (int?)s.Score) ?? 0;
         await ReplyAsync($"Rated quote #{quote.Id} as {rating} ({(mapInt >= 0 ? "+" : "")}{mapInt}). Current score: {totalScore}.");
+    }
+
+    private static DateTime GetPeriodStart(string period)
+    {
+        var now = DateTime.UtcNow;
+        return period.ToLowerInvariant() switch
+        {
+            "day" => now.Date,
+            "week" => now.Date.AddDays(-(int)now.DayOfWeek),
+            // construct month start as UTC-kind to avoid mixing unspecified kinds when sent to Postgres
+            "month" => new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc),
+            _ => now.Date
+        };
+    }
+
+    private static (DateTime since, DateTime until) GetPreviousPeriodBounds(string period)
+    {
+        var now = DateTime.UtcNow;
+        var currentStart = period.ToLowerInvariant() switch
+        {
+            "day" => now.Date,
+            "week" => now.Date.AddDays(-(int)now.DayOfWeek),
+            "month" => new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc),
+            _ => now.Date
+        };
+
+        return period.ToLowerInvariant() switch
+        {
+            "day" => (currentStart.AddDays(-1), currentStart),
+            "week" => (currentStart.AddDays(-7), currentStart),
+            "month" => (currentStart.AddMonths(-1), currentStart),
+            _ => (currentStart.AddDays(-1), currentStart)
+        };
+    }
+
+    private async Task<(Quote? quote, int total)> GetTopQuoteSinceAsync(DateTime since, DateTime until, bool guildOnly)
+    {
+        // Use UpdateDate if present, otherwise InsertDate. Perform a DB-side join to avoid loading IDs in memory.
+        var baseScores = db.QuoteScores.AsNoTracking().Where(s => (s.UpdateDate ?? s.InsertDate) >= since && (s.UpdateDate ?? s.InsertDate) < until);
+
+        var joined = baseScores.Join(
+            db.Quotes.AsNoTracking().Where(q => !q.Removed),
+            s => s.QuoteId,
+            q => q.Id,
+            (s, q) => new { Score = s, Quote = q }
+        );
+
+        if (guildOnly)
+        {
+            var guildDb = Context.DbGuild!;
+            joined = joined.Where(x => x.Quote.GuildId == guildDb.Id);
+        }
+
+        var grouped = await joined
+            .GroupBy(x => x.Quote.Id)
+            .Select(g => new { QuoteId = g.Key, Score = g.Sum(x => x.Score.Score) })
+            .OrderByDescending(x => x.Score)
+            .FirstOrDefaultAsync();
+
+        if (grouped == null) return (null, 0);
+
+        var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == grouped.QuoteId && !q.Removed);
+        return (quote, grouped.Score);
+    }
+
+    [Command("quoteoftheday")]
+    [Alias("qotd")]
+    [Summary("Shows the quote with the highest total score in the last day. Use true to restrict to the current guild.")]
+    public async Task QuoteOfTheDay(bool guildOnly = false)
+    {
+        var (since, until) = GetPreviousPeriodBounds("day");
+        var (quote, total) = await GetTopQuoteSinceAsync(since, until, guildOnly);
+        if (quote == null)
+        {
+            await ReplyAsync("No quote found for the period.");
+            return;
+        }
+        await ReplyAsync($"Quote of the Day #{quote.Id} (Score: {total})\n{quote.Content}");
+    }
+
+    [Command("quoteoftheweek")]
+    [Alias("qotw")]
+    [Summary("Shows the quote with the highest total score in the last week. Use true to restrict to the current guild.")]
+    public async Task QuoteOfTheWeek(bool guildOnly = false)
+    {
+        var (since, until) = GetPreviousPeriodBounds("week");
+        var (quote, total) = await GetTopQuoteSinceAsync(since, until, guildOnly);
+        if (quote == null)
+        {
+            await ReplyAsync("No quote found for the period.");
+            return;
+        }
+        await ReplyAsync($"Quote of the Week #{quote.Id} (Score: {total})\n{quote.Content}");
+    }
+
+    [Command("quoteofthemonth")]
+    [Alias("qotm")]
+    [Summary("Shows the quote with the highest total score in the last month. Use true to restrict to the current guild.")]
+    public async Task QuoteOfTheMonth(bool guildOnly = false)
+    {
+        var (since, until) = GetPreviousPeriodBounds("month");
+        var (quote, total) = await GetTopQuoteSinceAsync(since, until, guildOnly);
+        if (quote == null)
+        {
+            await ReplyAsync("No quote found for the period.");
+            return;
+        }
+        await ReplyAsync($"Quote of the Month #{quote.Id} (Score: {total})\n{quote.Content}");
     }
 }
