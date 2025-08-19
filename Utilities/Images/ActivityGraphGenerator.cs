@@ -185,9 +185,9 @@ public static class ActivityGraphGenerator
                 return SystemFonts.Families.First().CreateFont(size);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // TODO: if desired, caller can log this via LogsService when available
+            Console.WriteLine($"Failed to load system fonts, falling back to default. Error: {ex}");
         }
 
         // Try common Linux font paths
@@ -209,9 +209,9 @@ public static class ActivityGraphGenerator
                     return family.CreateFont(size);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // TODO: consider logging via LogsService if available
+                Console.WriteLine($"Failed to load font from {path}. Error: {ex}");
             }
         }
 
@@ -230,9 +230,9 @@ public static class ActivityGraphGenerator
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // TODO: consider logging via LogsService if available
+            Console.WriteLine($"Failed to load font. Error: {ex}");
         }
 
         // If nothing found, provide a helpful exception so caller can log and skip rendering

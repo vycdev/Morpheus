@@ -106,7 +106,7 @@ public static void Main(string[] args)
 
         // Example with logo (more advanced, QRCoder supports this too)
         // This requires a Bitmap for the logo.
-        // Note: QRCoder's built-in logo support renders it to a Bitmap first, then you'd convert to bytes.
+        // QRCoder's built-in logo support renders it to a Bitmap first, then you'd convert to bytes.
         // PngByteQRCode doesn't have direct logo support, you'd use QRCode class then GetGraphic()
         // and convert the Bitmap to byte array.
 
