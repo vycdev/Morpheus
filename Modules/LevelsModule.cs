@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -64,9 +65,12 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraph")]
     [Alias("actgraph", "ag")]
     [RateLimit(2, 60)]
-    public async Task ActivityGraphAsync(int days = 7, params IUser[] mentionedUsers)
+    public async Task ActivityGraphAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
-        if (!ValidateDays(days)) return;
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
 
         Guild? guild = Context.DbGuild;
         if (guild == null)
@@ -75,21 +79,32 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        DateTime start = GetStartDate(days);
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+        start = NormalizeToUtc(start);
 
         List<dynamic> perUser;
         if (mentionedUsers != null && mentionedUsers.Length > 0)
-            perUser = GetTopUsersByWindowForMentions(start, days, guildId: guild.Id, global: false, mentionedUsers);
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: guild.Id, global: false, mentionedUsers);
         else
-            perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: guild.Id, global: false);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
             return;
         }
 
-        var series = BuildSeries(perUser, start, days, cumulative: false, global: false);
-        await GenerateAndSendGraph(series, days, "activity_graph.png", $"Top {series.Count} users activity for the last {days} days");
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false);
+        string msg;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            msg = $"Top {series.Count} users activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            msg = $"Top {series.Count} users activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(series, daysVal, "activity_graph.png", msg, start);
     }
 
     [Name("Activity Graph (Cumulative)")]
@@ -97,9 +112,12 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraphcumulative")]
     [Alias("actgraphcum", "agcum")]
     [RateLimit(2, 60)]
-    public async Task ActivityGraphCumulativeAsync(int days = 7, params IUser[] mentionedUsers)
+    public async Task ActivityGraphCumulativeAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
-        if (!ValidateDays(days)) return;
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
 
         Guild? guild = Context.DbGuild;
         if (guild == null)
@@ -108,21 +126,32 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        DateTime start = GetStartDate(days);
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+        start = NormalizeToUtc(start);
 
         List<dynamic> perUser;
         if (mentionedUsers != null && mentionedUsers.Length > 0)
-            perUser = GetTopUsersByWindowForMentions(start, days, guildId: guild.Id, global: false, mentionedUsers);
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: guild.Id, global: false, mentionedUsers);
         else
-            perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: guild.Id, global: false);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
             return;
         }
 
-        var series = BuildSeries(perUser, start, days, cumulative: true, global: false);
-        await GenerateAndSendGraph(series, days, "activity_graph_cumulative.png", $"Top {series.Count} users cumulative activity for the last {days} days");
+        var series = BuildSeries(perUser, start, daysVal, cumulative: true, global: false);
+        string msgCum;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            msgCum = $"Top {series.Count} users cumulative activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            msgCum = $"Top {series.Count} users cumulative activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(series, daysVal, "activity_graph_cumulative.png", msgCum, start);
     }
 
     [Name("Global Activity Graph")]
@@ -130,25 +159,39 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("globalactivitygraph")]
     [Alias("globalactgraph", "gact")]
     [RateLimit(2, 60)]
-    public async Task GlobalActivityGraphAsync(int days = 7, params IUser[] mentionedUsers)
+    public async Task GlobalActivityGraphAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
-        if (!ValidateDays(days)) return;
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
 
-        DateTime start = GetStartDate(days);
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+        start = NormalizeToUtc(start);
 
         List<dynamic> perUser;
         if (mentionedUsers != null && mentionedUsers.Length > 0)
-            perUser = GetTopUsersByWindowForMentions(start, days, guildId: null, global: true, mentionedUsers);
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: null, global: true, mentionedUsers);
         else
-            perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: null, global: true);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
             return;
         }
 
-        var series = BuildSeries(perUser, start, days, cumulative: false, global: true);
-        await GenerateAndSendGraph(series, days, "global_activity_graph.png", $"Top {series.Count} users global activity for the last {days} days");
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true);
+        string gmsg;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            gmsg = $"Top {series.Count} users global activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            gmsg = $"Top {series.Count} users global activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(series, daysVal, "global_activity_graph.png", gmsg, start);
     }
 
     [Name("Global Activity Graph (Cumulative)")]
@@ -156,25 +199,39 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("globalactivitygraphcumulative")]
     [Alias("globalactgraphcum", "gactcum")]
     [RateLimit(2, 60)]
-    public async Task GlobalActivityGraphCumulativeAsync(int days = 7, params IUser[] mentionedUsers)
+    public async Task GlobalActivityGraphCumulativeAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
-        if (!ValidateDays(days)) return;
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
 
-        DateTime start = GetStartDate(days);
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+        start = NormalizeToUtc(start);
 
         List<dynamic> perUser;
         if (mentionedUsers != null && mentionedUsers.Length > 0)
-            perUser = GetTopUsersByWindowForMentions(start, days, guildId: null, global: true, mentionedUsers);
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: null, global: true, mentionedUsers);
         else
-            perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: null, global: true);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
             return;
         }
 
-        var series = BuildSeries(perUser, start, days, cumulative: true, global: true);
-        await GenerateAndSendGraph(series, days, "global_activity_graph_cumulative.png", $"Top {series.Count} users global cumulative activity for the last {days} days");
+        var series = BuildSeries(perUser, start, daysVal, cumulative: true, global: true);
+        string gmsgCum;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            gmsgCum = $"Top {series.Count} users global cumulative activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            gmsgCum = $"Top {series.Count} users global cumulative activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(series, daysVal, "global_activity_graph_cumulative.png", gmsgCum, start);
     }
 
     [Name("Leaderboard")]
@@ -387,9 +444,82 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
     private DateTime GetStartDate(int days) => DateTime.UtcNow.Date.AddDays(-(days - 1));
 
+    private DateTime NormalizeToUtc(DateTime dt) => DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+
+    // Parse days parameter which supports:
+    // - preset tokens: past7days, past30days, past60days, past90days
+    // - explicit integer string: "7", "30"
+    // - date range like "2025-01-01..2025-01-31"
+    // Returns parsed days (int) and optional explicit start date (if a range was provided).
+    private Task<(bool success, int days, DateTime? explicitStart)> TryParseDaysStringAsync(string input)
+    {
+        return Task.Run(async () =>
+        {
+            if (string.IsNullOrWhiteSpace(input)) input = "past7days";
+
+            input = input.Trim().ToLowerInvariant();
+
+            if (input.StartsWith("past") && input.EndsWith("days"))
+            {
+                var num = input.Substring(4, input.Length - 8);
+                if (int.TryParse(num, out int parsed))
+                {
+                    if (parsed < 7) parsed = 7;
+                    if (parsed > 90) parsed = 90;
+                    return (true, parsed, (DateTime?)null);
+                }
+                await ReplyAsync("Please provide a number of days between 7 and 90 or a valid preset (past7days, past30days, past60days, past90days).\nOr provide a date range like 2025-01-01..2025-01-31.");
+                return (false, 0, null);
+            }
+
+            if (int.TryParse(input, out int asInt))
+            {
+                if (asInt < 7) asInt = 7;
+                if (asInt > 90) asInt = 90;
+                return (true, asInt, null);
+            }
+
+            if (input.Contains(".."))
+            {
+                var parts = input.Split(new[] { ".." }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2
+                    && DateTime.TryParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var start)
+                    && DateTime.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var end))
+                {
+                    start = start.Date;
+                    end = end.Date;
+                    // If end < start, swap them
+                    if (end < start)
+                    {
+                        var tmp = start; start = end; end = tmp;
+                    }
+                    var span = (end - start).TotalDays + 1;
+                    // enforce minimum 7 days
+                    if (span < 7)
+                    {
+                        end = start.AddDays(6); // inclusive 7 days
+                        span = 7;
+                    }
+                    if (span > 90)
+                    {
+                        await ReplyAsync("Date range exceeds maximum of 90 days.");
+                        return (false, 0, null);
+                    }
+                    return (true, (int)span, DateTime.SpecifyKind(start, DateTimeKind.Utc));
+                }
+                await ReplyAsync("Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most 90 days and start <= end.");
+                return (false, 0, null);
+            }
+
+            await ReplyAsync("Unrecognized days parameter. Use presets (past7days) or integer days or a date range (YYYY-MM-DD..YYYY-MM-DD). Default is past7days.");
+            return (false, 0, null);
+        });
+    }
+
     // Returns an anonymous-type-like list of per-user aggregates: UserId, Total, ByDay
     private List<dynamic> GetTopUsersByWindow(DateTime start, int days, int? guildId, bool global)
     {
+        start = NormalizeToUtc(start);
         var query = dbContext.UserActivity.AsQueryable();
         if (!global && guildId.HasValue)
             query = query.Where(ua => ua.GuildId == guildId.Value);
@@ -501,9 +631,12 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraph7day")]
     [Alias("actgraph7", "ag7")]
     [RateLimit(2, 60)]
-    public async Task ActivityGraph7DayAsync(int days = 7, params IUser[] mentionedUsers)
+    public async Task ActivityGraph7DayAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
-        if (!ValidateDays(days)) return;
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
 
         Guild? guild = Context.DbGuild;
         if (guild == null)
@@ -512,22 +645,33 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        DateTime start = GetStartDate(days);
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+        start = NormalizeToUtc(start);
 
         List<dynamic> perUser;
         if (mentionedUsers != null && mentionedUsers.Length > 0)
-            perUser = GetTopUsersByWindowForMentions(start, days, guildId: guild.Id, global: false, mentionedUsers);
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: guild.Id, global: false, mentionedUsers);
         else
-            perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: guild.Id, global: false);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
             return;
         }
 
-        var series = BuildSeries(perUser, start, days, cumulative: false, global: false);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false);
         var rolling = SevenDayRollingAverage(series);
-        await GenerateAndSendGraph(rolling, days, "activity_graph_7day.png", $"Top {rolling.Count} users 7-day rolling average activity for the last {days} days");
+        string msg7;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            msg7 = $"Top {rolling.Count} users 7-day rolling average activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            msg7 = $"Top {rolling.Count} users 7-day rolling average activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(rolling, daysVal, "activity_graph_7day.png", msg7, start);
     }
 
     [Name("Global Activity Graph (7-day roll)")]
@@ -535,34 +679,47 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("globalactivitygraph7day")]
     [Alias("globalactgraph7", "gact7")]
     [RateLimit(2, 60)]
-    public async Task GlobalActivityGraph7DayAsync(int days = 7, params IUser[] mentionedUsers)
+    public async Task GlobalActivityGraph7DayAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
-        if (!ValidateDays(days)) return;
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
 
-        DateTime start = GetStartDate(days);
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
 
         List<dynamic> perUser;
         if (mentionedUsers != null && mentionedUsers.Length > 0)
-            perUser = GetTopUsersByWindowForMentions(start, days, guildId: null, global: true, mentionedUsers);
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: null, global: true, mentionedUsers);
         else
-            perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: null, global: true);
         if (!perUser.Any())
         {
             await ReplyAsync("No activity data found for the requested period.");
             return;
         }
 
-        var series = BuildSeries(perUser, start, days, cumulative: false, global: true);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true);
         var rolling = SevenDayRollingAverage(series);
-        await GenerateAndSendGraph(rolling, days, "global_activity_graph_7day.png", $"Top {rolling.Count} users global 7-day rolling average activity for the last {days} days");
+        string gmsg7;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            gmsg7 = $"Top {rolling.Count} users global 7-day rolling average activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            gmsg7 = $"Top {rolling.Count} users global 7-day rolling average activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(rolling, daysVal, "global_activity_graph_7day.png", gmsg7, start);
     }
 
-    private async Task GenerateAndSendGraph(Dictionary<string, List<int>> series, int days, string filename, string message)
+    private async Task GenerateAndSendGraph(Dictionary<string, List<int>> series, int days, string filename, string message, DateTime? start = null)
     {
         byte[] png;
         try
         {
-            png = ActivityGraphGenerator.GenerateLineChart(series, days);
+            png = ActivityGraphGenerator.GenerateLineChart(series, days, start: start);
         }
         catch (Exception ex)
         {
@@ -579,6 +736,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     // This returns the same anonymous-typed shape as GetTopUsersByWindow: { UserId, Total, ByDay }
     private List<dynamic> GetTopUsersByWindowForMentions(DateTime start, int days, int? guildId, bool global, IUser[] mentionedUsers)
     {
+        start = NormalizeToUtc(start);
         var list = new List<dynamic>();
 
         foreach (var mu in mentionedUsers)

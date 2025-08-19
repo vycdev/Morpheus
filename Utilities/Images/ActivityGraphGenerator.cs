@@ -15,7 +15,7 @@ namespace Morpheus.Utilities.Images;
 public static class ActivityGraphGenerator
 {
     // Returns PNG bytes. series: dictionary of "label" -> list of daily values (oldest -> newest)
-    public static byte[] GenerateLineChart(Dictionary<string, List<int>> series, int days, int width = 1000, int height = 400)
+    public static byte[] GenerateLineChart(Dictionary<string, List<int>> series, int days, int width = 1000, int height = 400, DateTime? start = null)
     {
         if (series == null || series.Count == 0) throw new ArgumentException("No series provided.");
         if (days <= 0) throw new ArgumentOutOfRangeException(nameof(days));
@@ -74,10 +74,11 @@ public static class ActivityGraphGenerator
             }
 
             // x labels: show day ticks evenly
+            DateTime baseStart = (start ?? DateTime.UtcNow.Date.AddDays(-(days - 1))).Date;
             for (int d = 0; d < days; d += Math.Max(1, days / 8))
             {
                 float x = originX + (d / (float)(days - 1)) * plotWidth;
-                DateTime dt = DateTime.UtcNow.AddDays(-(days - 1 - d));
+                DateTime dt = baseStart.AddDays(d);
                 string lbl = dt.ToString("MM-dd");
                 var approxWidth = lbl.Length * font.Size * 0.6f;
                 ctx.DrawText(lbl, font, Color.Black, new PointF(x - approxWidth / 2, originY + 6));
