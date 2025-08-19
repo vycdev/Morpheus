@@ -5,6 +5,7 @@ using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Services;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Utilities;
 using Morpheus.Utilities.Lists;
 using System;
@@ -140,8 +141,32 @@ public class ActivityHandler
         {
             userLevel.Level = newLevel;
 
-            // Prepare level up message and optional quote to be sent after successful save
+            // Prepare level up message and optionally pre-select a random quote (efficient DB-side selection)
             int levelToAnnounce = newLevel;
+            string? selectedQuoteContent = null;
+
+            if (guild.LevelUpQuotes)
+            {
+                Quote? pick = null;
+                if (guild.UseGlobalQuotes)
+                {
+                    pick = await dbContext.Quotes
+                        .Where(q => q.Approved && !q.Removed)
+                        .OrderBy(q => EF.Functions.Random())
+                        .FirstOrDefaultAsync();
+                }
+                else
+                {
+                    pick = await dbContext.Quotes
+                        .Where(q => q.Approved && !q.Removed && q.GuildId == guild.Id)
+                        .OrderBy(q => EF.Functions.Random())
+                        .FirstOrDefaultAsync();
+                }
+
+                if (pick != null)
+                    selectedQuoteContent = pick.Content;
+            }
+
             postSaveActions.Add(async () =>
             {
                 try
@@ -171,41 +196,24 @@ public class ActivityHandler
                         }
                     }
 
-                    // QUOTE MESSAGE
-                    if (guild.LevelUpQuotes)
+                    // QUOTE MESSAGE (send pre-selected content if any)
+                    if (!string.IsNullOrEmpty(selectedQuoteContent))
                     {
-                        // build quote query: approved && !removed
-                        List<Quote> quotes;
-                        if (guild.UseGlobalQuotes)
+                        SocketTextChannel? quoteTarget = null;
+
+                        if (guild.LevelUpQuotesChannelId != 0)
                         {
-                            quotes = dbContext.Quotes.Where(q => q.Approved && !q.Removed).ToList();
-                        }
-                        else
-                        {
-                            quotes = dbContext.Quotes.Where(q => q.Approved && !q.Removed && q.GuildId == guild.Id).ToList();
+                            quoteTarget = discordGuild.GetTextChannel(guild.LevelUpQuotesChannelId);
                         }
 
-                        if (quotes != null && quotes.Count > 0)
+                        if (quoteTarget == null)
                         {
-                            var random = new Random();
-                            var pick = quotes[random.Next(quotes.Count)];
-                            string content = pick.Content ?? string.Empty;
+                            quoteTarget = message.Channel as SocketTextChannel;
+                        }
 
-                            SocketTextChannel? quoteTarget = null;
-                            if (guild.LevelUpQuotesChannelId != 0)
-                            {
-                                quoteTarget = discordGuild.GetTextChannel(guild.LevelUpQuotesChannelId);
-                            }
-                            if (quoteTarget == null)
-                            {
-                                quoteTarget = message.Channel as SocketTextChannel;
-                            }
-
-                            if (quoteTarget != null)
-                            {
-                                // send raw content only
-                                await quoteTarget.SendMessageAsync(content);
-                            }
+                        if (quoteTarget != null)
+                        {
+                            await quoteTarget.SendMessageAsync(selectedQuoteContent);
                         }
                     }
                 }
