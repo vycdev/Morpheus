@@ -5,17 +5,19 @@ using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
+using Morpheus.Services;
 using System.IO.Compression;
 
 namespace Morpheus.Modules;
 
-public class EmojisModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class EmojisModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext, LogsService logsService) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
 
     private readonly CommandService commands = commands;
     private readonly IServiceProvider serviceProvider = serviceProvider;
     private readonly DB dbContext = dbContext;
+    private readonly LogsService logsService = logsService;
 
     [Name("Use Emoji")]
     [Summary("Uses an emoji in the current channel. The bot will try to delete your original message at the end.")]
@@ -41,7 +43,10 @@ public class EmojisModule(DiscordSocketClient client, CommandService commands, I
         {
             await Context.Message.DeleteAsync();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logsService.Log($"Failed to delete user message after emoji send: {ex}", LogSeverity.Warning);
+        }
     }
 
     [Name("Emoji React")]
@@ -76,7 +81,10 @@ public class EmojisModule(DiscordSocketClient client, CommandService commands, I
         {
             await Context.Message.DeleteAsync();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logsService.Log($"Failed to delete user message after react: {ex}", LogSeverity.Warning);
+        }
     }
 
     [Name("List Emojis")]

@@ -17,11 +17,13 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
 {
     private readonly DB db;
     private readonly UsersService usersService;
+    private readonly LogsService logsService;
 
-    public QuotesModule(DB dbContext, UsersService usersService)
+    public QuotesModule(DB dbContext, UsersService usersService, LogsService logsService)
     {
         db = dbContext;
         this.usersService = usersService;
+        this.logsService = logsService;
     }
 
     [Name("List Quotes")]
@@ -230,9 +232,9 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
                 approval.ApprovalMessageId = sent.Id;
                 await db.SaveChangesAsync();
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore failures to send or react
+                logsService.Log($"Failed to send quote approval message for quote {quote.Id}: {ex}", LogSeverity.Warning);
             }
         }
 
@@ -339,7 +341,10 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
                 approval.ApprovalMessageId = sent.Id;
                 await db.SaveChangesAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logsService.Log($"Failed to send quote removal approval message for quote {quote.Id}: {ex}", LogSeverity.Warning);
+            }
         }
 
         await ReplyAsync("Quote removal submitted for approval.");

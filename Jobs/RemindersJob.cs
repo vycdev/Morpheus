@@ -58,7 +58,11 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
             catch (Exception ex)
             {
                 Log($"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}. Deleting reminder.");
-                try { dB.Reminders.Remove(reminder); } catch { }
+                try { dB.Reminders.Remove(reminder); }
+                catch (Exception ex2)
+                {
+                    logsService.Log($"Failed to remove reminder {reminder.Id}: {ex2}", LogSeverity.Warning);
+                }
             }
         }
 

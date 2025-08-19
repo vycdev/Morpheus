@@ -20,9 +20,10 @@ public class MessagesHandler
     private readonly IServiceProvider serviceProvider;
     private readonly GuildService guildService;
     private readonly UsersService usersService;
+    private readonly LogsService logsService;
     private readonly bool started = false;
 
-    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService)
+    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService, LogsService logsService)
     {
         if (started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -34,6 +35,7 @@ public class MessagesHandler
         this.serviceProvider = serviceProvider;
         this.guildService = guildService;
         this.usersService = usersService;
+        this.logsService = logsService;
 
         client.MessageReceived += HandleMessageAsync;
         client.ReactionAdded += HandleReactionAdded;
@@ -124,7 +126,11 @@ public class MessagesHandler
             if (cachedMessage != null && cachedMessage.Reactions.TryGetValue(new Emoji("⬆️"), out var reactionMeta))
             {
                 newScore = (int)reactionMeta.ReactionCount;
-                try { if (reactionMeta.IsMe) newScore -= 1; } catch { }
+                try { if (reactionMeta.IsMe) newScore -= 1; }
+                catch (Exception ex)
+                {
+                    logsService.Log($"Error while computing reaction metadata: {ex}", LogSeverity.Error);
+                }
                 if (newScore < 0) newScore = 0;
             }
 
@@ -151,7 +157,10 @@ public class MessagesHandler
                     var newContent = string.Join('\n', lines);
                     await approvalMessage.ModifyAsync(m => m.Content = newContent);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    logsService.Log($"Error updating approval message content: {ex}", LogSeverity.Error);
+                }
             }
 
             var requiredApprovals = approval.Type == Database.Models.QuoteApprovalType.AddRequest ? guild.QuoteAddRequiredApprovals : guild.QuoteRemoveRequiredApprovals;
@@ -184,12 +193,22 @@ public class MessagesHandler
                             finalContent = $"🗑️ **REMOVAL APPROVED — Quote #{quote.Id}**\n\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
 
                         await approvalMessage.ModifyAsync(m => m.Content = finalContent);
-                        try { await approvalMessage.RemoveAllReactionsAsync(); } catch { }
+                        try { await approvalMessage.RemoveAllReactionsAsync(); }
+                        catch (Exception ex)
+                        {
+                            logsService.Log($"Failed to remove reactions from approval message: {ex}", LogSeverity.Warning);
+                        }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    logsService.Log($"Error finalizing approval message: {ex}", LogSeverity.Error);
+                }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logsService.Log($"Error processing reaction change: {ex}", LogSeverity.Error);
+        }
     }
 }

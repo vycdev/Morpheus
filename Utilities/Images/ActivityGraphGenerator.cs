@@ -185,7 +185,10 @@ public static class ActivityGraphGenerator
                 return SystemFonts.Families.First().CreateFont(size);
             }
         }
-        catch { /* fallthrough */ }
+        catch
+        {
+            // TODO: if desired, caller can log this via LogsService when available
+        }
 
         // Try common Linux font paths
         string[] candidates = new[] {
@@ -206,7 +209,10 @@ public static class ActivityGraphGenerator
                     return family.CreateFont(size);
                 }
             }
-            catch { }
+            catch
+            {
+                // TODO: consider logging via LogsService if available
+            }
         }
 
         // Try scanning the usual truetype folder for any .ttf
@@ -224,7 +230,10 @@ public static class ActivityGraphGenerator
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // TODO: consider logging via LogsService if available
+        }
 
         // If nothing found, provide a helpful exception so caller can log and skip rendering
         throw new InvalidOperationException("No usable font found on the system. Please install a TTF font such as DejaVuSans in the container (e.g. package 'fonts-dejavu').");
