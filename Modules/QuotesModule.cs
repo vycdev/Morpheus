@@ -104,6 +104,83 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         await ReplyAsync(embed: embed.Build());
     }
 
+    [Name("List Global Quotes")]
+    [Summary("Lists quotes across all guilds (paginated).")]
+    [Command("listquotesglobal")]
+    [Alias("quotesglobal", "qglobal")]
+    [RateLimit(3, 10)]
+    [RequireDbGuild]
+    public async Task ListQuotesGlobal(int page = 1, string sort = "oldest", bool approvedOnly = false)
+    {
+        const int pageSize = 10;
+
+        var total = await db.Quotes.AsNoTracking().Where(q => !q.Removed).CountAsync();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+        if (totalPages == 0) totalPages = 1;
+        if (page < 1) page = 1;
+        if (page > totalPages) page = totalPages;
+
+        // Exclude removed quotes from listings
+        var quotesQuery = db.Quotes.AsNoTracking().Where(q => !q.Removed);
+        if (approvedOnly)
+            quotesQuery = quotesQuery.Where(q => q.Approved && !q.Removed);
+
+        quotesQuery = sort.ToLowerInvariant() switch
+        {
+            "top" or "top-rated" or "toprated" => quotesQuery
+                .OrderByDescending(q => db.QuoteScores.Where(s => s.QuoteId == q.Id).Sum(s => s.Score)),
+            "newest" => quotesQuery.OrderByDescending(q => q.InsertDate),
+            _ => quotesQuery.OrderBy(q => q.InsertDate) // oldest
+        };
+
+        var quotes = await quotesQuery
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        if (quotes.Count == 0)
+        {
+            await ReplyAsync("No quotes found on this page.");
+            return;
+        }
+
+        var quoteIds = quotes.Select(q => q.Id).ToList();
+        var scores = await db.QuoteScores.AsNoTracking()
+            .Where(s => quoteIds.Contains(s.QuoteId))
+            .GroupBy(s => s.QuoteId)
+            .Select(g => new { Id = g.Key, Score = g.Sum(x => x.Score) })
+            .ToListAsync();
+        var scoreMap = scores.ToDictionary(s => s.Id, s => s.Score);
+
+        var userIds = quotes.Select(q => q.UserId).Distinct().ToList();
+        var users = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToListAsync();
+        var userMap = users.ToDictionary(u => u.Id, u => u.Username);
+
+        var embed = new Discord.EmbedBuilder()
+            .WithTitle($"Global Quotes — Page {page}/{totalPages} ({total} total)")
+            .WithColor(Discord.Color.Blue)
+            .WithCurrentTimestamp();
+
+        foreach (var q in quotes)
+        {
+            scoreMap.TryGetValue(q.Id, out var s);
+            userMap.TryGetValue(q.UserId, out var uname);
+            var author = uname ?? "Unknown";
+            var status = q.Approved ? "Approved" : "Pending";
+            if (q.Removed) status += " (Removed)";
+
+            var fieldName = $"#{q.Id} — Score: {s} — {status} — {author} — Guild: {q.GuildId}";
+            var content = q.Content ?? string.Empty;
+            const int maxContentLength = 300;
+            if (content.Length > maxContentLength)
+                content = content.Substring(0, maxContentLength - 1) + "…";
+            var fieldValue = $"{content}\nInserted: {q.InsertDate.ToString("u")}";
+            embed.AddField(fieldName, fieldValue, false);
+        }
+
+        await ReplyAsync(embed: embed.Build());
+    }
+
     [Name("Show Quote")]
     [Summary("Shows a single quote in full by id.")]
     [Command("showquote")]
