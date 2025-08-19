@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Morpheus.Database.Models;
+
 public class QuoteScore
 {
     [Key]
@@ -15,6 +16,7 @@ public class QuoteScore
     public int UserId { get; set; }
     public int Score { get; set; } = 0;
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdateDate { get; set; } = null;
 
     // Foreign keys
     [ForeignKey("QuoteId")]
