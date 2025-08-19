@@ -6,6 +6,12 @@ public static class Utils
 {
     public static readonly Version? AssemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
 
+    // Precompiled regexes shared across calls
+    private static readonly Regex _schemeRegex = new(@"\b(?:https?|ftp)://[\w\-\._~:/?#\[\]@!$&'()*+,;=%]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _mdLinkRegex = new(@"\[[^\]]+\]\((?:https?://|ftp://|www\.)[^)\s]+\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _bareDomainRegex = new(@"(?<=\s|^)(?:www\.)?(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{1,5})?(?:/[^\s]*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _ipRegex = new(@"(?<=\s|^)(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?::\d{1,5})?(?:/[^\s]*)?(?=\s|$)", RegexOptions.Compiled);
+
     public static string GetAssemblyVersion()
     {
         if (AssemblyVersion is null)
@@ -19,32 +25,30 @@ public static class Utils
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
 
-        // scheme-based URLs (http, https, ftp)
-        var schemeRegex = new Regex(@"\b(?:https?|ftp)://[\w\-\._~:/?#\[\]@!$&'()*+,;=%]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        // Quick checks: schemes and markdown links are strong signals
+        if (_schemeRegex.IsMatch(text)) return true;
+        if (_mdLinkRegex.IsMatch(text)) return true;
 
-        // markdown-style links: [text](url)
-        var mdLinkRegex = new Regex(@"\[[^\]]+\]\((?:https?://|www\.)[^)\s]+\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        // bare domains like example.com or sub.example.co.uk (with optional port/path)
-        var bareDomainRegex = new Regex(@"\b(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b(?:[:/][^\s]*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        // IP addresses (v4)
-        var ipRegex = new Regex(@"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?:/\S*)?\b", RegexOptions.Compiled);
-
-        if (schemeRegex.IsMatch(text)) return true;
-        if (mdLinkRegex.IsMatch(text)) return true;
-
-        // to avoid matching common words with dots (like 'e.g.'), ensure bare domain has a TLD-like suffix
-        if (bareDomainRegex.IsMatch(text))
+        // Check for bare domain matches but validate matches individually so
+        // that unrelated abbreviations (e.g. "e.g.") elsewhere in the text
+        // don't cause a global false negative.
+        var bareMatches = _bareDomainRegex.Matches(text);
+        if (bareMatches.Count > 0)
         {
-            // filter out false positives: common abbreviations
-            var lower = text.ToLowerInvariant();
-            if (lower.Contains("e.g.") || lower.Contains("i.e.") || lower.Contains("mr.") || lower.Contains("mrs."))
-                return false;
-            return true;
+            foreach (Match m in bareMatches)
+            {
+                // Basic sanity: matched substring should contain a dot and a TLD-like suffix
+                if (m.Success && m.Value.IndexOf('.') >= 0)
+                {
+                    // Avoid matching single-letter TLD-like fragments (should be enforced by regex)
+                    // Return true for the first plausible domain-looking match.
+                    return true;
+                }
+            }
         }
 
-        if (ipRegex.IsMatch(text)) return true;
+        // Check for IPv4-looking patterns
+        if (_ipRegex.IsMatch(text)) return true;
 
         return false;
     }
