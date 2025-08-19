@@ -180,7 +180,16 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         Database.Models.Guild guild = Context.DbGuild!;
         guild.UseGlobalQuotes = !guild.UseGlobalQuotes;
         await dbContext.SaveChangesAsync();
-        await ReplyAsync($"Use global quotes is now {(guild.UseGlobalQuotes ? "enabled" : "disabled")}.");
+        if (guild.UseGlobalQuotes)
+        {
+            await ReplyAsync("Use global quotes is now enabled. " +
+                "Warning: enabling global quotes means quotes from other guilds may contain NSFW, offensive, or otherwise unwanted content. " +
+                "Be cautious and consider disabling this option if you encounter problematic quotes.");
+        }
+        else
+        {
+            await ReplyAsync("Use global quotes is now disabled.");
+        }
     }
 
     [Name("Set Quotes Approval Channel")]
