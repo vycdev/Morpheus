@@ -374,8 +374,25 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
         if (approval == null)
         {
-            await ReplyAsync("No quote associated with that message.");
-            return;
+            // Try to extract quoted text and find the quote in this guild by content
+            var qtext = refMsg.Content;
+            if (string.IsNullOrWhiteSpace(qtext))
+            {
+                await ReplyAsync("No quote associated with that message.");
+                return;
+            }
+
+            var guildDb = Context.DbGuild!;
+            var normalized = qtext.Trim().ToLowerInvariant();
+            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.GuildId == guildDb.Id && !q.Removed && (q.Content ?? "").ToLower().Trim() == normalized);
+            if (quote == null)
+            {
+                await ReplyAsync("Couldn't find a matching quote in this guild.");
+                return;
+            }
+
+            // Create a synthetic approval object for the found quote (no ApprovalMessageId)
+            approval = new QuoteApproval { QuoteId = quote.Id, Score = 0, Type = QuoteApprovalType.AddRequest };
         }
 
         var userDb = await usersService.TryGetCreateUser(Context.User);
@@ -424,8 +441,23 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
         if (approval == null)
         {
-            await ReplyAsync("No quote associated with that message.");
-            return;
+            var qtext = refMsg.Content;
+            if (string.IsNullOrWhiteSpace(qtext))
+            {
+                await ReplyAsync("No quote associated with that message.");
+                return;
+            }
+
+            var guildDb = Context.DbGuild!;
+            var normalized = qtext.Trim().ToLowerInvariant();
+            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.GuildId == guildDb.Id && !q.Removed && (q.Content ?? "").ToLower().Trim() == normalized);
+            if (quote == null)
+            {
+                await ReplyAsync("Couldn't find a matching quote in this guild.");
+                return;
+            }
+
+            approval = new QuoteApproval { QuoteId = quote.Id, Score = 0, Type = QuoteApprovalType.AddRequest };
         }
 
         var userDb = await usersService.TryGetCreateUser(Context.User);
@@ -480,8 +512,23 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
         if (approval == null)
         {
-            await ReplyAsync("No quote associated with that message.");
-            return;
+            var qtext = refMsg.Content;
+            if (string.IsNullOrWhiteSpace(qtext))
+            {
+                await ReplyAsync("No quote associated with that message.");
+                return;
+            }
+
+            var guildDb = Context.DbGuild!;
+            var normalized = qtext.Trim().ToLowerInvariant();
+            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.GuildId == guildDb.Id && !q.Removed && (q.Content ?? "").ToLower().Trim() == normalized);
+            if (quote == null)
+            {
+                await ReplyAsync("Couldn't find a matching quote in this guild.");
+                return;
+            }
+
+            approval = new QuoteApproval { QuoteId = quote.Id, Score = 0, Type = QuoteApprovalType.AddRequest };
         }
 
         // Map 1..10 -> -5..+5 linearly
