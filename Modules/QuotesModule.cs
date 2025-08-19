@@ -360,7 +360,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     {
         if (Context.Message.ReferencedMessage == null)
         {
-            await ReplyAsync("Reply to the bot's approval message to upvote.");
+            await ReplyAsync("Reply to a bot message that contains the quote text to upvote.");
             return;
         }
 
@@ -376,35 +376,35 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
-        if (approval == null)
+        var qtext = refMsg.Content?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(qtext))
         {
-            // Try to extract quoted text and find the quote in this guild by content
-            var qtext = refMsg.Content;
-            if (string.IsNullOrWhiteSpace(qtext))
-            {
-                await ReplyAsync("No quote associated with that message.");
-                return;
-            }
+            await ReplyAsync("No quote text found in the referenced message.");
+            return;
+        }
 
-            var guildDb = Context.DbGuild!;
-            var normalized = qtext.Trim().ToLowerInvariant();
-            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.GuildId == guildDb.Id && !q.Removed && (q.Content ?? "").ToLower().Trim() == normalized);
-            if (quote == null)
-            {
-                await ReplyAsync("Couldn't find a matching quote in this guild.");
-                return;
-            }
+        var guildDb = Context.DbGuild!;
+        Quote? quote = null;
+        if (guildDb.UseGlobalQuotes)
+        {
+            quote = await db.Quotes.FirstOrDefaultAsync(q => q.Approved && !q.Removed && (q.Content ?? string.Empty) == qtext);
+        }
+        else
+        {
+            quote = await db.Quotes.FirstOrDefaultAsync(q => q.Approved && !q.Removed && q.GuildId == guildDb.Id && (q.Content ?? string.Empty) == qtext);
+        }
 
-            // Create a synthetic approval object for the found quote (no ApprovalMessageId)
-            approval = new QuoteApproval { QuoteId = quote.Id, Score = 0, Type = QuoteApprovalType.AddRequest };
+        if (quote == null)
+        {
+            await ReplyAsync("Couldn't find a matching quote.");
+            return;
         }
 
         var userDb = await usersService.TryGetCreateUser(Context.User);
-        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == approval.QuoteId && s.UserId == userDb.Id);
+        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == quote.Id && s.UserId == userDb.Id);
         if (existing == null)
         {
-            var score = new QuoteScore { QuoteId = approval.QuoteId, UserId = userDb.Id, Score = 5, InsertDate = DateTime.UtcNow };
+            var score = new QuoteScore { QuoteId = quote.Id, UserId = userDb.Id, Score = 5, InsertDate = DateTime.UtcNow };
             await db.QuoteScores.AddAsync(score);
         }
         else
@@ -413,8 +413,8 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         await db.SaveChangesAsync();
-        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == approval.QuoteId).SumAsync(s => (int?)s.Score) ?? 0;
-        await ReplyAsync($"Upvoted quote #{approval.QuoteId} (+5). Current score: {totalScore}.");
+        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == quote.Id).SumAsync(s => (int?)s.Score) ?? 0;
+        await ReplyAsync($"Upvoted quote #{quote.Id} (+5). Current score: {totalScore}.");
     }
 
     [Name("Downvote Quote")]
@@ -427,7 +427,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     {
         if (Context.Message.ReferencedMessage == null)
         {
-            await ReplyAsync("Reply to the bot's approval message to downvote.");
+            await ReplyAsync("Reply to a bot message that contains the quote text to downvote.");
             return;
         }
 
@@ -443,33 +443,35 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
-        if (approval == null)
+        var qtext = refMsg.Content?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(qtext))
         {
-            var qtext = refMsg.Content;
-            if (string.IsNullOrWhiteSpace(qtext))
-            {
-                await ReplyAsync("No quote associated with that message.");
-                return;
-            }
+            await ReplyAsync("No quote text found in the referenced message.");
+            return;
+        }
 
-            var guildDb = Context.DbGuild!;
-            var normalized = qtext.Trim().ToLowerInvariant();
-            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.GuildId == guildDb.Id && !q.Removed && (q.Content ?? "").ToLower().Trim() == normalized);
-            if (quote == null)
-            {
-                await ReplyAsync("Couldn't find a matching quote in this guild.");
-                return;
-            }
+        var guildDb = Context.DbGuild!;
+        Quote? quote = null;
+        if (guildDb.UseGlobalQuotes)
+        {
+            quote = await db.Quotes.FirstOrDefaultAsync(q => q.Approved && !q.Removed && (q.Content ?? string.Empty) == qtext);
+        }
+        else
+        {
+            quote = await db.Quotes.FirstOrDefaultAsync(q => q.Approved && !q.Removed && q.GuildId == guildDb.Id && (q.Content ?? string.Empty) == qtext);
+        }
 
-            approval = new QuoteApproval { QuoteId = quote.Id, Score = 0, Type = QuoteApprovalType.AddRequest };
+        if (quote == null)
+        {
+            await ReplyAsync("Couldn't find a matching quote.");
+            return;
         }
 
         var userDb = await usersService.TryGetCreateUser(Context.User);
-        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == approval.QuoteId && s.UserId == userDb.Id);
+        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == quote.Id && s.UserId == userDb.Id);
         if (existing == null)
         {
-            var score = new QuoteScore { QuoteId = approval.QuoteId, UserId = userDb.Id, Score = -5, InsertDate = DateTime.UtcNow };
+            var score = new QuoteScore { QuoteId = quote.Id, UserId = userDb.Id, Score = -5, InsertDate = DateTime.UtcNow };
             await db.QuoteScores.AddAsync(score);
         }
         else
@@ -478,8 +480,8 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         await db.SaveChangesAsync();
-        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == approval.QuoteId).SumAsync(s => (int?)s.Score) ?? 0;
-        await ReplyAsync($"Downvoted quote #{approval.QuoteId} (-5). Current score: {totalScore}.");
+        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == quote.Id).SumAsync(s => (int?)s.Score) ?? 0;
+        await ReplyAsync($"Downvoted quote #{quote.Id} (-5). Current score: {totalScore}.");
     }
 
     [Name("Rate Quote")]
@@ -513,26 +515,28 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var approval = await db.QuoteApprovals.FirstOrDefaultAsync(a => a.ApprovalMessageId == refMsg.Id);
-        if (approval == null)
+        var qtext = refMsg.Content?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(qtext))
         {
-            var qtext = refMsg.Content;
-            if (string.IsNullOrWhiteSpace(qtext))
-            {
-                await ReplyAsync("No quote associated with that message.");
-                return;
-            }
+            await ReplyAsync("No quote text found in the referenced message.");
+            return;
+        }
 
-            var guildDb = Context.DbGuild!;
-            var normalized = qtext.Trim().ToLowerInvariant();
-            var quote = await db.Quotes.FirstOrDefaultAsync(q => q.GuildId == guildDb.Id && !q.Removed && (q.Content ?? "").ToLower().Trim() == normalized);
-            if (quote == null)
-            {
-                await ReplyAsync("Couldn't find a matching quote in this guild.");
-                return;
-            }
+        var guildDb = Context.DbGuild!;
+        Quote? quote = null;
+        if (guildDb.UseGlobalQuotes)
+        {
+            quote = await db.Quotes.FirstOrDefaultAsync(q => q.Approved && !q.Removed && (q.Content ?? string.Empty) == qtext);
+        }
+        else
+        {
+            quote = await db.Quotes.FirstOrDefaultAsync(q => q.Approved && !q.Removed && q.GuildId == guildDb.Id && (q.Content ?? string.Empty) == qtext);
+        }
 
-            approval = new QuoteApproval { QuoteId = quote.Id, Score = 0, Type = QuoteApprovalType.AddRequest };
+        if (quote == null)
+        {
+            await ReplyAsync("Couldn't find a matching quote.");
+            return;
         }
 
         // Map 1..10 -> -5..+5 linearly
@@ -542,10 +546,10 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         if (mapInt > 5) mapInt = 5;
 
         var userDb = await usersService.TryGetCreateUser(Context.User);
-        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == approval.QuoteId && s.UserId == userDb.Id);
+        var existing = await db.QuoteScores.FirstOrDefaultAsync(s => s.QuoteId == quote.Id && s.UserId == userDb.Id);
         if (existing == null)
         {
-            var score = new QuoteScore { QuoteId = approval.QuoteId, UserId = userDb.Id, Score = mapInt, InsertDate = DateTime.UtcNow };
+            var score = new QuoteScore { QuoteId = quote.Id, UserId = userDb.Id, Score = mapInt, InsertDate = DateTime.UtcNow };
             await db.QuoteScores.AddAsync(score);
         }
         else
@@ -554,7 +558,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         await db.SaveChangesAsync();
-        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == approval.QuoteId).SumAsync(s => (int?)s.Score) ?? 0;
-        await ReplyAsync($"Rated quote #{approval.QuoteId} as {rating} ({(mapInt >= 0 ? "+" : "")}{mapInt}). Current score: {totalScore}.");
+        var totalScore = await db.QuoteScores.Where(s => s.QuoteId == quote.Id).SumAsync(s => (int?)s.Score) ?? 0;
+        await ReplyAsync($"Rated quote #{quote.Id} as {rating} ({(mapInt >= 0 ? "+" : "")}{mapInt}). Current score: {totalScore}.");
     }
 }
