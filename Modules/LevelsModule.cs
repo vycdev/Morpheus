@@ -457,6 +457,81 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         return series;
     }
 
+    // Convert each series to a 7-day rolling average (rounded to nearest int)
+    private Dictionary<string, List<int>> SevenDayRollingAverage(Dictionary<string, List<int>> series)
+    {
+        var outSeries = new Dictionary<string, List<int>>();
+        foreach (var kv in series)
+        {
+            var vals = kv.Value;
+            var n = vals.Count;
+            var avg = new List<int>(n);
+            for (int i = 0; i < n; i++)
+            {
+                int start = Math.Max(0, i - 6);
+                int len = i - start + 1;
+                double sum = 0;
+                for (int j = start; j <= i; j++) sum += vals[j];
+                avg.Add((int)Math.Round(sum / len));
+            }
+            outSeries[kv.Key] = avg;
+        }
+        return outSeries;
+    }
+
+    [Name("Activity Graph (7-day roll)")]
+    [Summary("Generates a 7-day rolling average activity graph for the top 10 users over the past n days.")]
+    [Command("activitygraph7day")]
+    [Alias("actgraph7", "ag7")]
+    [RateLimit(2, 60)]
+    public async Task ActivityGraph7DayAsync(int days = 7)
+    {
+        if (!ValidateDays(days)) return;
+
+        Guild? guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        DateTime start = GetStartDate(days);
+
+        var perUser = GetTopUsersByWindow(start, days, guildId: guild.Id, global: false);
+        if (!perUser.Any())
+        {
+            await ReplyAsync("No activity data found for the requested period.");
+            return;
+        }
+
+        var series = BuildSeries(perUser, start, days, cumulative: false, global: false);
+        var rolling = SevenDayRollingAverage(series);
+        await GenerateAndSendGraph(rolling, days, "activity_graph_7day.png", $"Top {rolling.Count} users 7-day rolling average activity for the last {days} days");
+    }
+
+    [Name("Global Activity Graph (7-day roll)")]
+    [Summary("Generates a global 7-day rolling average activity graph for the top 10 users over the past n days.")]
+    [Command("globalactivitygraph7day")]
+    [Alias("globalactgraph7", "gact7")]
+    [RateLimit(2, 60)]
+    public async Task GlobalActivityGraph7DayAsync(int days = 7)
+    {
+        if (!ValidateDays(days)) return;
+
+        DateTime start = GetStartDate(days);
+
+        var perUser = GetTopUsersByWindow(start, days, guildId: null, global: true);
+        if (!perUser.Any())
+        {
+            await ReplyAsync("No activity data found for the requested period.");
+            return;
+        }
+
+        var series = BuildSeries(perUser, start, days, cumulative: false, global: true);
+        var rolling = SevenDayRollingAverage(series);
+        await GenerateAndSendGraph(rolling, days, "global_activity_graph_7day.png", $"Top {rolling.Count} users global 7-day rolling average activity for the last {days} days");
+    }
+
     private async Task GenerateAndSendGraph(Dictionary<string, List<int>> series, int days, string filename, string message)
     {
         byte[] png;
