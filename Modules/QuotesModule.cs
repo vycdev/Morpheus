@@ -113,7 +113,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     public async Task ShowQuote(int id)
     {
         var guildDb = Context.DbGuild!;
-        var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == id && q.GuildId == guildDb.Id && !q.Removed);
+        var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == id && !q.Removed);
         if (quote == null)
         {
             await ReplyAsync("Quote not found.");
