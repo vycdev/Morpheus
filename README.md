@@ -11,3 +11,9 @@ A full, auto-generated list of bot commands and metadata is available in the rep
 
 Click the link to view command summaries, aliases, parameters, and rate limits.
 
+## Contributing
+
+Contributions welcome! If you'd like to contribute bug fixes, new features, or improvements, please read the contributing guide for setup, workflow, and expectations: [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+Any help is appreciated — small PRs and clear descriptions make reviews faster.
+
