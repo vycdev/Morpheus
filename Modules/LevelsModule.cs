@@ -18,6 +18,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Displays the current level and experience points of the user.")]
     [Command("level")]
     [Alias("lvl", "currentlevel", "currentxp")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task CurrentLevelAsync()
     {
@@ -64,6 +65,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Generates an activity graph for the top 10 users over the past n days.")]
     [Command("activitygraph")]
     [Alias("actgraph", "ag")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(2, 60)]
     public async Task ActivityGraphAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -111,6 +113,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Generates a cumulative activity graph (running total) for the top 10 users over the past n days.")]
     [Command("activitygraphcumulative")]
     [Alias("actgraphcum", "agcum")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(2, 60)]
     public async Task ActivityGraphCumulativeAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -238,6 +241,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Displays the leaderboard of users in the guild based on their levels.")]
     [Command("leaderboard")]
     [Alias("lb", "top", "topusers")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task LeaderboardAsync(int page = 1)
     {
@@ -285,6 +289,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Displays the leaderboard of users in the guild based on their levels for the past n days.")]
     [Command("leaderboardpast")]
     [Alias("lbp", "toppast", "topuserpast")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 60)]
     public async Task LeaderboardPastAsync(int days, int page = 1)
     {
@@ -630,6 +635,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Generates a 7-day rolling average activity graph for the top 10 users over the past n days.")]
     [Command("activitygraph7day")]
     [Alias("actgraph7", "ag7")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(2, 60)]
     public async Task ActivityGraph7DayAsync(string days = "past7days", params IUser[] mentionedUsers)
     {

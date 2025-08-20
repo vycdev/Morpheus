@@ -19,6 +19,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
     [Name("Pin")]
     [Summary("Pins a message.")]
     [Command("pin")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(5, 30)]
     [RequireUserPermission(GuildPermission.ManageMessages)]
     public async Task PinAsync([Remainder] string? _ = null)

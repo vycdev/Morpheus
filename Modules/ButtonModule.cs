@@ -101,6 +101,7 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Get the top guild button press scores.")]
     [Command("buttontopguild")]
     [Alias("btopguild", "topguildbutton")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(1, 30)]
     public async Task TopGuild()
     {
@@ -224,6 +225,7 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Get the top user button press scores in a guild.")]
     [Command("buttontopuserguild")]
     [Alias("btopug", "topuserguildbutton")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(1, 30)]
     public async Task TopUserGuild()
     {

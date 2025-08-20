@@ -69,6 +69,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     [Name("Guild Age")]
     [Summary("Displays the age of the guild.")]
     [Command("guildage")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task GuildAge([Remainder] string? _ = null)
     {
@@ -436,6 +437,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     [Name("How gay")]
     [Summary("Determines how gay a person is based on their nickname")]
     [Command("howgay")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task HowGay(SocketGuildUser? user = null)
     {
@@ -668,6 +670,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     [Summary("Calculates the love compatibility between two people.")]
     [Command("love")]
     [Alias("lovecompatibility", "lovecalc", "lovecouple")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task LoveCompatibility(SocketGuildUser user1, SocketGuildUser? user2)
     {
@@ -692,6 +695,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     [Summary("Gets the profile picture of a user.")]
     [Command("profilepic")]
     [Alias("avatar", "pfp")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task GetProfilePicture(SocketGuildUser? user = null)
     {
@@ -739,6 +743,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     [Summary("Gets information about a user.")]
     [Command("userinfo")]
     [Alias("user", "whois")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task UserInfo(SocketGuildUser? user = null)
     {
@@ -764,42 +769,6 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
             {
                 Text = "User Info",
                 IconUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
-            }
-        };
-        await ReplyAsync(embed: embed.Build());
-    }
-
-    [Name("Role Info")]
-    [Summary("Gets information about a role.")]
-    [Command("roleinfo")]
-    [Alias("role", "whohasrole")]
-    [RateLimit(3, 10)]
-    public async Task RoleInfo(SocketRole? role = null)
-    {
-        if (role == null)
-        {
-            await ReplyAsync("Role not found.");
-            return;
-        }
-
-        EmbedBuilder embed = new()
-        {
-            Color = Colors.Blue,
-            Title = $"{role.Name} Role Info",
-            Description = $"ID: {role.Id}\nCreated At: {role.CreatedAt.UtcDateTime}",
-            Fields =
-            {
-                new EmbedFieldBuilder().WithName("Color").WithValue(role.Color.ToString()),
-                new EmbedFieldBuilder().WithName("Position").WithValue(role.Position),
-                new EmbedFieldBuilder().WithName("Is Hoisted").WithValue(role.IsHoisted ? "Yes" : "No"),
-                new EmbedFieldBuilder().WithName("Is Mentionable").WithValue(role.IsMentionable ? "Yes" : "No"),
-                new EmbedFieldBuilder().WithName("Members").WithValue(role.Members.Count()),
-                new EmbedFieldBuilder().WithName("Permissions").WithValue(string.Join(",", role.Permissions.ToList()))
-            },
-            Footer = new EmbedFooterBuilder()
-            {
-                Text = "Role Info",
-                IconUrl = role.Guild.IconUrl
             }
         };
         await ReplyAsync(embed: embed.Build());

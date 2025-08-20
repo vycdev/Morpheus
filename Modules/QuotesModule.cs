@@ -30,6 +30,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Lists quotes for the current guild (paginated).")]
     [Command("listquotes")]
     [Alias("quotes", "q")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task ListQuotes(int page = 1, string sort = "oldest", bool approvedOnly = false)
     {
@@ -183,6 +184,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Shows a single quote in full by id.")]
     [Command("showquote")]
     [Alias("quote", "showq")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task ShowQuote(int id)
     {
@@ -216,6 +218,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Adds a quote to the guild (may require approval).")]
     [Command("addquote")]
     [Alias("quoteadd", "qadd")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task AddQuote([Remainder] string text)
     {
@@ -338,6 +341,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Requests removal of a quote (may require approval).")]
     [Command("removequote")]
     [Alias("quoteremove", "qremove", "remove")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
     public async Task RemoveQuote(int id, [Remainder] string reason = "")
     {
@@ -446,6 +450,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Upvotes a quote by replying to the bot message (adds or updates your +5 score).")]
     [Command("upvote")]
     [Alias("uv")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(5, 10)]
     public async Task Upvote()
     {
@@ -513,6 +518,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Downvotes a quote by replying to the bot message (adds or updates your -5 score).")]
     [Command("downvote")]
     [Alias("dv")]
+    [RequireContext(ContextType.Guild)]
     [RateLimit(5, 10)]
     public async Task Downvote()
     {
@@ -580,6 +586,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Rates a quote 1-10 by replying to the bot message; 1 => -5, 10 => +5.")]
     [Command("rate")]
     [RateLimit(5, 10)]
+    [RequireContext(ContextType.Guild)]
     public async Task Rate(int rating)
     {
         if (rating < 1 || rating > 10)

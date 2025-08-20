@@ -21,16 +21,13 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
     [RequireUserPermission(GuildPermission.Administrator)]
     [RequireBotPermission(GuildPermission.ManageRoles)]
     [RateLimit(3, 60)]
+    [RequireContext(ContextType.Guild)]
     public async Task ToggleActivityRolesAsync()
     {
-        if (Context.DbGuild == null)
-        {
-            await ReplyAsync("This command can only be used in a guild.");
-            return;
-        }
+        var dbGuild = Context.DbGuild!;
 
-        Context.DbGuild.UseActivityRoles = !Context.DbGuild.UseActivityRoles;
-        dbContext.Guilds.Update(Context.DbGuild);
+        dbGuild.UseActivityRoles = !dbGuild.UseActivityRoles;
+        dbContext.Guilds.Update(dbGuild);
 
         // Get activity roles for the guild and delete them if they exist 
         // For each type in ActivityRoleType
@@ -38,7 +35,7 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
         foreach (RoleType roleType in Enum.GetValues(typeof(ActivityRoleType)).Cast<RoleType>())
         {
             // Find the role in the database
-            Role? role = dbContext.Roles.FirstOrDefault(r => r.GuildId == Context.DbGuild.Id && r.RoleType == roleType);
+            Role? role = dbContext.Roles.FirstOrDefault(r => r.GuildId == dbGuild.Id && r.RoleType == roleType);
 
             if (role == null)
             {
@@ -65,11 +62,11 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
             }
 
             // Remove the role from the database
-            dbContext.Roles.RemoveRange(dbContext.Roles.Where(r => r.GuildId == Context.DbGuild.Id && r.RoleType == roleType));
+            dbContext.Roles.RemoveRange(dbContext.Roles.Where(r => r.GuildId == dbGuild.Id && r.RoleType == roleType));
         }
 
         // If activity roles have been enabled
-        if (Context.DbGuild.UseActivityRoles)
+        if (dbGuild.UseActivityRoles)
         {
             await ReplyAsync("Activity roles have been enabled. Creating new roles...");
             List<RestRole> newRoles = [];
@@ -84,7 +81,7 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
                 dbContext.Roles.Add(new Role
                 {
                     RoleId = role.Id,
-                    GuildId = Context.DbGuild.Id,
+                    GuildId = dbGuild.Id,
                     RoleType = roleType,
                 });
             }
@@ -92,7 +89,7 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
             await ReplyAsync("New roles have been created. Grabbing most active users...");
 
             // Assign the roles to the users based on their activity 
-            List<UserLevels> userLevels = activityService.GetTopActivity(Context.DbGuild.Id);
+            List<UserLevels> userLevels = activityService.GetTopActivity(dbGuild.Id);
             List<List<User>> slices = activityService.GetUserSlices(userLevels, [0.01, 0.05, 0.10, 0.20, 0.30]);
 
             await ReplyAsync($"Top 1%: {slices[0].Count}, Top 5%: {slices[1].Count}, Top 10%: {slices[2].Count}, Top 20%: {slices[3].Count}, Top 30%: {slices[4].Count}");
@@ -121,10 +118,10 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
 
         await dbContext.SaveChangesAsync();
 
-        string status = Context.DbGuild.UseActivityRoles ? "enabled" : "disabled";
+        string status = dbGuild.UseActivityRoles ? "enabled" : "disabled";
         await ReplyAsync($"Activity roles have been {status} for this guild.");
 
-        if (Context.DbGuild.UseActivityRoles)
+        if (dbGuild.UseActivityRoles)
         {
             await ReplyAsync("New roles have been automatically created and users have been assigned.");
             await ReplyAsync("You can customize the roles however you want. But if you delete a role a new one will be created in it's place");
