@@ -154,13 +154,13 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
             return;
         }
 
-        // Enforce min 5 seconds and max 100 years
-        var min = TimeSpan.FromSeconds(5);
+        // Enforce min 1 minute and max 100 years
+        var min = TimeSpan.FromMinutes(1);
         var max = TimeSpan.FromDays(365 * 100);
 
         if (duration < min)
         {
-            await ReplyAsync("Minimum reminder is 5 seconds.");
+            await ReplyAsync("Minimum reminder is 1 minute.");
             return;
         }
         if (duration > max)
