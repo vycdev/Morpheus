@@ -7,7 +7,6 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Utilities;
 using System.Text.RegularExpressions;
-using Microsoft.EntityFrameworkCore;
 
 namespace Morpheus.Modules;
 

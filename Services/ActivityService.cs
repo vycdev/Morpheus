@@ -1,12 +1,8 @@
 ﻿using Morpheus.Database;
 using Morpheus.Database.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Morpheus.Services;
+
 public class ActivityService(DB dbContext)
 {
     public List<UserLevels> GetTopActivity(int dbGuildId, int days = 30)

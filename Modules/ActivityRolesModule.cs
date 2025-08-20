@@ -2,7 +2,6 @@
 using Discord.Commands;
 using Discord.Rest;
 using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Database.Enums;
@@ -12,6 +11,7 @@ using Morpheus.Services;
 using Morpheus.Utilities.Extensions;
 
 namespace Morpheus.Modules;
+
 public class ActivityRolesModule(DB dbContext, ActivityService activityService) : ModuleBase<SocketCommandContextExtended>
 {
     [Name("Toggle Activity Roles")]

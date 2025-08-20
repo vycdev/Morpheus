@@ -1,12 +1,9 @@
 ﻿using Discord.Commands;
 using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
-using ColorNamesSharp;
-using ColorNamesSharp.Utility;
 using Discord;
 using Morpheus.Utilities;
 

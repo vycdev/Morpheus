@@ -1,7 +1,5 @@
 ﻿using Discord;
-using Discord.Commands;
 using Discord.WebSocket;
-using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Services;
 using Morpheus.Utilities;

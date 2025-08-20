@@ -2,7 +2,6 @@ using Discord;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
-using Morpheus.Database.Models;
 using Morpheus.Services;
 using Quartz;
 

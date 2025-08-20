@@ -3,7 +3,6 @@ using Discord.Commands;
 using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database;
-using Morpheus.Database.Models;
 using Morpheus.Extensions;
 
 namespace Morpheus.Modules;

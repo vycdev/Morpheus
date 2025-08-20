@@ -6,13 +6,7 @@ using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities.Images;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace Morpheus.Modules;
 

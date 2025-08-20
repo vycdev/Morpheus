@@ -1,20 +1,12 @@
-﻿using Discord;
-using Discord.Commands;
+﻿using Discord.Commands;
 using Discord.WebSocket;
 using Morpheus.Database;
 using Morpheus.Database.Models;
-using Morpheus.Extensions;
 using Morpheus.Services;
 using Microsoft.EntityFrameworkCore;
-using Morpheus.Utilities;
 using Morpheus.Utilities.Lists;
-using System;
-using System.Collections.Generic;
 using System.IO.Hashing;
-using System.Linq;
-using System.Reflection;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Morpheus.Handlers;
 

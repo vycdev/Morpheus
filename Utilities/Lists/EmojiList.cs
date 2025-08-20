@@ -1,7 +1,4 @@
-﻿
-using Discord;
-
-namespace Morpheus.Utilities.Lists;
+﻿namespace Morpheus.Utilities.Lists;
 
 public static class EmojiList
 {

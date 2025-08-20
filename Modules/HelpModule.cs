@@ -8,7 +8,6 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
-using System.IO.Compression;
 using System.Reflection;
 
 namespace Morpheus.Modules;
