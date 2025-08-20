@@ -18,7 +18,6 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("pressbutton")]
     [Alias("button", "press")]
     [RateLimit(1, 30)]
-    [RequireDbUser]
     public async Task PressButton()
     {
         // Get guild from contenxt 
@@ -105,7 +104,6 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("buttontopguild")]
     [Alias("btopguild", "topguildbutton")]
     [RateLimit(1, 30)]
-    [RequireDbGuild]
     public async Task TopGuild()
     {
         // Get guild from context 
@@ -187,7 +185,6 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("buttontopuser")]
     [Alias("btopu", "topuserbutton")]
     [RateLimit(1, 30)]
-    [RequireDbUser]
     public async Task TopUser()
     {
         // Get user from context 
@@ -230,8 +227,6 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("buttontopuserguild")]
     [Alias("btopug", "topuserguildbutton")]
     [RateLimit(1, 30)]
-    [RequireDbUser]
-    [RequireDbGuild]
     public async Task TopUserGuild()
     {
         // Get user from context 

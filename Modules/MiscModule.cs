@@ -15,7 +15,7 @@ using Newtonsoft.Json.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Morpheus.Commands;
+namespace Morpheus.Modules;
 
 public class MiscModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {

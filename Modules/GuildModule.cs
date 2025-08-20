@@ -25,7 +25,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setwc", "swc", "welcomechannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -49,7 +48,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setcommandsprefix", "setcp")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetCommandsPrefix([Remainder] string prefix = "m!")
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -78,7 +76,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setpc", "spc", "pinschannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -102,7 +99,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setlumchannel", "setlevelupmsgschannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketChannel? channel = null)
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -125,7 +121,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setluqchannel", "setlevelupquoteschan")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketChannel? channel = null)
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -148,7 +143,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("togglevmsgs", "togglelevelupmessages")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task ToggleLevelUpMessages()
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -163,7 +157,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("togglevquotes")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task ToggleLevelUpQuotes()
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -178,7 +171,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("useglobalquotes", "toggleuseglobalquotes")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task ToggleUseGlobalQuotes()
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -202,7 +194,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setqapproval", "setquoteschannel")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetQuotesApprovalChannel([Remainder] SocketChannel? channel = null)
     {
         Database.Models.Guild guild = Context.DbGuild!;
@@ -224,7 +215,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setquoteadd", "setaddapprovals")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetQuoteAddRequiredApprovals(int approvals)
     {
         if (approvals < 1)
@@ -245,7 +235,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Alias("setquoteremove", "setremoveapprovals")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RateLimit(1, 10)]
-    [RequireDbGuild]
     public async Task SetQuoteRemoveRequiredApprovals(int approvals)
     {
         if (approvals < 1)
@@ -265,7 +254,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [Command("guildinfo")]
     [Alias("serverinfo", "guild", "server")]
     [RateLimit(3, 10)]
-    [RequireDbGuild]
     public async Task GuildInfo()
     {
         SocketGuild guild = Context.Guild;

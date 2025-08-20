@@ -22,7 +22,6 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
     [Command("pin")]
     [RateLimit(5, 30)]
     [RequireUserPermission(GuildPermission.ManageMessages)]
-    [RequireDbGuild]
     public async Task PinAsync([Remainder] string? _ = null)
     {
         // Get guild from db

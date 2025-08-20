@@ -35,7 +35,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("listquotes")]
     [Alias("quotes", "q")]
     [RateLimit(3, 10)]
-    [RequireDbGuild]
     public async Task ListQuotes(int page = 1, string sort = "oldest", bool approvedOnly = false)
     {
         var guildDb = Context.DbGuild!;
@@ -113,7 +112,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("listquotesglobal")]
     [Alias("quotesglobal", "qglobal")]
     [RateLimit(3, 10)]
-    [RequireDbGuild]
     public async Task ListQuotesGlobal(int page = 1, string sort = "oldest", bool approvedOnly = false)
     {
         const int pageSize = 10;
@@ -190,7 +188,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("showquote")]
     [Alias("quote", "showq")]
     [RateLimit(3, 10)]
-    [RequireDbGuild]
     public async Task ShowQuote(int id)
     {
         var guildDb = Context.DbGuild!;
@@ -224,7 +221,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("addquote")]
     [Alias("quoteadd", "qadd")]
     [RateLimit(3, 10)]
-    [RequireDbGuild]
     public async Task AddQuote([Remainder] string text)
     {
         // Must be in a guild (RequireDbGuild ensures Context.DbGuild exists)
@@ -347,7 +343,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("removequote")]
     [Alias("quoteremove", "qremove", "remove")]
     [RateLimit(3, 10)]
-    [RequireDbGuild]
     public async Task RemoveQuote(int id, [Remainder] string reason = "")
     {
         var guildDb = Context.DbGuild!;
@@ -456,7 +451,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("upvote")]
     [Alias("uv")]
     [RateLimit(5, 10)]
-    [RequireDbGuild]
     public async Task Upvote()
     {
         if (Context.Message.ReferencedMessage == null)
@@ -524,7 +518,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("downvote")]
     [Alias("dv")]
     [RateLimit(5, 10)]
-    [RequireDbGuild]
     public async Task Downvote()
     {
         if (Context.Message.ReferencedMessage == null)
@@ -591,7 +584,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Summary("Rates a quote 1-10 by replying to the bot message; 1 => -5, 10 => +5.")]
     [Command("rate")]
     [RateLimit(5, 10)]
-    [RequireDbGuild]
     public async Task Rate(int rating)
     {
         if (rating < 1 || rating > 10)
