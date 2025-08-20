@@ -124,6 +124,17 @@ def extract_methods_from_file(path: Path):
             if mbot:
                 required_bot_permission = mbot.group(2)
 
+        # RequireContext: detect guild-only commands (e.g. RequireContext(ContextType.Guild))
+        requires_guild_context = False
+        if attrs.get('RequireContext') and attrs['RequireContext'][0]:
+            rawc = attrs['RequireContext'][0]
+            if 'ContextType.Guild' in rawc or 'Guild' in rawc:
+                requires_guild_context = True
+
+        # Back-compat: if RequireDbGuild attribute is present, treat as guild-only
+        if attrs.get('RequireDbGuild'):
+            requires_guild_context = True
+
     # RequireDbGuild: no longer collected (remove from output)
 
         # parameters: split by commas outside brackets
@@ -154,6 +165,7 @@ def extract_methods_from_file(path: Path):
             'command': cmd_name,
             'aliases': aliases,
             'summary': summary,
+            'requires_guild_context': requires_guild_context,
             'params': params,
             'rate_limit': rate_limit,
             'required_permission': required_permission,
@@ -203,6 +215,8 @@ def generate_markdown(commands_info):
                 out.append(f'- Required permission: {info.get("required_permission")}')
             if info.get('required_bot_permission'):
                 out.append(f'- Required bot permission: {info.get("required_bot_permission")}')
+            if info.get('requires_guild_context'):
+                out.append(f'- Requires guild context: Yes')
             # Requires DB guild output removed
             if info['params']:
                 out.append('- Parameters:')
