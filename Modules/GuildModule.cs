@@ -5,6 +5,10 @@ using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
+using ColorNamesSharp;
+using ColorNamesSharp.Utility;
+using Discord;
+using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
@@ -254,5 +258,60 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         guild.QuoteRemoveRequiredApprovals = approvals;
         await dbContext.SaveChangesAsync();
         await ReplyAsync($"Quote remove required approvals set to {approvals}.");
+    }
+
+    [Name("Guild Info")]
+    [Summary("Displays information about the current guild.")]
+    [Command("guildinfo")]
+    [Alias("serverinfo", "guild", "server")]
+    [RateLimit(3, 10)]
+    [RequireDbGuild]
+    public async Task GuildInfo()
+    {
+        SocketGuild guild = Context.Guild;
+        // Database-backed guild settings
+        Database.Models.Guild dbGuild = Context.DbGuild!;
+
+        string ChannelOrNone(ulong id) => id == 0 ? "Not set" : $"<#{id}>";
+        string BoolStatus(bool v) => v ? "Enabled" : "Disabled";
+
+        string settings =
+            $"Prefix: {dbGuild.Prefix}\n" +
+            $"Welcome Channel: {ChannelOrNone(dbGuild.WelcomeChannelId)}\n" +
+            $"Pins Channel: {ChannelOrNone(dbGuild.PinsChannelId)}\n" +
+            $"Level Up Messages Channel: {ChannelOrNone(dbGuild.LevelUpMessagesChannelId)}\n" +
+            $"Level Up Quotes Channel: {ChannelOrNone(dbGuild.LevelUpQuotesChannelId)}\n" +
+            $"Level Up Messages: {BoolStatus(dbGuild.LevelUpMessages)}\n" +
+            $"Level Up Quotes: {BoolStatus(dbGuild.LevelUpQuotes)}\n" +
+            $"Use Global Quotes: {BoolStatus(dbGuild.UseGlobalQuotes)}\n" +
+            $"Quotes Approval Channel: {ChannelOrNone(dbGuild.QuotesApprovalChannelId)}\n" +
+            $"Quote Add Required Approvals: {dbGuild.QuoteAddRequiredApprovals}\n" +
+            $"Quote Remove Required Approvals: {dbGuild.QuoteRemoveRequiredApprovals}\n" +
+            $"Welcome Messages: {BoolStatus(dbGuild.WelcomeMessages)}\n" +
+            $"Use Activity Roles: {BoolStatus(dbGuild.UseActivityRoles)}\n" +
+            $"Bot Join Date: {dbGuild.InsertDate.ToString("yyyy-MM-dd HH:mm 'UTC'")}";
+
+        EmbedBuilder embed = new()
+        {
+            Color = Colors.Blue,
+            Title = $"Guild Info: {guild.Name}",
+            ThumbnailUrl = guild.IconUrl,
+            Description = $"ID: {guild.Id}\nOwner: {guild.Owner.Username}#{guild.Owner.Discriminator}\nCreated At: {guild.CreatedAt.UtcDateTime}",
+            Fields =
+            {
+                new EmbedFieldBuilder().WithName("Member Count").WithValue(guild.MemberCount),
+                new EmbedFieldBuilder().WithName("Verification Level").WithValue(guild.VerificationLevel.ToString()),
+                new EmbedFieldBuilder().WithName("Roles").WithValue(guild.Roles.Count),
+                new EmbedFieldBuilder().WithName("Channels").WithValue(guild.Channels.Count),
+                new EmbedFieldBuilder().WithName("Settings").WithValue(settings).WithIsInline(false)
+            },
+            Footer = new EmbedFooterBuilder()
+            {
+                Text = "Guild Info",
+                IconUrl = guild.IconUrl
+            }
+        };
+
+        await ReplyAsync(embed: embed.Build());
     }
 }
