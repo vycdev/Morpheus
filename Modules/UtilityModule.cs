@@ -163,6 +163,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
             await ReplyAsync("Minimum reminder is 1 minute.");
             return;
         }
+
         if (duration > max)
         {
             await ReplyAsync("Maximum reminder is 100 years.");
