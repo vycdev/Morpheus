@@ -546,6 +546,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     [Summary("Pings a Minecraft server to get information about it.")]
     [Command("pingmc")]
     [Alias("mcserver", "mcstatus")]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 30)]
     public async Task PingMinecraftServer(string ip, int port = 25565)
     {

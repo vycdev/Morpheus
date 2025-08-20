@@ -66,6 +66,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraph")]
     [Alias("actgraph", "ag")]
     [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 60)]
     public async Task ActivityGraphAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -114,6 +115,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraphcumulative")]
     [Alias("actgraphcum", "agcum")]
     [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 60)]
     public async Task ActivityGraphCumulativeAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -161,6 +163,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Generates a global activity graph for the top 10 users across all guilds over the past n days.")]
     [Command("globalactivitygraph")]
     [Alias("globalactgraph", "gact")]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 60)]
     public async Task GlobalActivityGraphAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -201,6 +204,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Generates a global cumulative activity graph (running total) for the top 10 users across all guilds over the past n days.")]
     [Command("globalactivitygraphcumulative")]
     [Alias("globalactgraphcum", "gactcum")]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 60)]
     public async Task GlobalActivityGraphCumulativeAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -636,6 +640,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Command("activitygraph7day")]
     [Alias("actgraph7", "ag7")]
     [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 60)]
     public async Task ActivityGraph7DayAsync(string days = "past7days", params IUser[] mentionedUsers)
     {
@@ -684,6 +689,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [Summary("Generates a global 7-day rolling average activity graph for the top 10 users over the past n days.")]
     [Command("globalactivitygraph7day")]
     [Alias("globalactgraph7", "gact7")]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(2, 60)]
     public async Task GlobalActivityGraph7DayAsync(string days = "past7days", params IUser[] mentionedUsers)
     {

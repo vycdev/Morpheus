@@ -111,6 +111,7 @@ public class EmojisModule(DiscordSocketClient client, CommandService commands, I
     [Command("downloademojis")]
     [Alias("downloademoji", "downloademotes", "downloademote")]
     [RequireUserPermission(GuildPermission.Administrator)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 600)]
     public async Task DownloadEmojis()

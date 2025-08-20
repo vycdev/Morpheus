@@ -219,6 +219,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("addquote")]
     [Alias("quoteadd", "qadd")]
     [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.AddReactions)]
     [RateLimit(3, 10)]
     public async Task AddQuote([Remainder] string text)
     {
@@ -342,6 +343,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("removequote")]
     [Alias("quoteremove", "qremove", "remove")]
     [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.AddReactions)]
     [RateLimit(3, 10)]
     public async Task RemoveQuote(int id, [Remainder] string reason = "")
     {

@@ -157,6 +157,7 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
     [Command("deepfry")]
     [Alias("deepfryimage", "deepfryimg")]
     [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RequireUserPermission(GuildPermission.AttachFiles)]
     [RateLimit(3, 30)]
     public async Task DeepfryAsync()
@@ -231,6 +232,7 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
     [Command("captcha")]
     [Alias("getcaptcha")]
     [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(3, 30)]
     public async Task GetCaptchaAsync()
     {
@@ -260,6 +262,7 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
     [Command("qrcode")]
     [Alias("generateqrcode", "makeqrcode")]
     [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RateLimit(3, 30)]
     public async Task GenerateQRCodeAsync([Remainder] string text)
     {
@@ -299,6 +302,7 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
     [Command("blurpify")]
     [Alias("blur", "blrp")]
     [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
     [RequireUserPermission(GuildPermission.AttachFiles)]
     [RateLimit(3, 30)]
     public async Task BlurpifyAsync(int pixelScale = 4, int maxOffset = 6, int smoothPasses = 2)
