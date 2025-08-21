@@ -231,6 +231,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             return;
         }
 
+        if (approvals > 1000)
+        {
+            await ReplyAsync("Approvals must be at most 1000.");
+            return;
+        }
+
         Guild guild = Context.DbGuild!;
         guild.QuoteAddRequiredApprovals = approvals;
         await dbContext.SaveChangesAsync();
@@ -249,6 +255,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         if (approvals < 1)
         {
             await ReplyAsync("Approvals must be at least 1.");
+            return;
+        }
+
+        if (approvals > 1000)
+        {
+            await ReplyAsync("Approvals must be at most 1000.");
             return;
         }
 
