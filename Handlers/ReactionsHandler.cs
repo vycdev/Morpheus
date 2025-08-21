@@ -26,7 +26,6 @@ public class ReactionsHandler
         _client.ReactionRemoved += OnReactionRemoved;
     }
 
-
     private Task OnReactionAdded(Cacheable<IUserMessage, ulong> cache, Cacheable<IMessageChannel, ulong> channelCache, SocketReaction reaction)
     {
         _ = Task.Run(() => ProcessReaction(cache, channelCache, reaction));
@@ -127,9 +126,9 @@ public class ReactionsHandler
                         var body = string.Join('\n', lines);
                         string finalContent;
                         if (approval.Type == Database.Models.QuoteApprovalType.AddRequest)
-                            finalContent = $"✅ **ADD APPROVED — Quote #{quote.Id}**\n\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
+                            finalContent = $"✅ **ADD APPROVED — Quote #{quote.Id}**\n\n{body}";
                         else
-                            finalContent = $"🗑️ **REMOVAL APPROVED — Quote #{quote.Id}**\n\n{body}\nFinal approvals: {approval.Score} / {requiredApprovals}";
+                            finalContent = $"🗑️ **REMOVAL APPROVED — Quote #{quote.Id}**\n\n{body}";
 
                         if (msg.Content != finalContent)
                             await msg.ModifyAsync(m => m.Content = finalContent);

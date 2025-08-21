@@ -321,7 +321,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         {
             try
             {
-                var sent = await channel.SendMessageAsync($"📥 **ADD REQUEST — Quote #{quote.Id}**\nSubmitted by: {Context.User.Mention}\n\n```{text}```\nApprovals: 0 / {guildDb.QuoteAddRequiredApprovals}");
+                var sent = await channel.SendMessageAsync($"📥 **ADD REQUEST — Quote #{quote.Id}**\nSubmitted by: {Context.User.Mention}\n\n```{text}```\nApprovals required: {guildDb.QuoteAddRequiredApprovals}");
                 // add up arrow reaction
                 await sent.AddReactionAsync(new Emoji("⬆️"));
 
@@ -433,7 +433,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         {
             try
             {
-                var sent = await channel.SendMessageAsync($"🗑️ **REMOVE REQUEST — Quote #{quote.Id}**\nRequested by: {Context.User.Mention}\n\n```{quote.Content}```\nApprovals: 0 / {guildDb.QuoteRemoveRequiredApprovals}");
+                var sent = await channel.SendMessageAsync($"🗑️ **REMOVE REQUEST — Quote #{quote.Id}**\nRequested by: {Context.User.Mention}\n\n```{quote.Content}```\nApprovals required: {guildDb.QuoteRemoveRequiredApprovals}");
                 await sent.AddReactionAsync(new Emoji("⬆️"));
 
                 approval.ApprovalMessageId = sent.Id;
