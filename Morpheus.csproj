@@ -59,4 +59,10 @@
 	<ItemGroup>
 	  <None Include="C:\Users\Vycto\Documents\GitHub\Morpheus\.editorconfig" />
 	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="Media\**">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 </Project>

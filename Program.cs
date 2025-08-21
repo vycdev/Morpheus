@@ -87,7 +87,6 @@ services.AddQuartz(q =>
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(1)).RepeatForever())
     );
 
-    // Run daily job to ensure the bot avatar is correct for season (e.g., Xmas)
     q.ScheduleJob<BotAvatarJob>(trigger => trigger
         .WithIdentity("botAvatarDaily", "discord")
         .StartNow()
