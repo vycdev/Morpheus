@@ -58,6 +58,7 @@ services.AddScoped<GuildService>();
 services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
 services.AddScoped<ActivityService>();
+services.AddScoped<BotAvatarJob>();
 
 // Add Quartz 
 services.AddQuartz(q =>
@@ -76,7 +77,7 @@ services.AddQuartz(q =>
 
     q.ScheduleJob<ActivityRolesJob>(trigger => trigger
         .WithIdentity("activityRoles", "discord")
-        .StartAt((DateTime.UtcNow.AddSeconds(10)))
+        .StartAt(DateTime.UtcNow.AddMinutes(1))
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
     );
 
@@ -84,6 +85,13 @@ services.AddQuartz(q =>
         .WithIdentity("reminders", "discord")
         .StartNow()
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(1)).RepeatForever())
+    );
+
+    // Run daily job to ensure the bot avatar is correct for season (e.g., Xmas)
+    q.ScheduleJob<BotAvatarJob>(trigger => trigger
+        .WithIdentity("botAvatarDaily", "discord")
+        .StartNow()
+        .WithCronSchedule("0 0 0 * * ?") // every day at 00:00 UTC
     );
 });
 
