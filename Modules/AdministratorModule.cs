@@ -1,5 +1,6 @@
 using System.Text;
 using Discord.Commands;
+using Discord;
 using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database;
@@ -93,5 +94,65 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
 
         int guildCount = client.Guilds.Count;
         await ReplyAsync($"I am currently in {guildCount} guild(s).");
+    }
+
+    [Name("Owner Send")]
+    [Summary("Sends the provided text as the bot into the specified text channel (bot owner only).")]
+    [Command("sendto")]
+    [Alias("sendchan", "sayto")]
+    [RateLimit(2, 10)]
+    [Hidden]
+    public async Task SendToChannelAsync(ulong channelId, [Remainder] string text)
+    {
+        // Check OWNER_ID environment variable
+        string? ownerEnv = Environment.GetEnvironmentVariable("OWNER_ID");
+        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        {
+            await ReplyAsync("Owner not configured.");
+            return;
+        }
+
+        if (Context.User.Id != ownerId)
+        {
+            await ReplyAsync("You are not authorized to use this command.");
+            return;
+        }
+
+        // Try to resolve the channel from cache first
+        IMessageChannel? target = null;
+
+        var maybe = Context.Client.GetChannel(channelId);
+        if (maybe is IMessageChannel imc)
+            target = imc;
+
+        // If not found in cache, search guilds the client is in
+        if (target == null)
+        {
+            foreach (var g in client.Guilds)
+            {
+                var ch = g.GetChannel(channelId) as IMessageChannel;
+                if (ch != null)
+                {
+                    target = ch;
+                    break;
+                }
+            }
+        }
+
+        if (target == null)
+        {
+            await ReplyAsync("Channel not found or the bot doesn't have access to it.");
+            return;
+        }
+
+        try
+        {
+            await target.SendMessageAsync(text);
+            await ReplyAsync($"Message sent to <#{channelId}>.");
+        }
+        catch (Exception ex)
+        {
+            await ReplyAsync($"Failed to send message: {ex.Message}");
+        }
     }
 }
