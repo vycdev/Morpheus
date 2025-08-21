@@ -15,13 +15,22 @@ using Quartz;
 // Load environment variables from .env file
 Env.Load(".env");
 
+GatewayIntents intents =
+    GatewayIntents.Guilds
+    | GatewayIntents.GuildMembers
+    | GatewayIntents.GuildMessages
+    | GatewayIntents.MessageContent
+    | GatewayIntents.GuildMessageReactions
+    | GatewayIntents.DirectMessages
+    | GatewayIntents.DirectMessageReactions;
+
 // Set up configs
 DiscordSocketConfig clientConfig = new()
 {
     MessageCacheSize = 100,
     AlwaysDownloadUsers = true,
     LogLevel = LogSeverity.Verbose,
-    GatewayIntents = GatewayIntents.All,
+    GatewayIntents = intents,
 
 #if DEBUG
     UseInteractionSnowflakeDate = false,
