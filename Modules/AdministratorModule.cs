@@ -5,6 +5,7 @@ using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
+using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
@@ -18,7 +19,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task DumpLogsAsync()
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Environment.GetEnvironmentVariable("OWNER_ID");
+        string? ownerEnv = Env.Variables["OWNER_ID"];
         if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
@@ -79,7 +80,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task GuildCountAsync()
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Environment.GetEnvironmentVariable("OWNER_ID");
+        string? ownerEnv = Env.Variables["OWNER_ID"];
         if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
@@ -105,7 +106,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task SendToChannelAsync(ulong channelId, [Remainder] string text)
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Environment.GetEnvironmentVariable("OWNER_ID");
+        string? ownerEnv = Env.Variables["OWNER_ID"];
         if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
