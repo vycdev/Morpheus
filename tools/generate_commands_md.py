@@ -64,6 +64,8 @@ def extract_methods_from_file(path: Path):
         params_raw = m.group(4).strip()
 
         attrs = parse_attributes(attr_block)
+        # Detect hidden attribute; do not skip — we'll show these but mark them
+        hidden = ('Hidden' in attrs) or ('HiddenAttribute' in attrs)
         if 'Command' not in attrs:
             continue
 
@@ -165,6 +167,7 @@ def extract_methods_from_file(path: Path):
             'command': cmd_name,
             'aliases': aliases,
             'summary': summary,
+            'hidden': hidden,
             'requires_guild_context': requires_guild_context,
             'params': params,
             'rate_limit': rate_limit,
@@ -209,6 +212,8 @@ def generate_markdown(commands_info):
             out.append(f'- Source: `{info["source"]}`')
             out.append(f'- Aliases: {aliases}')
             out.append(f'- Summary: {summary}')
+            if info.get('hidden'):
+                out.append(f'- Hidden: Yes')
             if info.get('rate_limit'):
                 out.append(f'- Rate limit: {info.get("rate_limit")}')
             if info.get('required_permission'):

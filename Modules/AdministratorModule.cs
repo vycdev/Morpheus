@@ -13,6 +13,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     [Summary("Dumps the latest 25 logs from the database (bot owner only).")]
     [Command("dumplogs")]
     [RateLimit(3, 30)]
+    [Hidden]
     public async Task DumpLogsAsync()
     {
         // Check OWNER_ID environment variable
@@ -73,6 +74,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     [Command("guildcount")]
     [Alias("guilds", "servers")]
     [RateLimit(3, 30)]
+    [Hidden]
     public async Task GuildCountAsync()
     {
         // Check OWNER_ID environment variable

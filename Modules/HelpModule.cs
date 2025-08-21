@@ -76,9 +76,10 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
 
         if (module != null)
         {
-            for (int i = (page - 1) * HelpPageSize; i < page * HelpPageSize && i < module.Commands.Count; i++)
+            var visibleCommands = module.Commands.Where(c => !c.Attributes.OfType<HiddenAttribute>().Any()).ToList();
+            for (int i = (page - 1) * HelpPageSize; i < page * HelpPageSize && i < visibleCommands.Count; i++)
             {
-                CommandInfo cmd = module.Commands.ElementAt(i);
+                CommandInfo cmd = visibleCommands[i];
 
                 string aliases = cmd.Aliases.Count > 1
                     ? $"Aliases: {string.Join(", ", cmd.Aliases.Skip(1).Select(a => commandPrefix + a))}"
@@ -126,9 +127,11 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
         if (!string.IsNullOrWhiteSpace(command))
         {
             // find command by name or alias (case-insensitive)
-            CommandInfo? found = commands.Commands.FirstOrDefault(c =>
-                c.Aliases.Any(a => string.Equals(a, command, StringComparison.OrdinalIgnoreCase))
-                || string.Equals(c.Name, command, StringComparison.OrdinalIgnoreCase));
+            CommandInfo? found = commands.Commands
+                .Where(c => !c.Attributes.OfType<HiddenAttribute>().Any())
+                .FirstOrDefault(c =>
+                    c.Aliases.Any(a => string.Equals(a, command, StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(c.Name, command, StringComparison.OrdinalIgnoreCase));
 
             if (found == null)
             {
@@ -222,7 +225,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
         // Create the selector (dropdown)
         if (helpMenu == null)
         {
-            List<string> modules = [.. commands.Modules.Select(m => m.Name)];
+            List<string> modules = commands.Modules.Select(m => m.Name).ToList();
             helpMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select a module")
                 .WithCustomId("module_selector");
@@ -230,12 +233,16 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
             // Add the options
             foreach (ModuleInfo? module in commands.Modules)
             {
-                if (module.Commands.Count <= HelpPageSize)
+                var visibleCommands = module.Commands.Where(c => !c.Attributes.OfType<HiddenAttribute>().Any()).ToList();
+                // If all commands in the module are hidden, don't show the module in the selector
+                if (visibleCommands.Count == 0)
+                    continue;
+                if (visibleCommands.Count <= HelpPageSize)
                     helpMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Name.Replace("Module", "")).WithValue("1_" + module.Name));
                 else
                 {
                     int j = 1;
-                    for (int i = 0; i < module.Commands.Count; i += HelpPageSize)
+                    for (int i = 0; i < visibleCommands.Count; i += HelpPageSize)
                     {
                         helpMenu.AddOption(new SelectMenuOptionBuilder().WithLabel(module.Name.Replace("Module", "") + " " + j).WithValue($"{j}_{module.Name}"));
                         j++;
