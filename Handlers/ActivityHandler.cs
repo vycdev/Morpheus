@@ -1,4 +1,5 @@
 ﻿using Discord.Commands;
+using Discord;
 using Discord.WebSocket;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -163,6 +164,8 @@ public class ActivityHandler
             {
                 try
                 {
+                    var noPing = new AllowedMentions(AllowedMentionTypes.None);
+
                     // Discord guild and channel context
                     var discordGuild = guildChannel.Guild;
 
@@ -184,7 +187,8 @@ public class ActivityHandler
 
                         if (target != null)
                         {
-                            await target.SendMessageAsync($"{message.Author.Mention} leveled up to level {levelToAnnounce}! {happyEmojisBag.Random()}");
+                            // Send the mention token but prevent an actual ping by clearing allowed mentions
+                            await target.SendMessageAsync($"{message.Author.Mention} leveled up to level {levelToAnnounce}! {happyEmojisBag.Random()}", allowedMentions: noPing);
                         }
                     }
 
@@ -205,12 +209,27 @@ public class ActivityHandler
 
                         if (quoteTarget != null)
                         {
-                            await quoteTarget.SendMessageAsync(selectedQuoteContent);
+                            // If we're posting the quote to the same channel that triggered the level up,
+                            // send it as a reply to the triggering message for clearer context.
+                            if (quoteTarget.Id == message.Channel.Id && message is SocketUserMessage)
+                            {
+                                ulong? guildId = null;
+                                if (message.Channel is SocketGuildChannel sgc)
+                                    guildId = sgc.Guild.Id;
+
+                                var reference = new MessageReference(message.Id, message.Channel.Id, guildId);
+                                await quoteTarget.SendMessageAsync(text: selectedQuoteContent, messageReference: reference, allowedMentions: noPing);
+                            }
+                            else
+                            {
+                                await quoteTarget.SendMessageAsync(selectedQuoteContent, allowedMentions: noPing);
+                            }
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"Error sending level up message: {ex}");
                     // don't let messaging errors bubble up and break activity handling
                 }
             });
