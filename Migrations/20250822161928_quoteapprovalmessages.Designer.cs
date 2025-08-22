@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20250822161928_quoteapprovalmessages")]
+    partial class quoteapprovalmessages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -202,30 +205,6 @@ namespace Morpheus.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Quotes");
-                });
-
-            modelBuilder.Entity("Morpheus.Database.Models.QuoteApproval", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("InsertDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("QuoteApprovalMessageId")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("UserId")
-                        .HasColumnType("numeric(20,0)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("QuoteApprovalMessageId");
-
-                    b.ToTable("QuoteApprovals");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.QuoteApprovalMessage", b =>
@@ -496,17 +475,6 @@ namespace Morpheus.Migrations
                     b.Navigation("Guild");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Morpheus.Database.Models.QuoteApproval", b =>
-                {
-                    b.HasOne("Morpheus.Database.Models.QuoteApprovalMessage", "ApprovalMessage")
-                        .WithMany()
-                        .HasForeignKey("QuoteApprovalMessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ApprovalMessage");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.QuoteApprovalMessage", b =>

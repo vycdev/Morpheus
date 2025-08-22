@@ -7,6 +7,7 @@ using Morpheus.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Discord.WebSocket;
 using Morpheus.Services;
+using Morpheus.Handlers;
 using Discord;
 
 namespace Morpheus.Modules;
@@ -17,11 +18,173 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     private readonly UsersService usersService;
     private readonly LogsService logsService;
 
-    public QuotesModule(DB dbContext, UsersService usersService, LogsService logsService)
+    public QuotesModule(DB dbContext, UsersService usersService, LogsService logsService, InteractionsHandler interactionHandler)
     {
         db = dbContext;
         this.usersService = usersService;
         this.logsService = logsService;
+
+        // Register interaction handler for quote approval buttons
+        interactionHandler.RegisterInteraction("quote_approve", HandleQuoteApproveInteraction);
+    }
+
+    // Interaction handler for the approve button. Interaction custom id format: quote_approve:{approvalId}
+    private async Task HandleQuoteApproveInteraction(SocketInteraction interaction)
+    {
+        if (interaction is not SocketMessageComponent comp)
+        {
+            try { await interaction.RespondAsync("Invalid interaction.", ephemeral: true); } catch { }
+            return;
+        }
+
+        var custom = comp.Data.CustomId ?? string.Empty;
+
+        // helper to respond safely (avoid double-response exceptions)
+        async Task SafeRespond(string text)
+        {
+            try
+            {
+                await comp.RespondAsync(text, ephemeral: true);
+            }
+            catch (InvalidOperationException)
+            {
+                await comp.FollowupAsync(text, ephemeral: true);
+            }
+        }
+
+        if (!custom.StartsWith("quote_approve:"))
+        {
+            await SafeRespond("Unrecognized interaction.");
+            return;
+        }
+
+        var parts = custom.Split(':', 2);
+        if (parts.Length < 2 || !int.TryParse(parts[1], out var approvalId))
+        {
+            await SafeRespond("Invalid approval identifier.");
+            return;
+        }
+
+        var approval = await db.QuoteApprovalMessages.FirstOrDefaultAsync(a => a.Id == approvalId);
+        if (approval == null)
+        {
+            await SafeRespond("Approval request not found.");
+            return;
+        }
+
+        // 5-day expiry
+        if (approval.InsertDate.AddDays(5) < DateTime.UtcNow)
+        {
+            await SafeRespond("This approval request has expired.");
+            return;
+        }
+
+        if (approval.Approved)
+        {
+            await SafeRespond("This request has already been finalized.");
+            return;
+        }
+
+        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == approval.QuoteId);
+        if (quote == null)
+        {
+            await SafeRespond("Related quote not found.");
+            return;
+        }
+
+        var guildDb = await db.Guilds.FirstOrDefaultAsync(g => g.Id == quote.GuildId);
+        if (guildDb == null)
+        {
+            await SafeRespond("Guild configuration not found.");
+            return;
+        }
+
+        var userDb = await usersService.TryGetCreateUser(comp.User);
+
+        // prevent duplicate votes (DB unique index also protects against races)
+        var already = await db.QuoteApprovals.AnyAsync(a => a.QuoteApprovalMessageId == approval.Id && a.UserId == (ulong)userDb.Id);
+        if (already)
+        {
+            await SafeRespond("You have already approved this request.");
+            return;
+        }
+
+        var vote = new QuoteApproval
+        {
+            QuoteApprovalMessageId = approval.Id,
+            UserId = (ulong)userDb.Id,
+            InsertDate = DateTime.UtcNow
+        };
+
+        try
+        {
+            await db.QuoteApprovals.AddAsync(vote);
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Likely a duplicate due to race; treat as already approved by this user
+            await SafeRespond("You have already approved this request.");
+            return;
+        }
+
+        var count = await db.QuoteApprovals.CountAsync(a => a.QuoteApprovalMessageId == approval.Id);
+        var required = approval.Type == QuoteApprovalType.AddRequest ? guildDb.QuoteAddRequiredApprovals : guildDb.QuoteRemoveRequiredApprovals;
+
+        await SafeRespond($"Your approval was recorded. Current approvals: {count}/{required}");
+
+        if (count < required)
+            return;
+
+        // finalize
+        try
+        {
+            approval.Approved = true;
+            if (approval.Type == QuoteApprovalType.AddRequest)
+                quote.Approved = true;
+            else
+                quote.Removed = true;
+
+            await db.SaveChangesAsync();
+
+            // Edit the original approval message (if still present) to show final status and clear components
+            if (approval.ApprovalMessageId != 0)
+            {
+                try
+                {
+                    // Prefer the channel from the interaction to avoid relying on Command Context (may be null)
+                    IMessageChannel? channel = comp.Channel as IMessageChannel;
+                    if (channel == null && Context != null)
+                        channel = Context.Client.GetChannel(guildDb.QuotesApprovalChannelId) as IMessageChannel;
+
+                    if (channel != null)
+                    {
+                        var fetched = await channel.GetMessageAsync(approval.ApprovalMessageId);
+                        if (fetched is IUserMessage msg)
+                        {
+                            var statusText = approval.Type == QuoteApprovalType.AddRequest ? "✅ **ADD REQUEST APPROVED**" : "✅ **REMOVE REQUEST APPROVED**";
+                            var safeContent = quote.Content ?? string.Empty;
+                            var newContent = $"{statusText} — Quote #{quote.Id}\n\n```{safeContent}```";
+                            var builder = new ComponentBuilder(); // empty clears components
+                            await msg.ModifyAsync(props =>
+                            {
+                                props.Content = newContent;
+                                props.Components = builder.Build();
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // logsService may be null in rare cases; guard call
+                    logsService?.Log($"Failed to update approval message {approval.ApprovalMessageId}: {ex}", LogSeverity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logsService.Log($"Error while finalizing approval {approval.Id}: {ex}", LogSeverity.Warning);
+        }
     }
 
     // URL detection moved to Morpheus.Utilities.ContentUtils
@@ -304,7 +467,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Approval channel exists: create a QuoteApprovals entry and post a message to the approval channel
-        var approval = new QuoteApproval
+        var approval = new QuoteApprovalMessage
         {
             QuoteId = quote.Id,
             Score = 0,
@@ -312,7 +475,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             InsertDate = DateTime.UtcNow
         };
 
-        await db.QuoteApprovals.AddAsync(approval);
+        await db.QuoteApprovalMessages.AddAsync(approval);
         await db.SaveChangesAsync();
 
         // Send a message in the approval channel with an up arrow reaction
@@ -321,11 +484,13 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         {
             try
             {
-                var sent = await channel.SendMessageAsync($"📥 **ADD REQUEST — Quote #{quote.Id}**\nSubmitted by: {Context.User.Mention}\n\n```{text}```\nApprovals required: {guildDb.QuoteAddRequiredApprovals}");
-                // add up arrow reaction
-                await sent.AddReactionAsync(new Emoji("⬆️"));
+                var component = new ComponentBuilder()
+                    .WithButton("Approve", customId: $"quote_approve:{approval.Id}", ButtonStyle.Primary)
+                    .Build();
 
-                // store the approval message id so reaction handlers can map message -> approval
+                var sent = await channel.SendMessageAsync($"📥 **ADD REQUEST — Quote #{quote.Id}**\nSubmitted by: {Context.User.Mention}\n\n```{text}```\nApprovals required: {guildDb.QuoteAddRequiredApprovals}", components: component);
+
+                // store the approval message id so interaction handlers can map message -> approval
                 approval.ApprovalMessageId = sent.Id;
                 await db.SaveChangesAsync();
             }
@@ -417,7 +582,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var approval = new QuoteApproval
+        var approval = new QuoteApprovalMessage
         {
             QuoteId = quote.Id,
             Score = 0,
@@ -425,7 +590,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             InsertDate = DateTime.UtcNow
         };
 
-        await db.QuoteApprovals.AddAsync(approval);
+        await db.QuoteApprovalMessages.AddAsync(approval);
         await db.SaveChangesAsync();
 
         var channel = Context.Client.GetChannel(guildDb.QuotesApprovalChannelId) as IMessageChannel;
@@ -433,8 +598,11 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         {
             try
             {
-                var sent = await channel.SendMessageAsync($"🗑️ **REMOVE REQUEST — Quote #{quote.Id}**\nRequested by: {Context.User.Mention}\n\n```{quote.Content}```\nApprovals required: {guildDb.QuoteRemoveRequiredApprovals}");
-                await sent.AddReactionAsync(new Emoji("⬆️"));
+                var component = new ComponentBuilder()
+                    .WithButton("Approve", customId: $"quote_approve:{approval.Id}", ButtonStyle.Primary)
+                    .Build();
+
+                var sent = await channel.SendMessageAsync($"🗑️ **REMOVE REQUEST — Quote #{quote.Id}**\nRequested by: {Context.User.Mention}\n\n```{quote.Content}```\nApprovals required: {guildDb.QuoteRemoveRequiredApprovals}", components: component);
 
                 approval.ApprovalMessageId = sent.Id;
                 await db.SaveChangesAsync();

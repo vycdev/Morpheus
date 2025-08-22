@@ -25,6 +25,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         // Create unique index on DiscordId
         modelBuilder.Entity<User>().HasIndex(u => u.DiscordId).IsUnique();
         modelBuilder.Entity<Guild>().HasIndex(g => g.DiscordId).IsUnique();
+        modelBuilder.Entity<QuoteApproval>().HasIndex(a => new { a.QuoteApprovalMessageId, a.UserId }).IsUnique();
     }
 
     public DbSet<User> Users { get; set; }
@@ -32,6 +33,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<UserLevels> UserLevels { get; set; }
     public DbSet<Guild> Guilds { get; set; }
     public DbSet<Quote> Quotes { get; set; }
+    public DbSet<QuoteApprovalMessage> QuoteApprovalMessages { get; set; }
     public DbSet<QuoteApproval> QuoteApprovals { get; set; }
     public DbSet<QuoteScore> QuoteScores { get; set; }
     public DbSet<Log> Logs { get; set; }

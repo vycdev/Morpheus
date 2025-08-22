@@ -105,7 +105,7 @@ services.AddScoped<WelcomeHandler>();
 services.AddScoped<InteractionsHandler>();
 services.AddScoped<LogsHandler>();
 services.AddScoped<ActivityHandler>();
-services.AddScoped<ReactionsHandler>();
+
 
 // Add the database context
 services.AddDbContextPool<DB>(options => options.UseNpgsql(Env.Variables["DB_CONNECTION_STRING"])
@@ -125,7 +125,7 @@ _ = host.Services.GetRequiredService<LogsHandler>();
 _ = host.Services.GetRequiredService<WelcomeHandler>();
 _ = host.Services.GetRequiredService<InteractionsHandler>();
 _ = host.Services.GetRequiredService<ActivityHandler>();
-_ = host.Services.GetRequiredService<ReactionsHandler>();
+// ReactionsHandler intentionally not started: approval flows use interaction buttons now.
 MessagesHandler messagesHandler = host.Services.GetRequiredService<MessagesHandler>();
 
 // Register the commands 
