@@ -105,6 +105,7 @@ services.AddScoped<WelcomeHandler>();
 services.AddScoped<InteractionsHandler>();
 services.AddScoped<LogsHandler>();
 services.AddScoped<ActivityHandler>();
+services.AddScoped<FunnyResponsesHandler>();
 
 
 // Add the database context
@@ -125,6 +126,7 @@ _ = host.Services.GetRequiredService<LogsHandler>();
 _ = host.Services.GetRequiredService<WelcomeHandler>();
 _ = host.Services.GetRequiredService<InteractionsHandler>();
 _ = host.Services.GetRequiredService<ActivityHandler>();
+_ = host.Services.GetRequiredService<FunnyResponsesHandler>();
 // ReactionsHandler intentionally not started: approval flows use interaction buttons now.
 MessagesHandler messagesHandler = host.Services.GetRequiredService<MessagesHandler>();
 
