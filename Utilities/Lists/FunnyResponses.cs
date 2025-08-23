@@ -50,6 +50,7 @@ public static class FunnyResponses
         "codify gonna need a reboot for that one",
         "codify is like a bug museum",
         "codify still the king of exceptions",
+        "one day he won't be online anymore"
     ];
 
     public static readonly List<string> ResponsesToMorpheusMentions =
