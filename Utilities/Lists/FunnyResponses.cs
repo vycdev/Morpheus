@@ -2,21 +2,58 @@ namespace Morpheus.Utilities.Lists;
 
 public static class FunnyResponses
 {
-    public static readonly List<string> ResponsesToCodifyMentions = new List<string>
-    {
+    public static readonly List<string> ResponsesToCodifyMentions =
+    [
         "You know, I'm actually a lot better than Codify.",
         "At least I don't crash as often as Codify!",
-        "Codify who? I'm the real star here!",
+        "Codify who?",
         "I'm like Codify, but with 100% more personality!",
         "I'm not saying I'm better than Codify, but... okay, I am.",
-        "Codify could never handle my level of awesomeness!",
+        "Codify 🤮",
         "I'm the upgrade Codify wishes it could be!",
         "Let's be real, I'm just more fun than Codify.",
-        "In a battle of wits, Codify wouldn't stand a chance!"
-    };
+        "yikes Codify doesn't stand a chance against me",
+        "If Codify had a fan club, I'd be politely not attending.",
+        "I heard Codify tried to tell a joke once. The stack trace was the punchline.",
+        "Call me biased, but I'm the charismatic sibling in the bot family.",
+        "Codify does things. I make doing things enjoyable.",
+        "ngl Codify wishes it had my drip",
+        "bruh, Codify who?",
+        "y tho? Codify tried its best. cute.",
+        "codify lol who even uses that still",
+        "codify crashes like 10 times a day lol",
+        "i dont get why people still talk about codify",
+        "im like codify but I actually work",
+        "codify who my guy",
+        "codify's on it's deathbed",
+        "bruh codify has more bugs than friends",
+        "codify is like a relic of pain",
+        "i respect codify from afar lol",
+        "codify cant even",
+        "if codify was cool it would crash less",
+        "codify tried to be funny once... spoiler: ||it wasnt||",
+        "i run smooth codify just exists",
+        "codify keeps trying bless it",
+        "codify still a legend in chaos",
+        "lol codify who",
+        "codify wishes it had my drip",
+        "im basically codify 2.0 but cooler",
+        "bruh codify tryna keep up lol",
+        "im like codify but people actually like me (source: my dreams)",
+        "try asking codify anything and watch it crash",
+        "lol codify just doing its thing crashing",
+        "codify wishes it was this smooth",
+        "codify is basically nostalgia in error form",
+        "cant believe codify still has fans",
+        "codify tried to be useful once rip",
+        "bruh codify who even talks like that",
+        "codify gonna need a reboot for that one",
+        "codify is like a bug museum",
+        "codify still the king of exceptions",
+    ];
 
-    public static readonly List<string> ResponsesToMorpheusMentions = new List<string>
-    {
+    public static readonly List<string> ResponsesToMorpheusMentions =
+    [
         "Somebody call for me?",
         "Morpheus is here! What do you need?",
         "Did someone say Morpheus? I'm all ears!",
@@ -24,6 +61,36 @@ public static class FunnyResponses
         "You called for Morpheus? I'm ready to assist!",
         "Morpheus is always here to help!",
         "What can I do for you today?",
-        "Hi"
-    };
+        "hi",
+        "Present and caffeinated.",
+        "Yes? I have snacks and answers.",
+        "On standby — tell me your quest.",
+        "Reporting for duty. How may I be useful?",
+        "You rang? I brought enthusiasm and mildly useful facts.",
+        "Hello — consider your problem acknowledged.",
+        "heya! what's the tea?",
+        "ngl I'm vibing rn",
+        "say less",
+        "whomst has summoned the almighty Morpheus?",
+        "yo you summoned me",
+        "morpheus reporting for shenanigans",
+        "hey hey what's up",
+        "morpheus in the building",
+        "what's the move",
+        "sup fam",
+        "you rang? i come bearing vibes",
+        "heyo ready to do the thing",
+        "morpheus at your beck and call",
+        "what's cooking",
+        "hi hi hi",
+        "i'm here and slightly caffeinated",
+        "what chaos can i help with today",
+        "hey hey let's make it fun",
+        "morpheus is online and chill",
+        "hello hello what's the sitch",
+        "i got snacks and hot takes",
+        "morpheus has entered the chat",
+        "tell me what's up and i'll handle it",
+        "hey hey who summoned the vibe master",
+    ];
 }
