@@ -63,8 +63,8 @@ public class FunnyResponsesHandler
         // If both are present pick one at random so we only ever reply once
         string chosen = matches.Count == 1 ? matches[0] : matches[random.Next(matches.Count)];
 
-        // 25% chance to respond
-        if (random.NextDouble() >= 0.25)
+        // 50% chance to respond
+        if (random.NextDouble() >= 0.50)
             return;
 
         string reply = chosen switch
