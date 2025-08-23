@@ -442,6 +442,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             await ReplyAsync("You cannot use the force flag unless you are an administrator.");
             return;
         }
+
         if (guildDb.QuotesApprovalChannelId == 0)
         {
             if (isAdmin)
@@ -494,10 +495,29 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
                 approval.ApprovalMessageId = sent.Id;
                 await db.SaveChangesAsync();
             }
+            catch (Discord.Net.HttpException httpEx)
+            {
+                // Detect missing permissions reliably (Discord API error 50013 / "Missing Permissions")
+                var msg = httpEx.Message ?? string.Empty;
+                if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
+                {
+                    logsService.Log($"Missing permission sending approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
+                    await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
+                    return;
+                }
+
+                // otherwise log and continue
+                logsService.Log($"HTTP error sending approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
+            }
             catch (Exception ex)
             {
                 logsService.Log($"Failed to send quote approval message for quote {quote.Id}: {ex}", LogSeverity.Warning);
             }
+        }
+        else
+        {
+            await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
+            return;
         }
 
         await ReplyAsync("Quote submitted for approval.");
@@ -607,10 +627,27 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
                 approval.ApprovalMessageId = sent.Id;
                 await db.SaveChangesAsync();
             }
+            catch (Discord.Net.HttpException httpEx)
+            {
+                var msg = httpEx.Message ?? string.Empty;
+                if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
+                {
+                    logsService.Log($"Missing permission sending removal approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
+                    await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
+                    return;
+                }
+
+                logsService.Log($"HTTP error sending removal approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
+            }
             catch (Exception ex)
             {
                 logsService.Log($"Failed to send quote removal approval message for quote {quote.Id}: {ex}", LogSeverity.Warning);
             }
+        }
+        else
+        {
+            await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
+            return;
         }
 
         await ReplyAsync("Quote removal submitted for approval.");
