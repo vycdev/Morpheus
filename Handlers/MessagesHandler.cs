@@ -89,6 +89,4 @@ public class MessagesHandler
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
         };
     }
-
-
 }
