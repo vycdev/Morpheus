@@ -64,7 +64,7 @@ public class FunnyResponsesHandler
         string chosen = matches.Count == 1 ? matches[0] : matches[random.Next(matches.Count)];
 
         // 50% chance to respond
-        if (random.NextDouble() >= 0.50)
+        if (random.NextDouble() >= 0.10)
             return;
 
         string reply = chosen switch
