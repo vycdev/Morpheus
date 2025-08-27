@@ -72,10 +72,16 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        // 5-day expiry
-        if (approval.InsertDate.AddDays(5) < DateTime.UtcNow)
+        // Expiry read from env var QUOTE_APPROVAL_EXPIRY_DAYS (defaults to 5 days)
+        int quoteApprovalExpiryDays = 5;
+        if (Env.Variables.TryGetValue("QUOTE_APPROVAL_EXPIRY_DAYS", out var expiryStr) && int.TryParse(expiryStr, out var parsed) && parsed > 0)
         {
-            await SafeRespond("This approval request has expired.");
+            quoteApprovalExpiryDays = parsed;
+        }
+
+        if (approval.InsertDate.AddDays(quoteApprovalExpiryDays) < DateTime.UtcNow)
+        {
+            await SafeRespond($"This approval request has expired (valid for {quoteApprovalExpiryDays} days).");
             return;
         }
 
