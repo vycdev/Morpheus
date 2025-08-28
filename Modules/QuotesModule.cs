@@ -54,7 +54,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
 
         if (!custom.StartsWith("quote_approve:"))
         {
-            await SafeRespond("Unrecognized interaction.");
             return;
         }
 
