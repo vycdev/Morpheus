@@ -89,19 +89,19 @@ public class ActivityHandler
         // Scale XP based on message length compared to guild average
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
-        int messageHashXp = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 30) ? 0 : 1;
+        int similarityPenaltySimple = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 60) ? 0 : 1;
         // Time-based factor: apply only to short messages (<= 50 chars) to complement speed penalty.
         // Use a smoothstep curve over 5s: s in [0,1], timeXp = s^2 * (3 - 2s), harsher near rapid sends.
-        double timeXp = 1.0;
+        double speedPenaltySimple = 1.0;
         if (previousActivity != null && message.Content.Length <= 50)
         {
             double s = (now - previousActivity.InsertDate).TotalMilliseconds / 5000.0;
             if (s < 0) s = 0; else if (s > 1) s = 1;
-            timeXp = s * s * (3 - 2 * s);
+            speedPenaltySimple = s * s * (3 - 2 * s);
         }
 
         // Similarity penalty via SimHash against last 10 messages (ignore very short normalized texts)
-        double simPenalty = 1.0;
+        double similarityPenaltyComplex = 1.0;
         if (normLen >= 12 && lastTen.Count > 0 && simHash != 0UL)
         {
             double maxSimilarity = 0.0;
@@ -118,14 +118,16 @@ public class ActivityHandler
 
             // Apply thresholded penalty (tuneable)
             if (maxSimilarity >= 0.92)
-                simPenalty = 0.0; // effectively no XP for near-duplicates
+                similarityPenaltyComplex = 0.0; // effectively no XP for near-duplicates
             else if (maxSimilarity >= 0.85)
-                simPenalty = 0.25; // heavy penalty
+                similarityPenaltyComplex = 0.25; // heavy penalty
+
+            Console.WriteLine($"User: {user.Username}, Max Similarity: {maxSimilarity}, Penalty: {similarityPenaltyComplex}");
         }
 
         // Typing speed penalty based on WPM estimated from time since previous user activity
         // After 200 WPM start penalizing logarithmically until 300 WPM where XP becomes 0
-        double speedPenalty = 1.0;
+        double speedPenaltyComplex = 1.0;
         if (previousActivity != null && message.Content.Length >= 50)
         {
             double minutesSincePrev = Math.Max((now - previousActivity.InsertDate).TotalMinutes, 1e-6); // avoid div-by-zero
@@ -137,7 +139,7 @@ public class ActivityHandler
             {
                 if (wpm >= 300)
                 {
-                    speedPenalty = 0.0;
+                    speedPenaltyComplex = 0.0;
                 }
                 else
                 {
@@ -145,13 +147,13 @@ public class ActivityHandler
                     double x = (wpm - 200.0) / 100.0; // 0..1
                     // dec goes 0->1 using log base 10: ln(1+9x)/ln(10)
                     double dec = Math.Log(1.0 + 9.0 * x) / Math.Log(10.0);
-                    speedPenalty = 1.0 - dec; // 1->0
+                    speedPenaltyComplex = 1.0 - dec; // 1->0
                 }
             }
         }
 
         // Final XP: length and hash/time factors; timeXp applies to short messages, speedPenalty to fast typing, simPenalty for similarity
-        int xp = (int)Math.Floor((baseXP + messageLengthXp * messageHashXp * timeXp) * simPenalty * speedPenalty);
+        int xp = (int)Math.Floor((baseXP + messageLengthXp) * similarityPenaltySimple * similarityPenaltyComplex * speedPenaltySimple * speedPenaltyComplex);
 
         // Calculate average message length and message count
         double averageMessageLength = message.Content.Length;
