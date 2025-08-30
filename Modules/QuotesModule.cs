@@ -72,7 +72,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Expiry read from env var QUOTE_APPROVAL_EXPIRY_DAYS (defaults to 5 days)
-        int quoteApprovalExpiryDays = Env.GetInt("QUOTE_APPROVAL_EXPIRY_DAYS", 5);
+        int quoteApprovalExpiryDays = Env.Get<int>("QUOTE_APPROVAL_EXPIRY_DAYS", 5);
 
         if (approval.InsertDate.AddDays(quoteApprovalExpiryDays) < DateTime.UtcNow)
         {
