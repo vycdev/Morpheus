@@ -63,7 +63,7 @@ public class ActivityHandler
         string messageHash = Convert.ToBase64String(XxHash64.Hash(Encoding.UTF8.GetBytes(message.Content)));
         // Compute SimHash over normalized trigrams (non-reversible)
         (ulong simHash, int normLen) = SimHasher.ComputeSimHash(message.Content);
-        UserActivity? previousActivity = dbContext.UserActivity
+        UserActivity? previousUserActivityInGuild = dbContext.UserActivity
             .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
             .OrderByDescending(ua => ua.InsertDate)
             .FirstOrDefault();
@@ -89,13 +89,13 @@ public class ActivityHandler
         // Scale XP based on message length compared to guild average
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
-        int similarityPenaltySimple = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 60) ? 0 : 1;
+        int similarityPenaltySimple = (previousUserActivityInGuild?.MessageHash == messageHash) && (Math.Abs((now - previousUserActivityInGuild.InsertDate).TotalSeconds) < 60) ? 0 : 1;
         // Time-based factor
         // Use a smoothstep curve over 5s: s in [0,1], timeXp = s^2 * (3 - 2s), harsher near rapid sends.
         double speedPenaltySimple = 1.0;
-        if (previousActivity != null)
+        if (previousUserActivityInGuild != null)
         {
-            double s = (now - previousActivity.InsertDate).TotalMilliseconds / 5000.0;
+            double s = (now - previousUserActivityInGuild.InsertDate).TotalMilliseconds / 5000.0;
             if (s < 0) s = 0; else if (s > 1) s = 1;
             speedPenaltySimple = s * s * (3 - 2 * s);
         }
@@ -105,7 +105,7 @@ public class ActivityHandler
         if (normLen >= 12 && lastTen.Count > 0 && simHash != 0UL)
         {
             double maxSimilarity = 0.0;
-            DateTime newestTs = previousActivity?.InsertDate ?? DateTime.MinValue;
+            DateTime newestTs = previousUserActivityInGuild?.InsertDate ?? DateTime.MinValue;
             foreach (var prev in lastTen)
             {
                 if (prev.MessageSimHash == 0UL || prev.NormalizedLength < 12)
@@ -126,9 +126,9 @@ public class ActivityHandler
         // Typing speed penalty based on WPM estimated from time since previous user activity
         // After 200 WPM start penalizing logarithmically until 300 WPM where XP becomes 0
         double speedPenaltyComplex = 1.0;
-        if (previousActivity != null && message.Content.Length >= 50)
+        if (previousUserActivityInGuild != null && message.Content.Length >= 50)
         {
-            double minutesSincePrev = Math.Max((now - previousActivity.InsertDate).TotalMinutes, 1e-6); // avoid div-by-zero
+            double minutesSincePrev = Math.Max((now - previousUserActivityInGuild.InsertDate).TotalMinutes, 1e-6); // avoid div-by-zero
             double charsTyped = message.Content.Length;
             double cpm = charsTyped / minutesSincePrev; // characters per minute
             double wpm = cpm / 5.0; // 5 chars ≈ 1 word
