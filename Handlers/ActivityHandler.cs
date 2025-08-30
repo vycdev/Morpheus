@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Morpheus.Utilities.Lists;
 using System.IO.Hashing;
 using System.Text;
+using Morpheus.Utilities.Text;
 
 namespace Morpheus.Handlers;
 
@@ -60,10 +61,20 @@ public class ActivityHandler
         Guild guild = await guildService.TryGetCreateGuild(guildChannel.Guild);
 
         string messageHash = Convert.ToBase64String(XxHash64.Hash(Encoding.UTF8.GetBytes(message.Content)));
+        // Compute SimHash over normalized trigrams (non-reversible)
+        (ulong simHash, int normLen) = SimHasher.ComputeSimHash(message.Content);
         UserActivity? previousActivity = dbContext.UserActivity
             .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
             .OrderByDescending(ua => ua.InsertDate)
             .FirstOrDefault();
+
+        // Fetch last 10 user activities for similarity checks
+        var lastTen = dbContext.UserActivity
+            .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
+            .OrderByDescending(ua => ua.InsertDate)
+            .Select(ua => new { ua.MessageSimHash, ua.NormalizedLength, ua.InsertDate })
+            .Take(10)
+            .ToList();
 
         UserActivity? previousActivityInGuild = dbContext.UserActivity
             .Where(ua => ua.GuildId == guild.Id)
@@ -82,7 +93,30 @@ public class ActivityHandler
         // Scale XP based on time since the last message, with a maximum of 5 seconds (spamming messages gives diminishing returns)
         double timeXp = previousActivity != null ? Math.Min(Math.Abs((now - previousActivity.InsertDate).TotalMilliseconds), 5 * 1000) / (5 * 1000) : 1;
 
-        int xp = (int)Math.Floor(baseXP + messageLengthXp * messageHashXp * timeXp);
+        // Similarity penalty via SimHash against last 10 messages (ignore very short normalized texts)
+        double simPenalty = 1.0;
+        if (normLen >= 12 && lastTen.Count > 0 && simHash != 0UL)
+        {
+            double maxSimilarity = 0.0;
+            DateTime newestTs = previousActivity?.InsertDate ?? DateTime.MinValue;
+            foreach (var prev in lastTen)
+            {
+                if (prev.MessageSimHash == 0UL || prev.NormalizedLength < 12)
+                    continue;
+                int hd = SimHasher.HammingDistance(simHash, prev.MessageSimHash);
+                double sim = 1.0 - (hd / 64.0);
+                if (sim > maxSimilarity)
+                    maxSimilarity = sim;
+            }
+
+            // Apply thresholded penalty (tuneable)
+            if (maxSimilarity >= 0.92)
+                simPenalty = 0.0; // effectively no XP for near-duplicates
+            else if (maxSimilarity >= 0.85)
+                simPenalty = 0.25; // heavy penalty
+        }
+
+        int xp = (int)Math.Floor((baseXP + messageLengthXp * messageHashXp * timeXp) * simPenalty);
 
         // Calculate average message length and message count
         double averageMessageLength = message.Content.Length;
@@ -104,6 +138,8 @@ public class ActivityHandler
             UserId = user.Id,
             XpGained = xp,
             MessageLength = message.Content.Length,
+            MessageSimHash = simHash,
+            NormalizedLength = normLen,
             GuildAverageMessageLength = averageMessageLength,
             GuildMessageCount = messageCount
         };
