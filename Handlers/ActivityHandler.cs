@@ -90,7 +90,7 @@ public class ActivityHandler
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
         int similarityPenaltySimple = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 60) ? 0 : 1;
-        // Time-based factor: apply only to short messages (<= 50 chars) to complement speed penalty.
+        // Time-based factor
         // Use a smoothstep curve over 5s: s in [0,1], timeXp = s^2 * (3 - 2s), harsher near rapid sends.
         double speedPenaltySimple = 1.0;
         if (previousActivity != null)
