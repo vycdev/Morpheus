@@ -121,8 +121,6 @@ public class ActivityHandler
                 similarityPenaltyComplex = 0.0; // effectively no XP for near-duplicates
             else if (maxSimilarity >= 0.85)
                 similarityPenaltyComplex = 0.25; // heavy penalty
-
-            Console.WriteLine($"User: {user.Username}, Max Similarity: {maxSimilarity}, Penalty: {similarityPenaltyComplex}");
         }
 
         // Typing speed penalty based on WPM estimated from time since previous user activity
