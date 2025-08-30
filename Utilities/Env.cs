@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 
 namespace Morpheus.Utilities;
+
 public class Env
 {
     public static Dictionary<string, string> Variables { get; } = [];
@@ -36,5 +37,22 @@ public class Env
             if (!Variables.ContainsKey(key)) // .env variables take precedence
                 Variables.Add(key, entry.Value?.ToString() ?? string.Empty);
         }
+    }
+
+    // TODO: make a generic 
+
+    // Helper accessors
+    public static string Get(string key, string? defaultValue = null)
+    {
+        if (Variables.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
+            return value;
+        return defaultValue ?? string.Empty;
+    }
+
+    public static int GetInt(string key, int defaultValue)
+    {
+        if (Variables.TryGetValue(key, out var value) && int.TryParse(value, out var parsed))
+            return parsed;
+        return defaultValue;
     }
 }

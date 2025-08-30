@@ -90,8 +90,15 @@ public class ActivityHandler
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
         // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
         int messageHashXp = (previousActivity?.MessageHash == messageHash) && (Math.Abs((now - previousActivity.InsertDate).TotalSeconds) < 30) ? 0 : 1;
-        // Scale XP based on time since the last message, with a maximum of 5 seconds (spamming messages gives diminishing returns)
-        double timeXp = previousActivity != null ? Math.Min(Math.Abs((now - previousActivity.InsertDate).TotalMilliseconds), 5 * 1000) / (5 * 1000) : 1;
+        // Time-based factor: apply only to short messages (<= 50 chars) to complement speed penalty.
+        // Use a smoothstep curve over 5s: s in [0,1], timeXp = s^2 * (3 - 2s), harsher near rapid sends.
+        double timeXp = 1.0;
+        if (previousActivity != null && message.Content.Length <= 50)
+        {
+            double s = (now - previousActivity.InsertDate).TotalMilliseconds / 5000.0;
+            if (s < 0) s = 0; else if (s > 1) s = 1;
+            timeXp = s * s * (3 - 2 * s);
+        }
 
         // Similarity penalty via SimHash against last 10 messages (ignore very short normalized texts)
         double simPenalty = 1.0;
@@ -116,7 +123,35 @@ public class ActivityHandler
                 simPenalty = 0.25; // heavy penalty
         }
 
-        int xp = (int)Math.Floor((baseXP + messageLengthXp * messageHashXp * timeXp) * simPenalty);
+        // Typing speed penalty based on WPM estimated from time since previous user activity
+        // After 200 WPM start penalizing logarithmically until 300 WPM where XP becomes 0
+        double speedPenalty = 1.0;
+        if (previousActivity != null && message.Content.Length >= 50)
+        {
+            double minutesSincePrev = Math.Max((now - previousActivity.InsertDate).TotalMinutes, 1e-6); // avoid div-by-zero
+            double charsTyped = message.Content.Length;
+            double cpm = charsTyped / minutesSincePrev; // characters per minute
+            double wpm = cpm / 5.0; // 5 chars ≈ 1 word
+
+            if (wpm > 200)
+            {
+                if (wpm >= 300)
+                {
+                    speedPenalty = 0.0;
+                }
+                else
+                {
+                    // Map wpm in (200,300) to x in (0,1) and use a logarithmic drop
+                    double x = (wpm - 200.0) / 100.0; // 0..1
+                    // dec goes 0->1 using log base 10: ln(1+9x)/ln(10)
+                    double dec = Math.Log(1.0 + 9.0 * x) / Math.Log(10.0);
+                    speedPenalty = 1.0 - dec; // 1->0
+                }
+            }
+        }
+
+        // Final XP: length and hash/time factors; timeXp applies to short messages, speedPenalty to fast typing, simPenalty for similarity
+        int xp = (int)Math.Floor((baseXP + messageLengthXp * messageHashXp * timeXp) * simPenalty * speedPenalty);
 
         // Calculate average message length and message count
         double averageMessageLength = message.Content.Length;
