@@ -93,7 +93,7 @@ public class ActivityHandler
         // Time-based factor: apply only to short messages (<= 50 chars) to complement speed penalty.
         // Use a smoothstep curve over 5s: s in [0,1], timeXp = s^2 * (3 - 2s), harsher near rapid sends.
         double speedPenaltySimple = 1.0;
-        if (previousActivity != null && message.Content.Length <= 50)
+        if (previousActivity != null)
         {
             double s = (now - previousActivity.InsertDate).TotalMilliseconds / 5000.0;
             if (s < 0) s = 0; else if (s > 1) s = 1;
