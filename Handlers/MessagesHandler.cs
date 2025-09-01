@@ -104,9 +104,9 @@ public class MessagesHandler
                 scope.Dispose();
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore dispose errors
+            Console.WriteLine($"[MessagesHandler] Failed to dispose command scope: {ex}");
         }
         return Task.CompletedTask;
     }

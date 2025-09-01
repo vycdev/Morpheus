@@ -33,7 +33,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     {
         if (interaction is not SocketMessageComponent comp)
         {
-            try { await interaction.RespondAsync("Invalid interaction.", ephemeral: true); } catch { }
+            try { await interaction.RespondAsync("Invalid interaction.", ephemeral: true); } catch (Exception ex) { Console.WriteLine($"[QuotesModule] RespondAsync failed: {ex}"); }
             return;
         }
 
