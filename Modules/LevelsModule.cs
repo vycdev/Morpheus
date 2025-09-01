@@ -9,6 +9,7 @@ using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities.Images;
 using System.Text;
+using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
@@ -304,10 +305,16 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
+        int maxDaysLb = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
         if (days <= 0)
         {
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
+        }
+        if (days > maxDaysLb)
+        {
+            await ReplyAsync($"Capping to maximum of {maxDaysLb} days.");
+            days = maxDaysLb;
         }
 
         IQueryable<UserLevels> userLevels = dbContext.UserActivity
@@ -315,7 +322,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .GroupBy(ua => ua.User)
             .Select(g => new UserLevels
             {
-                User = g.Key,
+                User = g.Key!,
                 GuildId = guild.Id,
                 TotalXp = g.Sum(ua => ua.XpGained)
             })
@@ -398,10 +405,16 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     [RateLimit(3, 60)]
     public async Task GlobalLeaderboardPastAsync(int days, int page = 1)
     {
+        int maxDaysGlb = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
         if (days <= 0)
         {
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
+        }
+        if (days > maxDaysGlb)
+        {
+            await ReplyAsync($"Capping to maximum of {maxDaysGlb} days.");
+            days = maxDaysGlb;
         }
 
         IQueryable<UserLevels> userLevels = dbContext.UserActivity
@@ -409,7 +422,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .GroupBy(ua => ua.User)
             .Select(g => new UserLevels
             {
-                User = g.Key,
+                User = g.Key!,
                 TotalXp = g.Sum(ua => ua.XpGained)
             })
             .OrderByDescending(ul => ul.TotalXp)
@@ -443,9 +456,10 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
     private bool ValidateDays(int days)
     {
-        if (days <= 0 || days > 90)
+        int maxDays = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
+        if (days <= 0 || days > maxDays)
         {
-            ReplyAsync("Please provide a number of days between 1 and 90.").GetAwaiter().GetResult();
+            ReplyAsync($"Please provide a number of days between 1 and {maxDays}.").GetAwaiter().GetResult();
             return false;
         }
         return true;
@@ -468,23 +482,25 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
             input = input.Trim().ToLowerInvariant();
 
+            int maxDays = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
+
             if (input.StartsWith("past") && input.EndsWith("days"))
             {
                 var num = input.Substring(4, input.Length - 8);
                 if (int.TryParse(num, out int parsed))
                 {
                     if (parsed < 7) parsed = 7;
-                    if (parsed > 90) parsed = 90;
+                    if (parsed > maxDays) parsed = maxDays;
                     return (true, parsed, (DateTime?)null);
                 }
-                await ReplyAsync("Please provide a number of days between 7 and 90 or a valid preset (past7days, past30days, past60days, past90days).\nOr provide a date range like 2025-01-01..2025-01-31.");
+                await ReplyAsync($"Please provide a number of days between 7 and {maxDays} or a valid preset (past7days, past30days, past60days, past{maxDays}days).\nOr provide a date range like 2025-01-01..2025-01-31.");
                 return (false, 0, null);
             }
 
             if (int.TryParse(input, out int asInt))
             {
                 if (asInt < 7) asInt = 7;
-                if (asInt > 90) asInt = 90;
+                if (asInt > maxDays) asInt = maxDays;
                 return (true, asInt, null);
             }
 
@@ -509,14 +525,14 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
                         end = start.AddDays(6); // inclusive 7 days
                         span = 7;
                     }
-                    if (span > 90)
+                    if (span > maxDays)
                     {
-                        await ReplyAsync("Date range exceeds maximum of 90 days.");
+                        await ReplyAsync($"Date range exceeds maximum of {maxDays} days.");
                         return (false, 0, null);
                     }
                     return (true, (int)span, DateTime.SpecifyKind(start, DateTimeKind.Utc));
                 }
-                await ReplyAsync("Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most 90 days and start <= end.");
+                await ReplyAsync($"Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most {maxDays} days and start <= end.");
                 return (false, 0, null);
             }
 
