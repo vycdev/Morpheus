@@ -99,13 +99,13 @@ services.AddQuartzHostedService(options =>
     options.WaitForJobsToComplete = true;
 });
 
-// Add the handlers
-services.AddScoped<MessagesHandler>();
-services.AddScoped<WelcomeHandler>();
-services.AddScoped<InteractionsHandler>();
-services.AddScoped<LogsHandler>();
-services.AddScoped<ActivityHandler>();
-services.AddScoped<FunnyResponsesHandler>();
+// Add the handlers (singletons that create a scope per event)
+services.AddSingleton<MessagesHandler>();
+services.AddSingleton<WelcomeHandler>();
+services.AddSingleton<InteractionsHandler>();
+services.AddSingleton<LogsHandler>();
+services.AddSingleton<ActivityHandler>();
+services.AddSingleton<FunnyResponsesHandler>();
 
 
 // Add the database context
@@ -118,8 +118,12 @@ IHost host = Host.CreateDefaultBuilder().ConfigureServices((ctx, srv) =>
         srv.Add(service);
 }).Build();
 
-// Run database migrations 
-host.Services.GetRequiredService<DB>().Database.Migrate();
+// Run database migrations within a scope
+using (var scope = host.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<DB>();
+    db.Database.Migrate();
+}
 
 // Start the handlers 
 _ = host.Services.GetRequiredService<LogsHandler>();

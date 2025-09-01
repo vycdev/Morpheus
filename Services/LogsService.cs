@@ -3,16 +3,19 @@ using Discord.Commands;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Morpheus.Services;
 
-public class LogsService(DB dbContext)
+public class LogsService(IServiceScopeFactory scopeFactory)
 {
     public void Log(string message, LogSeverity severity = LogSeverity.Info)
     {
         string log = $"{$"[General/{severity}]",-20} {message}";
 
         Console.WriteLine(log);
+        using var scope = scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Morpheus.Database.DB>();
         dbContext.Add(new Log()
         {
             Message = log,
@@ -35,6 +38,8 @@ public class LogsService(DB dbContext)
             log = $"{$"[General/{message.Severity}]",-20} {message}";
 
         Console.WriteLine(log);
+        using var scope = scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<Morpheus.Database.DB>();
         dbContext.Add(new Log()
         {
             Message = log,

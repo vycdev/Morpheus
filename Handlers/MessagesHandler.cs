@@ -17,12 +17,11 @@ public class MessagesHandler
     private readonly DiscordSocketClient client;
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;
-    private readonly GuildService guildService;
-    private readonly UsersService usersService;
-    private readonly LogsService logsService;
-    private readonly bool started = false;
+    private readonly IServiceScopeFactory scopeFactory;
+    private static bool started = false;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, IServiceScope> commandScopes = new();
 
-    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService, LogsService logsService)
+    public MessagesHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, IServiceScopeFactory scopeFactory)
     {
         if (started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -32,11 +31,10 @@ public class MessagesHandler
         this.client = client;
         this.commands = commands;
         this.serviceProvider = serviceProvider;
-        this.guildService = guildService;
-        this.usersService = usersService;
-        this.logsService = logsService;
+        this.scopeFactory = scopeFactory;
 
         client.MessageReceived += HandleMessageAsync;
+        this.commands.CommandExecuted += OnCommandExecuted;
     }
 
     public async Task InstallCommands()
@@ -52,6 +50,10 @@ public class MessagesHandler
 
         // Create a number to track where the prefix ends and the command begins
         int argPos = 0;
+
+        using IServiceScope scope = scopeFactory.CreateScope();
+        var usersService = scope.ServiceProvider.GetRequiredService<UsersService>();
+        var guildService = scope.ServiceProvider.GetRequiredService<GuildService>();
 
         User user = await usersService.TryGetCreateUser(message.Author);
         await usersService.TryUpdateUsername(message.Author, user);
@@ -71,7 +73,10 @@ public class MessagesHandler
 
         // Execute the command with the command context we just
         // created, along with the service provider for precondition checks.
-        IResult result = await commands.ExecuteAsync(context, argPos, serviceProvider);
+        var commandScope = scopeFactory.CreateScope();
+        // Track scope by message id so we can dispose it when the command actually finishes (RunMode.Async)
+        commandScopes[message.Id] = commandScope;
+        IResult result = await commands.ExecuteAsync(context, argPos, commandScope.ServiceProvider);
 
         if (result.IsSuccess)
             return;
@@ -88,5 +93,21 @@ public class MessagesHandler
             CommandError.Unsuccessful => await context.Channel.SendMessageAsync("Unsuccessful."),
             _ => await context.Channel.SendMessageAsync("An unknown error occurred.")
         };
+    }
+
+    private Task OnCommandExecuted(Optional<CommandInfo> command, ICommandContext context, IResult result)
+    {
+        try
+        {
+            if (context?.Message != null && commandScopes.TryRemove(context.Message.Id, out var scope))
+            {
+                scope.Dispose();
+            }
+        }
+        catch
+        {
+            // ignore dispose errors
+        }
+        return Task.CompletedTask;
     }
 }

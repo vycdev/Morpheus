@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Services;
 
 namespace Morpheus.Handlers;
+
 internal class LogsHandler
 {
     private readonly IServiceScopeFactory scopefa;

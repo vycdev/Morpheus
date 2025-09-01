@@ -4,21 +4,22 @@ using Morpheus.Database.Models;
 using Morpheus.Services;
 using Morpheus.Utilities;
 using Morpheus.Utilities.Lists;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Morpheus.Handlers;
 
 public class WelcomeHandler
 {
     private readonly DiscordSocketClient client;
-    private readonly GuildService guildService;
-    private readonly bool started = false;
+    private readonly IServiceScopeFactory scopeFactory;
+    private static bool started = false;
 
     private readonly RandomBag welcomeMessagesBag = new(WelcomeMessages.Messages);
     private readonly RandomBag goodbyeMessagesBag = new(GoodbyeMessages.Messages);
     private readonly RandomBag happyEmojisBag = new(EmojiList.EmojisHappy);
     private readonly RandomBag sadEmojisBag = new(EmojiList.EmojisSad);
 
-    public WelcomeHandler(DiscordSocketClient client, GuildService guildService)
+    public WelcomeHandler(DiscordSocketClient client, IServiceScopeFactory scopeFactory)
     {
         if (started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -26,7 +27,7 @@ public class WelcomeHandler
         started = true;
 
         this.client = client;
-        this.guildService = guildService;
+        this.scopeFactory = scopeFactory;
 
         client.UserJoined += HandleUserJoined;
         client.UserLeft += HandleUserLeft;
@@ -34,6 +35,8 @@ public class WelcomeHandler
 
     private async Task HandleUserJoined(SocketGuildUser user)
     {
+        using var scope = scopeFactory.CreateScope();
+        var guildService = scope.ServiceProvider.GetRequiredService<GuildService>();
         Guild? guild = await guildService.TryGetCreateGuild(user.Guild);
 
         if (guild == null)
@@ -59,6 +62,8 @@ public class WelcomeHandler
 
     private async Task HandleUserLeft(SocketGuild guild, SocketUser user)
     {
+        using var scope = scopeFactory.CreateScope();
+        var guildService = scope.ServiceProvider.GetRequiredService<GuildService>();
         Guild? guildDb = await guildService.TryGetCreateGuild(guild);
 
         if (guildDb == null)

@@ -6,23 +6,22 @@ using Discord.WebSocket;
 using Morpheus.Services;
 using Morpheus.Utilities.Lists;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Morpheus.Handlers;
 
 public class FunnyResponsesHandler
 {
     private readonly DiscordSocketClient client;
-    private readonly UsersService usersService;
-    private readonly GuildService guildService;
-    private readonly LogsService logsService;
-    private readonly bool started = false;
+    private readonly IServiceScopeFactory scopeFactory;
+    private static bool started = false;
 
     private static readonly RandomBag codifyResponsesBag = new(FunnyResponses.ResponsesToCodifyMentions);
     private static readonly RandomBag morpheusResponsesBag = new(FunnyResponses.ResponsesToMorpheusMentions);
 
     private readonly Random random = new();
 
-    public FunnyResponsesHandler(DiscordSocketClient client, UsersService usersService, GuildService guildService, LogsService logsService)
+    public FunnyResponsesHandler(DiscordSocketClient client, IServiceScopeFactory scopeFactory)
     {
         if (started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -30,9 +29,7 @@ public class FunnyResponsesHandler
         started = true;
 
         this.client = client;
-        this.usersService = usersService;
-        this.guildService = guildService;
-        this.logsService = logsService;
+        this.scopeFactory = scopeFactory;
 
         // Subscribe to incoming messages
         client.MessageReceived += HandleMessageAsync;
@@ -80,6 +77,8 @@ public class FunnyResponsesHandler
         }
         catch (Exception ex)
         {
+            using var scope = scopeFactory.CreateScope();
+            var logsService = scope.ServiceProvider.GetRequiredService<LogsService>();
             logsService.Log($"FunnyResponsesHandler: failed to send reply: {ex.Message}");
         }
     }

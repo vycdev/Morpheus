@@ -10,6 +10,7 @@ using System.IO.Hashing;
 using System.Text;
 using Morpheus.Utilities.Text;
 using Morpheus.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Morpheus.Handlers;
 
@@ -17,14 +18,11 @@ public class ActivityHandler
 {
     private readonly DiscordSocketClient client;
     private readonly CommandService commands;
-    private readonly IServiceProvider serviceProvider;
-    private readonly GuildService guildService;
-    private readonly UsersService usersService;
-    private readonly DB dbContext;
+    private readonly IServiceScopeFactory scopeFactory;
     private readonly RandomBag happyEmojisBag = new(EmojiList.EmojisHappy);
-    private readonly bool started = false;
+    private static bool started = false;
 
-    public ActivityHandler(DiscordSocketClient client, CommandService commands, IServiceProvider serviceProvider, GuildService guildService, UsersService usersService, DB db)
+    public ActivityHandler(DiscordSocketClient client, CommandService commands, IServiceScopeFactory scopeFactory)
     {
         if (started)
             throw new InvalidOperationException("At most one instance of this service can be started");
@@ -33,10 +31,7 @@ public class ActivityHandler
 
         this.client = client;
         this.commands = commands;
-        this.serviceProvider = serviceProvider;
-        this.guildService = guildService;
-        this.usersService = usersService;
-        this.dbContext = db;
+        this.scopeFactory = scopeFactory;
 
         client.MessageReceived += HandleActivity;
     }
@@ -55,6 +50,11 @@ public class ActivityHandler
         if (message.Channel is not SocketGuildChannel guildChannel)
             return;
 
+        using IServiceScope scope = scopeFactory.CreateScope();
+        var usersService = scope.ServiceProvider.GetRequiredService<UsersService>();
+        var guildService = scope.ServiceProvider.GetRequiredService<GuildService>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<DB>();
+
         User user = await usersService.TryGetCreateUser(message.Author);
         await usersService.TryUpdateUsername(message.Author, user);
 
@@ -71,22 +71,22 @@ public class ActivityHandler
         (ulong simHash, int normLen) = SimHasher.ComputeSimHash(message.Content);
 
         UserActivity? previousUserActivityInGuild = dbContext.UserActivity
-            .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
-            .OrderByDescending(ua => ua.InsertDate)
-            .FirstOrDefault();
+                .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
+                .OrderByDescending(ua => ua.InsertDate)
+                .FirstOrDefault();
 
         // Fetch recent user activities for similarity checks within time window (cap for safety)
         var recentForSimilarity = dbContext.UserActivity
-            .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id && ua.InsertDate >= similarityWindowStart)
-            .OrderByDescending(ua => ua.InsertDate)
-            .Select(ua => new { ua.MessageSimHash, ua.NormalizedLength, ua.InsertDate })
-            .Take(200)
-            .ToList();
+                .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id && ua.InsertDate >= similarityWindowStart)
+                .OrderByDescending(ua => ua.InsertDate)
+                .Select(ua => new { ua.MessageSimHash, ua.NormalizedLength, ua.InsertDate })
+                .Take(200)
+                .ToList();
 
         UserActivity? previousActivityInGuild = dbContext.UserActivity
-            .Where(ua => ua.GuildId == guild.Id)
-            .OrderByDescending(ua => ua.InsertDate)
-            .FirstOrDefault();
+                .Where(ua => ua.GuildId == guild.Id)
+                .OrderByDescending(ua => ua.InsertDate)
+                .FirstOrDefault();
 
         // Base XP for sending a message
         int baseXP = 1;
@@ -186,7 +186,7 @@ public class ActivityHandler
 
         // Update user's XP and Level in UserLevels
         UserLevels? userLevel = dbContext.UserLevels
-            .FirstOrDefault(ul => ul.UserId == user.Id && ul.GuildId == guild.Id);
+                .FirstOrDefault(ul => ul.UserId == user.Id && ul.GuildId == guild.Id);
 
         bool newUserLevel = false;
         var postSaveActions = new List<Func<Task>>();
@@ -217,16 +217,16 @@ public class ActivityHandler
                 if (guild.UseGlobalQuotes)
                 {
                     pick = await dbContext.Quotes
-                        .Where(q => q.Approved && !q.Removed)
-                        .OrderBy(q => EF.Functions.Random())
-                        .FirstOrDefaultAsync();
+                                .Where(q => q.Approved && !q.Removed)
+                                .OrderBy(q => EF.Functions.Random())
+                                .FirstOrDefaultAsync();
                 }
                 else
                 {
                     pick = await dbContext.Quotes
-                        .Where(q => q.Approved && !q.Removed && q.GuildId == guild.Id)
-                        .OrderBy(q => EF.Functions.Random())
-                        .FirstOrDefaultAsync();
+                                .Where(q => q.Approved && !q.Removed && q.GuildId == guild.Id)
+                                .OrderBy(q => EF.Functions.Random())
+                                .FirstOrDefaultAsync();
                 }
 
                 if (pick != null)
