@@ -9,6 +9,7 @@ using Morpheus.Utilities.Lists;
 using System.IO.Hashing;
 using System.Text;
 using Morpheus.Utilities.Text;
+using Morpheus.Utilities;
 
 namespace Morpheus.Handlers;
 
@@ -60,20 +61,26 @@ public class ActivityHandler
         // If the guild doesn't exist, create it and then get it
         Guild guild = await guildService.TryGetCreateGuild(guildChannel.Guild);
 
+        // Timestamp and config
+        DateTime now = DateTime.UtcNow;
+        int similarityWindowMinutes = Env.Get<int>("ACTIVITY_SIMILARITY_WINDOW_MINUTES", 10);
+        DateTime similarityWindowStart = now.AddMinutes(-similarityWindowMinutes);
+
         string messageHash = Convert.ToBase64String(XxHash64.Hash(Encoding.UTF8.GetBytes(message.Content)));
         // Compute SimHash over normalized trigrams (non-reversible)
         (ulong simHash, int normLen) = SimHasher.ComputeSimHash(message.Content);
+
         UserActivity? previousUserActivityInGuild = dbContext.UserActivity
             .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
             .OrderByDescending(ua => ua.InsertDate)
             .FirstOrDefault();
 
-        // Fetch last 10 user activities for similarity checks
-        var lastTen = dbContext.UserActivity
-            .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
+        // Fetch recent user activities for similarity checks within time window (cap for safety)
+        var recentForSimilarity = dbContext.UserActivity
+            .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id && ua.InsertDate >= similarityWindowStart)
             .OrderByDescending(ua => ua.InsertDate)
             .Select(ua => new { ua.MessageSimHash, ua.NormalizedLength, ua.InsertDate })
-            .Take(10)
+            .Take(200)
             .ToList();
 
         UserActivity? previousActivityInGuild = dbContext.UserActivity
@@ -81,17 +88,15 @@ public class ActivityHandler
             .OrderByDescending(ua => ua.InsertDate)
             .FirstOrDefault();
 
-        // Calculate XP 
-        DateTime now = DateTime.UtcNow;
-
         // Base XP for sending a message
         int baseXP = 1;
         // Scale XP based on message length compared to guild average
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
-        // If the message hash is the same as the previous message and sent within 30 seconds, no XP is gained
+
+        // If the message hash is the same as the previous message and sent within 60 seconds, no XP is gained
         int similarityPenaltySimple = (previousUserActivityInGuild?.MessageHash == messageHash) && (Math.Abs((now - previousUserActivityInGuild.InsertDate).TotalSeconds) < 60) ? 0 : 1;
-        // Time-based factor
-        // Use a smoothstep curve over 5s: s in [0,1], timeXp = s^2 * (3 - 2s), harsher near rapid sends.
+
+        // Time-based factor: smoothstep over 5s
         double speedPenaltySimple = 1.0;
         if (previousUserActivityInGuild != null)
         {
@@ -100,13 +105,12 @@ public class ActivityHandler
             speedPenaltySimple = s * s * (3 - 2 * s);
         }
 
-        // Similarity penalty via SimHash against last 10 messages (ignore very short normalized texts)
+        // Similarity penalty via SimHash against recent messages in configured time window (ignore very short normalized texts)
         double similarityPenaltyComplex = 1.0;
-        if (normLen >= 12 && lastTen.Count > 0 && simHash != 0UL)
+        if (normLen >= 12 && recentForSimilarity.Count > 0 && simHash != 0UL)
         {
             double maxSimilarity = 0.0;
-            DateTime newestTs = previousUserActivityInGuild?.InsertDate ?? DateTime.MinValue;
-            foreach (var prev in lastTen)
+            foreach (var prev in recentForSimilarity)
             {
                 if (prev.MessageSimHash == 0UL || prev.NormalizedLength < 12)
                     continue;
@@ -124,7 +128,6 @@ public class ActivityHandler
         }
 
         // Typing speed penalty based on WPM estimated from time since previous user activity
-        // After 200 WPM start penalizing logarithmically until 300 WPM where XP becomes 0
         double speedPenaltyComplex = 1.0;
         if (previousUserActivityInGuild != null && message.Content.Length >= 50)
         {
@@ -168,7 +171,7 @@ public class ActivityHandler
         {
             DiscordChannelId = message.Channel.Id,
             GuildId = guild.Id,
-            InsertDate = DateTime.UtcNow,
+            InsertDate = now,
             MessageHash = messageHash,
             UserId = user.Id,
             XpGained = xp,
@@ -198,7 +201,6 @@ public class ActivityHandler
         };
 
         userLevel.TotalXp += xp;
-
         int newLevel = CalculateLevel(userLevel.TotalXp);
 
         if (userLevel.Level != newLevel)
