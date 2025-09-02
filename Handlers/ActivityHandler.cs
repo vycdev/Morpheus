@@ -170,14 +170,23 @@ public class ActivityHandler
         // Final XP: length and hash/time factors; timeXp applies to short messages, speedPenalty to fast typing, simPenalty for similarity
         int xp = (int)Math.Floor((baseXP + messageLengthXp) * similarityPenaltySimple * similarityPenaltyComplex * speedPenaltySimple * speedPenaltyComplex);
 
-        // Calculate average message length and message count
-        double averageMessageLength = message.Content.Length;
-        int messageCount = 1;
-
-        if (previousActivityInGuild != null)
+        // Calculate EMA average message length and message count
+        const double emaAlpha = 2.0 / (500.0 + 1.0); // N=500
+        double averageMessageLength;
+        int messageCount;
+        if (previousActivityInGuild == null)
+        {
+            messageCount = 1;
+            averageMessageLength = message.Content.Length;
+        }
+        else
         {
             messageCount = previousActivityInGuild.GuildMessageCount + 1;
-            averageMessageLength = ((previousActivityInGuild.GuildAverageMessageLength * previousActivityInGuild.GuildMessageCount) + message.Content.Length) / messageCount;
+            double prevAvg = previousActivityInGuild.GuildAverageMessageLength;
+            if (prevAvg <= 0.0)
+                averageMessageLength = message.Content.Length;
+            else
+                averageMessageLength = (1.0 - emaAlpha) * prevAvg + emaAlpha * message.Content.Length;
         }
 
         // Create new user activity record

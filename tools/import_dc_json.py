@@ -674,11 +674,15 @@ class Importer:
                     m.content, m.timestamp, prev_user, recent, prev_guild
                 )
 
-                # Compute new guild averages
+                # Compute new guild averages (EMA, N=500)
+                ema_alpha = 2.0 / (500.0 + 1.0)
                 if prev_guild is not None:
                     prev_avg, prev_count = prev_guild
                     msg_count = int(prev_count) + 1
-                    avg_len = ((float(prev_avg) * int(prev_count)) + len(m.content)) / msg_count
+                    if float(prev_avg) <= 0.0:
+                        avg_len = float(len(m.content))
+                    else:
+                        avg_len = (1.0 - ema_alpha) * float(prev_avg) + ema_alpha * float(len(m.content))
                 else:
                     msg_count = 1
                     avg_len = float(len(m.content))
@@ -938,9 +942,13 @@ class Importer:
                                 msg.content, ts, prev_user, recent_list, (guild_avg, guild_count)
                             )
 
-                            # Compute new guild averages for next iterations (as ActivityHandler does)
+                            # Compute new guild averages for next iterations (EMA, N=500)
+                            ema_alpha = 2.0 / (500.0 + 1.0)
                             guild_count_next = guild_count + 1
-                            guild_avg_next = ((guild_avg * guild_count) + len(msg.content)) / guild_count_next if guild_count > 0 else float(len(msg.content))
+                            if guild_avg <= 0.0:
+                                guild_avg_next = float(len(msg.content))
+                            else:
+                                guild_avg_next = (1.0 - ema_alpha) * float(guild_avg) + ema_alpha * float(len(msg.content))
 
                             # Prepare row
                             row = (
