@@ -251,6 +251,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task LeaderboardAsync(int page = 1)
     {
         Guild? guild = Context.DbGuild;
+        var me = Context.DbUser;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
@@ -289,6 +290,22 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
 
+        // User rank for this guild by total XP (all time)
+        string rankLine = "Your rank: N/A";
+        if (me != null)
+        {
+            var myUl = dbContext.UserLevels.AsNoTracking()
+                .FirstOrDefault(ul => ul.GuildId == guild.Id && ul.UserId == me.Id);
+            if (myUl != null)
+            {
+                int better = dbContext.UserLevels.AsNoTracking()
+                    .Where(ul => ul.GuildId == guild.Id && ul.TotalXp > myUl.TotalXp)
+                    .Count();
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
+
         await ReplyAsync(sb.ToString());
     }
 
@@ -302,6 +319,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task LeaderboardPastAsync(int days, int page = 1)
     {
         Guild? guild = Context.DbGuild;
+        var me = Context.DbUser;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
@@ -364,6 +382,23 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
 
+        // User rank for this guild by XP in past N days
+        string rankLine = "Your rank: N/A";
+        if (me != null)
+        {
+            bool hasUser = baseQuery.Any(ua => ua.UserId == me.Id);
+            if (hasUser)
+            {
+                int mySum = baseQuery.Where(ua => ua.UserId == me.Id).Sum(x => x.XpGained);
+                int better = baseQuery
+                    .GroupBy(ua => ua.UserId)
+                    .Select(g => new { Sum = g.Sum(x => x.XpGained) })
+                    .Count(x => x.Sum > mySum);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
+
         await ReplyAsync(sb.ToString());
     }
 
@@ -409,6 +444,27 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", leaderboard));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+
+        // User global rank by total XP (all time)
+        string rankLine = "Your rank: N/A";
+        var me = Context.DbUser;
+        if (me != null)
+        {
+            bool anyRows = dbContext.UserLevels.AsNoTracking().Any(ul => ul.UserId == me.Id);
+            if (anyRows)
+            {
+                long myTotal = dbContext.UserLevels.AsNoTracking()
+                    .Where(ul => ul.UserId == me.Id)
+                    .Select(ul => (long)ul.TotalXp)
+                    .Sum();
+                int better = dbContext.UserLevels.AsNoTracking()
+                    .GroupBy(ul => ul.UserId)
+                    .Select(g => new { Total = g.Sum(ul => ul.TotalXp) })
+                    .Count(x => x.Total > myTotal);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
 
         await ReplyAsync(sb.ToString());
     }
@@ -474,6 +530,23 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", leaderboard));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User global rank by XP in past N days
+        string rankLine = "Your rank: N/A";
+        var me = Context.DbUser;
+        if (me != null)
+        {
+            bool hasUser = baseQuery.Any(ua => ua.UserId == me.Id);
+            if (hasUser)
+            {
+                int mySum = baseQuery.Where(ua => ua.UserId == me.Id).Sum(x => x.XpGained);
+                int better = baseQuery
+                    .GroupBy(ua => ua.UserId)
+                    .Select(g => new { Sum = g.Sum(x => x.XpGained) })
+                    .Count(x => x.Sum > mySum);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
@@ -486,6 +559,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task LeaderboardMessagesAsync(int page = 1)
     {
         Guild? guild = Context.DbGuild;
+        var me = Context.DbUser;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
@@ -527,6 +601,20 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User rank by messages (guild all time)
+        string rankLine = "Your rank: N/A";
+        if (me != null)
+        {
+            var myUl = dbContext.UserLevels.AsNoTracking().FirstOrDefault(ul => ul.GuildId == guild.Id && ul.UserId == me.Id);
+            if (myUl != null)
+            {
+                int better = dbContext.UserLevels.AsNoTracking()
+                    .Where(ul => ul.GuildId == guild.Id && ul.UserMessageCount > myUl.UserMessageCount)
+                    .Count();
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
@@ -539,6 +627,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task LeaderboardMessagesPastAsync(int days, int page = 1)
     {
         Guild? guild = Context.DbGuild;
+        var me = Context.DbUser;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
@@ -603,6 +692,22 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User rank by messages (guild past N days)
+        string rankLine = "Your rank: N/A";
+        if (me != null)
+        {
+            bool hasUser = baseQuery.Any(ua => ua.UserId == me.Id);
+            if (hasUser)
+            {
+                int myCount = baseQuery.Count(ua => ua.UserId == me.Id);
+                int better = baseQuery
+                    .GroupBy(ua => ua.UserId)
+                    .Select(g => new { C = g.Count() })
+                    .Count(x => x.C > myCount);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
@@ -614,9 +719,9 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task GlobalLeaderboardMessagesAsync(int page = 1)
     {
         var top50 = dbContext.UserLevels.AsNoTracking()
-            .GroupBy(ul => ul.UserId)
-            .Select(g => new { UserId = g.Key, Count = g.Sum(ul => ul.UserMessageCount) })
-            .OrderByDescending(x => x.Count);
+                .GroupBy(ul => ul.UserId)
+                .Select(g => new { UserId = g.Key, Count = g.Sum(ul => ul.UserMessageCount) })
+                .OrderByDescending(x => x.Count);
 
         int totalUsers = top50.Count();
         if (totalUsers == 0)
@@ -655,6 +760,26 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User global rank by messages (all time)
+        string rankLine = "Your rank: N/A";
+        var me = Context.DbUser;
+        if (me != null)
+        {
+            bool anyRows = dbContext.UserLevels.AsNoTracking().Any(ul => ul.UserId == me.Id);
+            if (anyRows)
+            {
+                long myCount = dbContext.UserLevels.AsNoTracking()
+                    .Where(ul => ul.UserId == me.Id)
+                    .Select(ul => (long)ul.UserMessageCount)
+                    .Sum();
+                int better = dbContext.UserLevels.AsNoTracking()
+                    .GroupBy(ul => ul.UserId)
+                    .Select(g => new { C = g.Sum(ul => ul.UserMessageCount) })
+                    .Count(x => x.C > myCount);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
@@ -723,6 +848,23 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User global rank by messages (past N days)
+        string rankLine = "Your rank: N/A";
+        var me = Context.DbUser;
+        if (me != null)
+        {
+            bool hasUser = baseQuery.Any(ua => ua.UserId == me.Id);
+            if (hasUser)
+            {
+                int myCount = baseQuery.Count(ua => ua.UserId == me.Id);
+                int better = baseQuery
+                    .GroupBy(ua => ua.UserId)
+                    .Select(g => new { C = g.Count() })
+                    .Count(x => x.C > myCount);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
@@ -735,6 +877,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task LeaderboardAvgLengthAsync(int page = 1)
     {
         Guild? guild = Context.DbGuild;
+        var me = Context.DbUser;
         if (guild == null)
         {
             await ReplyAsync("Guild not found.");
@@ -777,6 +920,22 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User rank by average message length (guild all time)
+        string rankLine = "Your rank: N/A";
+        if (me != null)
+        {
+            var myUl = dbContext.UserLevels.AsNoTracking()
+                .FirstOrDefault(ul => ul.GuildId == guild.Id && ul.UserId == me.Id && ul.UserMessageCount > 0);
+            if (myUl != null)
+            {
+                double myAvg = myUl.UserAverageMessageLength;
+                int better = dbContext.UserLevels.AsNoTracking()
+                    .Where(ul => ul.GuildId == guild.Id && ul.UserMessageCount > 0 && ul.UserAverageMessageLength > myAvg)
+                    .Count();
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
@@ -788,16 +947,16 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task GlobalLeaderboardAvgLengthAsync(int page = 1)
     {
         var top50 = dbContext.UserLevels.AsNoTracking()
-            .GroupBy(ul => ul.UserId)
-            .Select(g => new
-            {
-                UserId = g.Key,
-                SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
-                SumCount = g.Sum(ul => ul.UserMessageCount)
-            })
-            .Where(x => x.SumCount > 0)
-            .Select(x => new { x.UserId, AvgLen = x.SumLen / x.SumCount })
-            .OrderByDescending(x => x.AvgLen);
+                .GroupBy(ul => ul.UserId)
+                .Select(g => new
+                {
+                    UserId = g.Key,
+                    SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
+                    SumCount = g.Sum(ul => ul.UserMessageCount)
+                })
+                .Where(x => x.SumCount > 0)
+                .Select(x => new { x.UserId, AvgLen = x.SumLen / x.SumCount })
+                .OrderByDescending(x => x.AvgLen);
 
         int totalUsers = top50.Count();
         if (totalUsers == 0)
@@ -837,6 +996,28 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
+        // User global rank by average message length (all time)
+        string rankLine = "Your rank: N/A";
+        var me = Context.DbUser;
+        if (me != null)
+        {
+            var meAgg = dbContext.UserLevels.AsNoTracking()
+                .Where(ul => ul.UserId == me.Id)
+                .GroupBy(ul => ul.UserId)
+                .Select(g => new { SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount), SumCount = g.Sum(ul => ul.UserMessageCount) })
+                .FirstOrDefault();
+            if (meAgg != null && meAgg.SumCount > 0)
+            {
+                double myAvg = meAgg.SumLen / meAgg.SumCount;
+                int better = dbContext.UserLevels.AsNoTracking()
+                    .GroupBy(ul => ul.UserId)
+                    .Select(g => new { SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount), SumCount = g.Sum(ul => ul.UserMessageCount) })
+                    .Where(x => x.SumCount > 0)
+                    .Count(x => (x.SumLen / x.SumCount) > myAvg);
+                rankLine = $"Your rank: #{better + 1}";
+            }
+        }
+        sb.AppendLine(rankLine);
         await ReplyAsync(sb.ToString());
     }
 
