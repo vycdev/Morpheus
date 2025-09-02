@@ -276,7 +276,11 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .Take(10)
             .Include(u => u.User)
             .ToList()
-            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
+            .Select((ul, index) =>
+            {
+                string name = ul.User?.Username ?? ul.UserId.ToString();
+                return $"[{((page - 1) * 10) + index + 1}] | {name}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP";
+            });
 
         StringBuilder sb = new();
 
@@ -395,7 +399,11 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             .Skip((page - 1) * 10)
             .Take(10)
             .ToList()
-            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
+            .Select((ul, index) =>
+            {
+                string name = ul.User?.Username ?? ul.UserId.ToString();
+                return $"[{((page - 1) * 10) + index + 1}] | {name}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP";
+            });
 
         StringBuilder sb = new();
 
@@ -468,6 +476,375 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         sb.AppendLine($"**Global Leaderboard** for the past **{days}** days");
         sb.AppendLine("```js");
         sb.AppendLine(string.Join("\n", leaderboard));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Leaderboard Messages")]
+    [Summary("Displays the leaderboard by number of messages sent in this guild (all time).")]
+    [Command("leaderboardmessages")]
+    [Alias("lbm", "topmessages", "messageslb", "msgslb")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 10)]
+    public async Task LeaderboardMessagesAsync(int page = 1)
+    {
+        Guild? guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        var query = dbContext.UserLevels
+            .Where(ul => ul.GuildId == guild.Id && ul.UserMessageCount > 0)
+            .OrderByDescending(ul => ul.UserMessageCount)
+            .Take(50);
+
+        int totalUsers = query.Count();
+        if (totalUsers == 0)
+        {
+            await ReplyAsync("No message data found for this guild.");
+            return;
+        }
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var pageItems = query
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .Include(ul => ul.User)
+            .ToList();
+
+        var lines = pageItems.Select((ul, index) =>
+        {
+            string name = ul.User?.Username ?? ul.UserId.ToString();
+            return $"[{((page - 1) * 10) + index + 1}] | {name}: Messages {ul.UserMessageCount}";
+        });
+
+        StringBuilder sb = new();
+        sb.AppendLine($"**Messages Leaderboard for {guild.Name}** (all time)");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", lines));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Leaderboard Messages Past n Days")]
+    [Summary("Displays the leaderboard by number of messages sent in this guild for the past n days.")]
+    [Command("leaderboardmessagespast")]
+    [Alias("lbmp", "topmessagespast", "messageslbpast")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 60)]
+    public async Task LeaderboardMessagesPastAsync(int days, int page = 1)
+    {
+        Guild? guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        int maxDays = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
+        if (days <= 0)
+        {
+            await ReplyAsync("Please provide a valid number of days greater than 0.");
+            return;
+        }
+        if (days > maxDays)
+        {
+            await ReplyAsync($"Capping to maximum of {maxDays} days.");
+            days = maxDays;
+        }
+
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var baseQuery = dbContext.UserActivity.AsNoTracking()
+            .Where(ua => ua.GuildId == guild.Id && ua.InsertDate >= cutoff);
+
+        var top50 = baseQuery
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(50);
+
+        int totalUsers = top50.Count();
+        if (totalUsers == 0)
+        {
+            await ReplyAsync($"No message data found for the past {days} days.");
+            return;
+        }
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var pageItems = top50
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList();
+
+        var userIds = pageItems.Select(x => x.UserId).ToList();
+        var names = dbContext.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username })
+            .ToList()
+            .ToDictionary(u => u.Id, u => u.Username);
+
+        var lines = pageItems.Select((x, index) =>
+        {
+            string name = names.TryGetValue(x.UserId, out var n) ? n : x.UserId.ToString();
+            return $"[{((page - 1) * 10) + index + 1}] | {name}: Messages {x.Count}";
+        });
+
+        StringBuilder sb = new();
+        sb.AppendLine($"**Messages Leaderboard for {guild.Name}** for the past **{days}** days");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", lines));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Global Leaderboard Messages")]
+    [Summary("Displays the global leaderboard by number of messages sent across all guilds (all time).")]
+    [Command("globalleaderboardmessages")]
+    [Alias("globallbm", "globaltopmessages", "globalmessageslb")]
+    [RateLimit(3, 10)]
+    public async Task GlobalLeaderboardMessagesAsync(int page = 1)
+    {
+        var top50 = dbContext.UserLevels.AsNoTracking()
+            .GroupBy(ul => ul.UserId)
+            .Select(g => new { UserId = g.Key, Count = g.Sum(ul => ul.UserMessageCount) })
+            .OrderByDescending(x => x.Count)
+            .Take(50);
+
+        int totalUsers = top50.Count();
+        if (totalUsers == 0)
+        {
+            await ReplyAsync("No message data found globally.");
+            return;
+        }
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var pageItems = top50
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList();
+
+        var userIds = pageItems.Select(x => x.UserId).ToList();
+        var names = dbContext.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username })
+            .ToList()
+            .ToDictionary(u => u.Id, u => u.Username);
+
+        var lines = pageItems.Select((x, index) =>
+        {
+            string name = names.TryGetValue(x.UserId, out var n) ? n : x.UserId.ToString();
+            return $"[{((page - 1) * 10) + index + 1}] | {name}: Messages {x.Count}";
+        });
+
+        StringBuilder sb = new();
+        sb.AppendLine("**Global Messages Leaderboard** (all time)");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", lines));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Global Leaderboard Messages Past n Days")]
+    [Summary("Displays the global leaderboard by number of messages sent across all guilds for the past n days.")]
+    [Command("globalleaderboardmessagespast")]
+    [Alias("globallbmp", "globaltopmessagespast", "globalmessageslbpast")]
+    [RateLimit(3, 60)]
+    public async Task GlobalLeaderboardMessagesPastAsync(int days, int page = 1)
+    {
+        int maxDays = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
+        if (days <= 0)
+        {
+            await ReplyAsync("Please provide a valid number of days greater than 0.");
+            return;
+        }
+        if (days > maxDays)
+        {
+            await ReplyAsync($"Capping to maximum of {maxDays} days.");
+            days = maxDays;
+        }
+
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var baseQuery = dbContext.UserActivity.AsNoTracking()
+            .Where(ua => ua.InsertDate >= cutoff);
+
+        var top50 = baseQuery
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(50);
+
+        int totalUsers = top50.Count();
+        if (totalUsers == 0)
+        {
+            await ReplyAsync($"No message data found globally for the past {days} days.");
+            return;
+        }
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var pageItems = top50
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList();
+
+        var userIds = pageItems.Select(x => x.UserId).ToList();
+        var names = dbContext.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username })
+            .ToList()
+            .ToDictionary(u => u.Id, u => u.Username);
+
+        var lines = pageItems.Select((x, index) =>
+        {
+            string name = names.TryGetValue(x.UserId, out var n) ? n : x.UserId.ToString();
+            return $"[{((page - 1) * 10) + index + 1}] | {name}: Messages {x.Count}";
+        });
+
+        StringBuilder sb = new();
+        sb.AppendLine($"**Global Messages Leaderboard** for the past **{days}** days");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", lines));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Leaderboard Avg Message Length")]
+    [Summary("Displays the leaderboard by average message length in this guild (all time).")]
+    [Command("leaderboardavglength")]
+    [Alias("lbal", "topavglength", "avglenlb")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 10)]
+    public async Task LeaderboardAvgLengthAsync(int page = 1)
+    {
+        Guild? guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        var query = dbContext.UserLevels
+            .Where(ul => ul.GuildId == guild.Id && ul.UserMessageCount > 0)
+            .OrderByDescending(ul => ul.UserAverageMessageLength)
+            .Take(50);
+
+        int totalUsers = query.Count();
+        if (totalUsers == 0)
+        {
+            await ReplyAsync("No message data found for this guild.");
+            return;
+        }
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var pageItems = query
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .Include(ul => ul.User)
+            .ToList();
+
+        var lines = pageItems.Select((ul, index) =>
+        {
+            string name = ul.User?.Username ?? ul.UserId.ToString();
+            string avg = ul.UserAverageMessageLength.ToString("0.0");
+            return $"[{((page - 1) * 10) + index + 1}] | {name}: Avg length {avg} chars ({ul.UserMessageCount} msgs)";
+        });
+
+        StringBuilder sb = new();
+        sb.AppendLine($"**Average Message Length Leaderboard for {guild.Name}** (all time)");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", lines));
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+        sb.AppendLine("```");
+        await ReplyAsync(sb.ToString());
+    }
+
+    [Name("Global Leaderboard Avg Message Length")]
+    [Summary("Displays the global leaderboard by average message length across all guilds (all time). Weighted by message count.")]
+    [Command("globalleaderboardavglength")]
+    [Alias("globallbal", "globaltopavglength", "globalavglenlb")]
+    [RateLimit(3, 10)]
+    public async Task GlobalLeaderboardAvgLengthAsync(int page = 1)
+    {
+        var top50 = dbContext.UserLevels.AsNoTracking()
+            .GroupBy(ul => ul.UserId)
+            .Select(g => new
+            {
+                UserId = g.Key,
+                SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
+                SumCount = g.Sum(ul => ul.UserMessageCount)
+            })
+            .Where(x => x.SumCount > 0)
+            .Select(x => new { x.UserId, AvgLen = x.SumLen / x.SumCount })
+            .OrderByDescending(x => x.AvgLen)
+            .Take(50);
+
+        int totalUsers = top50.Count();
+        if (totalUsers == 0)
+        {
+            await ReplyAsync("No message data found globally.");
+            return;
+        }
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
+        if (page < 1 || page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        var pageItems = top50
+            .Skip((page - 1) * 10)
+            .Take(10)
+            .ToList();
+
+        var userIds = pageItems.Select(x => x.UserId).ToList();
+        var names = dbContext.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username })
+            .ToList()
+            .ToDictionary(u => u.Id, u => u.Username);
+
+        var lines = pageItems.Select((x, index) =>
+        {
+            string name = names.TryGetValue(x.UserId, out var n) ? n : x.UserId.ToString();
+            string avg = x.AvgLen.ToString("0.0");
+            return $"[{((page - 1) * 10) + index + 1}] | {name}: Avg length {avg} chars";
+        });
+
+        StringBuilder sb = new();
+        sb.AppendLine("**Global Average Message Length Leaderboard** (all time)");
+        sb.AppendLine("```js");
+        sb.AppendLine(string.Join("\n", lines));
         sb.AppendLine($"\n(Page {page}/{totalPages})");
         sb.AppendLine("```");
         await ReplyAsync(sb.ToString());
