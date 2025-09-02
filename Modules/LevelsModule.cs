@@ -97,7 +97,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false, guildId: guild.Id);
         string msg;
         if (explicitStart.HasValue)
         {
@@ -146,7 +146,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var series = BuildSeries(perUser, start, daysVal, cumulative: true, global: false);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: true, global: false, guildId: guild.Id);
         string msgCum;
         if (explicitStart.HasValue)
         {
@@ -187,7 +187,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true, guildId: null);
         string gmsg;
         if (explicitStart.HasValue)
         {
@@ -228,7 +228,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var series = BuildSeries(perUser, start, daysVal, cumulative: true, global: true);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: true, global: true, guildId: null);
         string gmsgCum;
         if (explicitStart.HasValue)
         {
@@ -317,32 +317,42 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             days = maxDaysLb;
         }
 
-        IQueryable<UserLevels> userLevels = dbContext.UserActivity
-            .Where(ua => ua.GuildId == guild.Id && ua.InsertDate >= DateTime.UtcNow.AddDays(-days))
-            .GroupBy(ua => ua.User)
-            .Select(g => new UserLevels
-            {
-                User = g.Key!,
-                GuildId = guild.Id,
-                TotalXp = g.Sum(ua => ua.XpGained)
-            })
-            .OrderByDescending(ul => ul.TotalXp)
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var baseQuery = dbContext.UserActivity.AsNoTracking()
+            .Where(ua => ua.GuildId == guild.Id && ua.InsertDate >= cutoff);
+
+        var top50 = baseQuery
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, TotalXp = g.Sum(x => x.XpGained) })
+            .OrderByDescending(x => x.TotalXp)
             .Take(50);
 
-        int totalUsers = userLevels.Count();
-        int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
-
+        int totalUsers = top50.Count();
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
         if (page < 1 || page > totalPages)
         {
             await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
             return;
         }
 
-        IEnumerable<string> leaderboard = userLevels
+        var pageItems = top50
             .Skip((page - 1) * 10)
             .Take(10)
+            .ToList();
+
+        var userIds = pageItems.Select(x => x.UserId).ToList();
+        var names = dbContext.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username })
             .ToList()
-            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
+            .ToDictionary(u => u.Id, u => u.Username);
+
+        IEnumerable<string> leaderboard = pageItems
+            .Select((x, index) =>
+            {
+                string name = names.TryGetValue(x.UserId, out var n) ? n : x.UserId.ToString();
+                return $"[{((page - 1) * 10) + index + 1}] | {name}: Level {ActivityHandler.CalculateLevel(x.TotalXp)} with {x.TotalXp} XP";
+            });
 
         StringBuilder sb = new();
 
@@ -417,31 +427,42 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             days = maxDaysGlb;
         }
 
-        IQueryable<UserLevels> userLevels = dbContext.UserActivity
-            .Where(ua => ua.InsertDate >= DateTime.UtcNow.AddDays(-days))
-            .GroupBy(ua => ua.User)
-            .Select(g => new UserLevels
-            {
-                User = g.Key!,
-                TotalXp = g.Sum(ua => ua.XpGained)
-            })
-            .OrderByDescending(ul => ul.TotalXp)
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var baseQuery = dbContext.UserActivity.AsNoTracking()
+            .Where(ua => ua.InsertDate >= cutoff);
+
+        var top50 = baseQuery
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, TotalXp = g.Sum(x => x.XpGained) })
+            .OrderByDescending(x => x.TotalXp)
             .Take(50);
 
-        int totalUsers = userLevels.Count();
-        int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
-
+        int totalUsers = top50.Count();
+        int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
         if (page < 1 || page > totalPages)
         {
             await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
             return;
         }
 
-        IEnumerable<string> leaderboard = userLevels
+        var pageItems = top50
             .Skip((page - 1) * 10)
             .Take(10)
+            .ToList();
+
+        var userIds = pageItems.Select(x => x.UserId).ToList();
+        var names = dbContext.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username })
             .ToList()
-            .Select((ul, index) => $"[{((page - 1) * 10) + index + 1}] | {ul.User.Username}: Level {ActivityHandler.CalculateLevel(ul.TotalXp)} with {ul.TotalXp} XP");
+            .ToDictionary(u => u.Id, u => u.Username);
+
+        IEnumerable<string> leaderboard = pageItems
+            .Select((x, index) =>
+            {
+                string name = names.TryGetValue(x.UserId, out var n) ? n : x.UserId.ToString();
+                return $"[{((page - 1) * 10) + index + 1}] | {name}: Level {ActivityHandler.CalculateLevel(x.TotalXp)} with {x.TotalXp} XP";
+            });
 
         StringBuilder sb = new();
         sb.AppendLine($"**Global Leaderboard** for the past **{days}** days");
@@ -545,37 +566,39 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     private List<dynamic> GetTopUsersByWindow(DateTime start, int days, int? guildId, bool global)
     {
         start = NormalizeToUtc(start);
-        var query = dbContext.UserActivity.AsQueryable();
+        var query = dbContext.UserActivity.AsNoTracking().Where(ua => ua.InsertDate >= start);
         if (!global && guildId.HasValue)
             query = query.Where(ua => ua.GuildId == guildId.Value);
 
-        var q = query
-            .Where(ua => ua.InsertDate >= start)
-            .AsEnumerable()
-            .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
-            .Select(g => new
-            {
-                UserId = g.Key.UserId,
-                Day = g.Key.Day,
-                Xp = g.Sum(x => x.XpGained)
-            })
-            .ToList();
-
-        var perUser = q.GroupBy(x => x.UserId)
-            .Select(g => new
-            {
-                UserId = g.Key,
-                Total = g.Sum(x => x.Xp),
-                ByDay = g.ToDictionary(x => x.Day, x => x.Xp)
-            })
+        var top = query
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
             .OrderByDescending(x => x.Total)
             .Take(10)
-            .ToList<dynamic>();
+            .ToList();
+
+        var userIds = top.Select(t => t.UserId).ToList();
+        if (userIds.Count == 0) return new List<dynamic>();
+
+        var byDay = query
+            .Where(ua => userIds.Contains(ua.UserId))
+            .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
+            .Select(g => new { g.Key.UserId, g.Key.Day, Xp = g.Sum(x => x.XpGained) })
+            .ToList();
+
+        var dict = byDay
+            .GroupBy(x => x.UserId)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Day, x => (int)x.Xp));
+
+        var perUser = top
+            .Select(t => new { UserId = t.UserId, Total = (int)t.Total, ByDay = (IDictionary<DateTime, int>)(dict.TryGetValue(t.UserId, out var d) ? d : new Dictionary<DateTime, int>()) })
+            .Cast<dynamic>()
+            .ToList();
 
         return perUser;
     }
 
-    private Dictionary<string, List<int>> BuildSeries(List<dynamic> perUser, DateTime start, int days, bool cumulative, bool global)
+    private Dictionary<string, List<int>> BuildSeries(List<dynamic> perUser, DateTime start, int days, bool cumulative, bool global, int? guildId)
     {
         var series = new Dictionary<string, List<int>>();
 
@@ -584,8 +607,10 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         if (cumulative)
         {
             var userIds = perUser.Select(p => (int)p.UserId).ToList();
-            var baseQuery = dbContext.UserActivity.AsQueryable()
+            var baseQuery = dbContext.UserActivity.AsNoTracking()
                 .Where(ua => ua.InsertDate < start && userIds.Contains(ua.UserId));
+            if (!global && guildId.HasValue)
+                baseQuery = baseQuery.Where(ua => ua.GuildId == guildId.Value);
             // if per-guild baseline is required, caller should have filtered guild in perUser selection
             var baseList = baseQuery
                 .GroupBy(ua => ua.UserId)
@@ -597,7 +622,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         foreach (var userAgg in perUser)
         {
             int userId = (int)userAgg.UserId;
-            var dbUser = dbContext.Users.Find(userId);
+            var dbUser = dbContext.Users.AsNoTracking().FirstOrDefault(u => u.Id == userId);
             string label = dbUser != null ? dbUser.Username : userId.ToString();
 
             List<int> daily = new List<int>(new int[days]);
@@ -686,7 +711,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false, guildId: guild.Id);
         var rolling = SevenDayRollingAverage(series);
         string msg7;
         if (explicitStart.HasValue)
@@ -727,7 +752,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             return;
         }
 
-        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true);
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true, guildId: null);
         var rolling = SevenDayRollingAverage(series);
         string gmsg7;
         if (explicitStart.HasValue)
@@ -765,34 +790,40 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     private List<dynamic> GetTopUsersByWindowForMentions(DateTime start, int days, int? guildId, bool global, IUser[] mentionedUsers)
     {
         start = NormalizeToUtc(start);
-        var list = new List<dynamic>();
+        var discordIds = mentionedUsers.Where(mu => mu != null).Select(mu => (long)mu.Id).ToList();
+        if (discordIds.Count == 0) return new List<dynamic>();
 
-        foreach (var mu in mentionedUsers)
-        {
-            if (mu == null) continue;
-            // Find DB user by DiscordId
-            var dbUser = dbContext.Users.FirstOrDefault(u => u.DiscordId == mu.Id);
-            if (dbUser == null) continue;
+        var users = dbContext.Users.AsNoTracking()
+            .Where(u => discordIds.Contains((long)u.DiscordId))
+            .Select(u => new { u.Id, u.DiscordId })
+            .ToList();
+        var userIds = users.Select(u => u.Id).ToList();
+        if (userIds.Count == 0) return new List<dynamic>();
 
-            int userId = dbUser.Id;
+        var query = dbContext.UserActivity.AsNoTracking()
+            .Where(ua => ua.InsertDate >= start && userIds.Contains(ua.UserId));
+        if (!global && guildId.HasValue)
+            query = query.Where(ua => ua.GuildId == guildId.Value);
 
-            var activityQuery = dbContext.UserActivity.AsQueryable().Where(ua => ua.UserId == userId);
-            if (!global && guildId.HasValue)
-                activityQuery = activityQuery.Where(ua => ua.GuildId == guildId.Value);
+        var totals = query
+            .GroupBy(ua => ua.UserId)
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
+            .OrderByDescending(x => x.Total)
+            .ToList();
 
-            var byDayList = activityQuery
-                .Where(ua => ua.InsertDate >= start)
-                .AsEnumerable()
-                .GroupBy(ua => ua.InsertDate.Date)
-                .Select(g => new { Day = g.Key, Xp = g.Sum(x => x.XpGained) })
-                .ToList();
+        var byDay = query
+            .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
+            .Select(g => new { g.Key.UserId, g.Key.Day, Xp = g.Sum(x => x.XpGained) })
+            .ToList();
 
-            var byDayDict = byDayList.ToDictionary(x => x.Day, x => (int)x.Xp);
-            int total = byDayList.Sum(x => (int)x.Xp);
+        var dict = byDay
+            .GroupBy(x => x.UserId)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Day, x => (int)x.Xp));
 
-            // Ensure we include users even if they have no activity in the window
-            list.Add(new { UserId = userId, Total = total, ByDay = (IDictionary<DateTime, int>)byDayDict });
-        }
+        var list = totals
+            .Select(t => new { UserId = t.UserId, Total = (int)t.Total, ByDay = (IDictionary<DateTime, int>)(dict.TryGetValue(t.UserId, out var d) ? d : new Dictionary<DateTime, int>()) })
+            .Cast<dynamic>()
+            .ToList();
 
         return list;
     }
