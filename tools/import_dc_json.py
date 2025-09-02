@@ -529,7 +529,7 @@ class Importer:
         sim_hash, norm_len = compute_simhash(content)
 
         # Base XP (match ActivityHandler)
-        base_xp = 3
+        base_xp = 1
 
         # messageLengthXp
         if prev_guild_activity is not None and prev_guild_activity[0] > 0:

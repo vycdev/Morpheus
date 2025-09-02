@@ -89,7 +89,7 @@ public class ActivityHandler
                 .FirstOrDefault();
 
         // Base XP for sending a message
-        int baseXP = 3;
+        int baseXP = 1;
         // Scale XP based on message length compared to guild average
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
 
