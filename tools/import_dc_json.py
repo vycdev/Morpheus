@@ -333,10 +333,11 @@ class Importer:
         except Exception:
             self.similarity_window_minutes = 10
         # Cache for UserLevels to minimize per-message round-trips
-        # key: (user_id, guild_id) -> (starting_total_xp, starting_level)
-        self._ul_start: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        # key: (user_id, guild_id) -> accumulated delta xp
-        self._ul_delta: Dict[Tuple[int, int], int] = {}
+        # key: (user_id, guild_id) -> (starting_total_xp, starting_level, start_msg_count, start_avg_len, start_ema_len)
+        self._ul_start: Dict[Tuple[int, int], Tuple[int, int, int, float, float]] = {}
+        # key: (user_id, guild_id) -> accumulated deltas (xp, msg_count, sum_len) and rolling EMA
+        # We store sum_len to recompute running average upon flush; EMA updated per message
+        self._ul_delta: Dict[Tuple[int, int], Tuple[int, int, int, float]] = {}
 
     def ensure_guild(self, discord_id: int, name: str) -> int:
         with self.conn.cursor() as cur:
@@ -394,20 +395,25 @@ class Importer:
             )
             return cur.fetchone()[0]
 
-    def ensure_userlevels(self, user_id: int, guild_id: int) -> Tuple[int, int]:
+    def ensure_userlevels(self, user_id: int, guild_id: int) -> Tuple[int, int, int, float, float]:
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT \"Id\", \"Level\", \"TotalXp\" FROM \"UserLevels\" WHERE \"UserId\" = %s AND \"GuildId\" = %s",
+                "SELECT \"Id\", \"Level\", \"TotalXp\", \"UserMessageCount\", \"UserAverageMessageLength\", \"UserAverageMessageLengthEma\" FROM \"UserLevels\" WHERE \"UserId\" = %s AND \"GuildId\" = %s",
                 (user_id, guild_id),
             )
             row = cur.fetchone()
             if row:
-                return row[2], row[1]  # total_xp, level
+                total_xp = int(row[2])
+                level = int(row[1])
+                msg_count = int(row[3] or 0)
+                avg_len = float(row[4] or 0.0)
+                ema_len = float(row[5] or 0.0)
+                return total_xp, level, msg_count, avg_len, ema_len
             cur.execute(
-                "INSERT INTO \"UserLevels\" (\"UserId\", \"GuildId\", \"Level\", \"TotalXp\") VALUES (%s, %s, %s, %s)",
-                (user_id, guild_id, 0, 0),
+                "INSERT INTO \"UserLevels\" (\"UserId\", \"GuildId\", \"Level\", \"TotalXp\", \"UserMessageCount\", \"UserAverageMessageLength\", \"UserAverageMessageLengthEma\") VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (user_id, guild_id, 0, 0, 0, 0.0, 0.0),
             )
-            return 0, 0
+            return 0, 0, 0, 0.0, 0.0
 
     def get_prev_user_activity(self, user_id: int, guild_id: int, before_ts: dt.datetime):
         with self.conn.cursor() as cur:
@@ -486,30 +492,48 @@ class Importer:
                 ),
             )
 
-    def update_userlevels(self, user_id: int, guild_id: int, delta_xp: int):
+    def update_userlevels(self, user_id: int, guild_id: int, delta_xp: int, msg_len: int):
         """Deprecated per-message updater retained for API compatibility; now we batch updates.
 
         Accumulate delta locally; ensure a starting value exists in cache via ensure_userlevels().
         """
         key = (user_id, guild_id)
         if key not in self._ul_start:
-            # Ensure row exists and prime starting totals
-            total, level = self.ensure_userlevels(user_id, guild_id)
-            self._ul_start[key] = (int(total), int(level))
-        self._ul_delta[key] = self._ul_delta.get(key, 0) + int(delta_xp)
+            total, level, msg_count, avg_len, ema_len = self.ensure_userlevels(user_id, guild_id)
+            self._ul_start[key] = (int(total), int(level), int(msg_count), float(avg_len), float(ema_len))
+        # deltas: xp_delta, msg_count_delta, sum_len_delta, ema_current (we will overwrite ema_current each call)
+        xp_d, cnt_d, sum_d, ema_cur = self._ul_delta.get(key, (0, 0, 0, self._ul_start[key][4]))
+        xp_d += int(delta_xp)
+        cnt_d += 1
+        sum_d += int(msg_len)
+        # EMA update per message with N=500
+        alpha = 2.0 / (500.0 + 1.0)
+        prev_ema = ema_cur if ema_cur > 0.0 else self._ul_start[key][4]
+        new_ema = float(msg_len) if prev_ema <= 0.0 else ((1.0 - alpha) * prev_ema + alpha * float(msg_len))
+        self._ul_delta[key] = (xp_d, cnt_d, sum_d, new_ema)
 
     def flush_userlevels_updates(self):
         """Apply all accumulated UserLevels updates in one pass."""
         if not self._ul_delta:
             return
         with self.conn.cursor() as cur:
-            for (user_id, guild_id), delta in self._ul_delta.items():
-                start_total, _start_level = self._ul_start.get((user_id, guild_id), (0, 0))
-                total_new = int(start_total) + int(delta)
+            for (user_id, guild_id), (xp_delta, cnt_delta, sum_len_delta, ema_cur) in self._ul_delta.items():
+                start_total, _start_level, start_cnt, start_avg, start_ema = self._ul_start.get((user_id, guild_id), (0, 0, 0, 0.0, 0.0))
+                total_new = int(start_total) + int(xp_delta)
                 level_new = calculate_level(total_new)
+                # Recompute average from starting count/avg and delta sum
+                new_cnt = int(start_cnt) + int(cnt_delta)
+                if new_cnt > 0:
+                    # starting sum = start_avg * start_cnt
+                    start_sum = float(start_avg) * float(start_cnt)
+                    new_sum = start_sum + float(sum_len_delta)
+                    new_avg = new_sum / float(new_cnt)
+                else:
+                    new_avg = 0.0
+                new_ema = float(ema_cur) if float(ema_cur) > 0.0 else float(start_ema)
                 cur.execute(
-                    "UPDATE \"UserLevels\" SET \"TotalXp\"=%s, \"Level\"=%s WHERE \"UserId\"=%s AND \"GuildId\"=%s",
-                    (total_new, level_new, user_id, guild_id),
+                    "UPDATE \"UserLevels\" SET \"TotalXp\"=%s, \"Level\"=%s, \"UserMessageCount\"=%s, \"UserAverageMessageLength\"=%s, \"UserAverageMessageLengthEma\"=%s WHERE \"UserId\"=%s AND \"GuildId\"=%s",
+                    (total_new, level_new, new_cnt, new_avg, new_ema, user_id, guild_id),
                 )
         # Clear caches after flush
         self._ul_delta.clear()
@@ -663,8 +687,8 @@ class Importer:
                 # but only once per (user,guild). Also seed the cache with current totals.
                 key = (user_id, guild_id)
                 if key not in self._ul_start:
-                    total_xp, level = self.ensure_userlevels(user_id, guild_id)
-                    self._ul_start[key] = (int(total_xp), int(level))
+                    total_xp, level, msg_count, avg_len, ema_len = self.ensure_userlevels(user_id, guild_id)
+                    self._ul_start[key] = (int(total_xp), int(level), int(msg_count), float(avg_len), float(ema_len))
 
                 prev_user = self.get_prev_user_activity(user_id, guild_id, m.timestamp)
                 recent = self.get_recent_simhashes_in_window(user_id, guild_id, m.timestamp)
@@ -703,7 +727,7 @@ class Importer:
                     )
                     if xp > 0:
                         # Accumulate updates; we'll flush once at the end of the file
-                        self.update_userlevels(user_id, guild_id, xp)
+                        self.update_userlevels(user_id, guild_id, xp, len(m.content))
                         xp_positive += 1
 
                 inserted += 1
@@ -834,8 +858,8 @@ class Importer:
                 uid = user_map[did]
                 key = (uid, guild_id)
                 if key not in self._ul_start:
-                    total_xp, level = self.ensure_userlevels(uid, guild_id)
-                    self._ul_start[key] = (int(total_xp), int(level))
+                    total_xp, level, msg_count, avg_len, ema_len = self.ensure_userlevels(uid, guild_id)
+                    self._ul_start[key] = (int(total_xp), int(level), int(msg_count), float(avg_len), float(ema_len))
 
             # Seed baselines from DB before first_ts
             guild_avg, guild_count = self._seed_guild_baseline(guild_id, first_ts)
@@ -968,7 +992,7 @@ class Importer:
 
                             # Update rolling state
                             if xp > 0:
-                                self.update_userlevels(uid, guild_id, xp)
+                                self.update_userlevels(uid, guild_id, xp, len(msg.content))
                                 xp_positive += 1
 
                             # prev_user_map -> now

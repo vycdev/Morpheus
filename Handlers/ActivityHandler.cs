@@ -226,6 +226,25 @@ public class ActivityHandler
         userLevel.TotalXp += xp;
         int newLevel = CalculateLevel(userLevel.TotalXp);
 
+        // Update per-user message length stats (raw characters)
+        const double userEmaAlpha = 2.0 / (500.0 + 1.0); // N=500
+        int prevUserMsgCount = userLevel.UserMessageCount;
+        double prevUserAvgLen = userLevel.UserAverageMessageLength;
+        double prevUserEmaLen = userLevel.UserAverageMessageLengthEma;
+
+        int newUserMsgCount = prevUserMsgCount + 1;
+        double msgLen = message.Content.Length;
+        double newUserAvgLen = prevUserMsgCount > 0
+            ? ((prevUserAvgLen * prevUserMsgCount) + msgLen) / newUserMsgCount
+            : msgLen;
+        double newUserEmaLen = prevUserEmaLen <= 0.0
+            ? msgLen
+            : (1.0 - userEmaAlpha) * prevUserEmaLen + userEmaAlpha * msgLen;
+
+        userLevel.UserMessageCount = newUserMsgCount;
+        userLevel.UserAverageMessageLength = newUserAvgLen;
+        userLevel.UserAverageMessageLengthEma = newUserEmaLen;
+
         if (userLevel.Level != newLevel)
         {
             userLevel.Level = newLevel;
