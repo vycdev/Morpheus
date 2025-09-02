@@ -259,8 +259,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         IQueryable<UserLevels> userLevels = dbContext.UserLevels
             .Where(ul => ul.GuildId == guild.Id)
-            .OrderByDescending(ul => ul.TotalXp)
-            .Take(50);
+            .OrderByDescending(ul => ul.TotalXp);
 
         int totalUsers = userLevels.Count();
         int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
@@ -328,8 +327,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         var top50 = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, TotalXp = g.Sum(x => x.XpGained) })
-            .OrderByDescending(x => x.TotalXp)
-            .Take(50);
+            .OrderByDescending(x => x.TotalXp);
 
         int totalUsers = top50.Count();
         int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
@@ -383,8 +381,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
                 User = g.Key,
                 TotalXp = g.Sum(ul => ul.TotalXp)
             })
-            .OrderByDescending(ul => ul.TotalXp)
-            .Take(50);
+            .OrderByDescending(ul => ul.TotalXp);
 
         int totalUsers = userLevels.Count();
         int totalPages = (int)Math.Ceiling(totalUsers / (double)10);
@@ -442,8 +439,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         var top50 = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, TotalXp = g.Sum(x => x.XpGained) })
-            .OrderByDescending(x => x.TotalXp)
-            .Take(50);
+            .OrderByDescending(x => x.TotalXp);
 
         int totalUsers = top50.Count();
         int totalPages = (int)Math.Ceiling(totalUsers / 10.0);
@@ -498,8 +494,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         var query = dbContext.UserLevels
             .Where(ul => ul.GuildId == guild.Id && ul.UserMessageCount > 0)
-            .OrderByDescending(ul => ul.UserMessageCount)
-            .Take(50);
+            .OrderByDescending(ul => ul.UserMessageCount);
 
         int totalUsers = query.Count();
         if (totalUsers == 0)
@@ -569,8 +564,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         var top50 = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .Take(50);
+            .OrderByDescending(x => x.Count);
 
         int totalUsers = top50.Count();
         if (totalUsers == 0)
@@ -622,8 +616,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         var top50 = dbContext.UserLevels.AsNoTracking()
             .GroupBy(ul => ul.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Sum(ul => ul.UserMessageCount) })
-            .OrderByDescending(x => x.Count)
-            .Take(50);
+            .OrderByDescending(x => x.Count);
 
         int totalUsers = top50.Count();
         if (totalUsers == 0)
@@ -691,8 +684,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         var top50 = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .Take(50);
+            .OrderByDescending(x => x.Count);
 
         int totalUsers = top50.Count();
         if (totalUsers == 0)
@@ -751,8 +743,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
         var query = dbContext.UserLevels
             .Where(ul => ul.GuildId == guild.Id && ul.UserMessageCount > 0)
-            .OrderByDescending(ul => ul.UserAverageMessageLength)
-            .Take(50);
+            .OrderByDescending(ul => ul.UserAverageMessageLength);
 
         int totalUsers = query.Count();
         if (totalUsers == 0)
@@ -806,8 +797,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             })
             .Where(x => x.SumCount > 0)
             .Select(x => new { x.UserId, AvgLen = x.SumLen / x.SumCount })
-            .OrderByDescending(x => x.AvgLen)
-            .Take(50);
+            .OrderByDescending(x => x.AvgLen);
 
         int totalUsers = top50.Count();
         if (totalUsers == 0)
