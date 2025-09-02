@@ -11,6 +11,42 @@ A full, auto-generated list of bot commands and metadata is available in the rep
 
 Click the link to view command summaries, aliases, parameters, and rate limits.
 
+## Notable characteristics
+
+### A deeply nuanced XP system (arguably the most advanced of any Discord bot)
+Morpheus evaluates messages through multiple, complementary signals designed to reward thoughtful contributions and de‑incentivize spam:
+
+- Diminishing returns for length: XP grows with message length but tapers logarithmically, so very long messages don’t blow out the scale.
+- Quality and anti‑spam signals:
+	- Similarity suppression via 64‑bit SimHash on normalized trigram shingles to penalize near‑duplicates and copypasta.
+	- Time‑gap smoothing with a logarithmic 0–5s recovery curve to discourage burst spam while keeping normal chat flow rewarding.
+	- Typing‑speed cap (WPM) to reduce XP for unrealistically fast, low‑effort sequences.
+- Context‑aware baselines: Each guild maintains an exponential moving average (EMA) of message length (N≈500), so “long” and “short” are relative to that server’s culture.
+- Per‑user analytics: Per‑guild message count, average message length, and EMA are tracked and surfaced in leaderboards and graphs.
+
+The result is balanced progression that feels fair across servers with different norms, while being robust against obvious gaming tactics.
+
+### Leaderboards you’ll actually use
+- XP leaderboards (guild/global) for all‑time and past N days.
+- Messages‑sent leaderboards (guild/global) for all‑time and past N days.
+- Average message length leaderboards (guild all‑time and global all‑time, globally weighted by message count).
+- Unlimited pagination and “your rank” shown in every leaderboard.
+
+Example commands: `leaderboard`, `leaderboardpast`, `globalleaderboard`, `globalleaderboardpast`,
+`leaderboardmessages`, `leaderboardmessagespast`, `globalleaderboardmessages`, `globalleaderboardmessagespast`,
+`leaderboardavglength`, `globalleaderboardavglength`.
+
+### Activity graphs that scale
+- Per‑day and cumulative XP charts for top users; also 7‑day rolling averages for smoother trends.
+- Guild and global variants, with optional explicit date ranges and a configurable maximum window (ACTIVITY_GRAPHS_MAX_DAYS).
+- Fast aggregation and PNG output suitable for quick sharing.
+- The possibility to mention any list of users for a given graph.
+
+### Automatic activity roles (daily)
+- A daily job assigns activity‑based roles (e.g., top 1%, 5%, 10%, 20%, 30%) per guild.
+- Roles are created automatically if missing, existing holders are cleared, and fresh recipients are assigned based on up‑to‑date activity.
+- Gentle pacing and robust logging keep it reliable across large servers.
+
 ## Contributing
 
 Contributions welcome! If you'd like to contribute bug fixes, new features, or improvements, please read the contributing guide for setup, workflow, and expectations: [CONTRIBUTING.md](./CONTRIBUTING.md).
