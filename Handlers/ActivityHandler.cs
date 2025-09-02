@@ -99,7 +99,7 @@ public class ActivityHandler
             r = message.Content.Length / avgLen;
         if (r < 0.0) r = 0.0; else if (r > 100.0) r = 100.0;
         const double B_len = 4.0;
-        const double k_len = 0.1;
+        const double k_len = 0.025;
         double denom_len = Math.Log(1.0 + k_len);
         double messageLengthXp = denom_len > 0.0
             ? B_len * Math.Log(1.0 + (k_len * r)) / denom_len

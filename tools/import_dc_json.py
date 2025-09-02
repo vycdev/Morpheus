@@ -534,7 +534,7 @@ class Importer:
         # Length-based XP (logarithmic taper relative to guild average)
         # r = L / A, clamped to [0, 100]; bonus = B * log(1 + k*r) / log(1 + k)
         B_len = 4.0
-        k_len = 0.1
+        k_len = 0.025
         if prev_guild_activity is not None and prev_guild_activity[0] > 0:
             guild_avg = float(prev_guild_activity[0])
             r = len(content) / guild_avg if guild_avg > 0 else 1.0
