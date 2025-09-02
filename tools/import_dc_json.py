@@ -521,15 +521,15 @@ class Importer:
         content: str,
         now_utc: dt.datetime,
         prev_user_activity: Optional[Tuple[int, dt.datetime, str]],
-    recent: List[Tuple[int, int, dt.datetime]],
+        recent: List[Tuple[int, int, dt.datetime]],
         prev_guild_activity: Optional[Tuple[float, int]],
     ) -> Tuple[int, int, int]:
         # Hashes
         msg_hash = xxh64_base64(content)
         sim_hash, norm_len = compute_simhash(content)
 
-        # Base XP
-        base_xp = 1
+        # Base XP (match ActivityHandler)
+        base_xp = 3
 
         # messageLengthXp
         if prev_guild_activity is not None and prev_guild_activity[0] > 0:
@@ -545,12 +545,18 @@ class Importer:
             if prev_hash == msg_hash and abs((now_utc - prev_ts).total_seconds()) < 60:
                 similarity_penalty_simple = 0.0
 
-        # speedPenaltySimple (smoothstep over 5s) — applied regardless of length (per current C#)
+        # speedPenaltySimple (logarithmic over 0..5s)
         speed_penalty_simple = 1.0
         if prev_user_activity is not None:
             _, prev_ts, _ = prev_user_activity
-            s = (now_utc - prev_ts).total_seconds() * 1000.0 / 5000.0
-            speed_penalty_simple = smoothstep_0_1(s)
+            dt_sec = (now_utc - prev_ts).total_seconds()
+            if dt_sec < 0:
+                dt_sec = 0.0
+            if dt_sec > 5.0:
+                dt_sec = 5.0
+            k = 9.0
+            denom = math.log(1.0 + k * 5.0)
+            speed_penalty_simple = math.log(1.0 + k * dt_sec) / denom if denom > 0 else 1.0
 
         # similarityPenaltyComplex via SimHash against recent messages within window
         similarity_penalty_complex = 1.0

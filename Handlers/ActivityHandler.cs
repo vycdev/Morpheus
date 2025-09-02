@@ -89,20 +89,22 @@ public class ActivityHandler
                 .FirstOrDefault();
 
         // Base XP for sending a message
-        int baseXP = 1;
+        int baseXP = 3;
         // Scale XP based on message length compared to guild average
         double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
 
         // If the message hash is the same as the previous message and sent within 60 seconds, no XP is gained
         int similarityPenaltySimple = (previousUserActivityInGuild?.MessageHash == messageHash) && (Math.Abs((now - previousUserActivityInGuild.InsertDate).TotalSeconds) < 60) ? 0 : 1;
 
-        // Time-based factor: smoothstep over 5s
+        // Time-based factor: logarithmic rise over 0..5 seconds
+        // 0s => 0 (100% penalty), ~2.5s => >0.5 (most penalty gone), 5s => ~1 (almost no penalty)
         double speedPenaltySimple = 1.0;
         if (previousUserActivityInGuild != null)
         {
-            double s = (now - previousUserActivityInGuild.InsertDate).TotalMilliseconds / 5000.0;
-            if (s < 0) s = 0; else if (s > 1) s = 1;
-            speedPenaltySimple = s * s * (3 - 2 * s);
+            double dtSec = (now - previousUserActivityInGuild.InsertDate).TotalSeconds;
+            if (dtSec < 0) dtSec = 0; else if (dtSec > 5) dtSec = 5;
+            const double k = 9.0; // curvature
+            speedPenaltySimple = Math.Log(1.0 + k * dtSec) / Math.Log(1.0 + k * 5.0);
         }
 
         // Similarity penalty via SimHash against recent messages in configured time window (ignore very short normalized texts)
