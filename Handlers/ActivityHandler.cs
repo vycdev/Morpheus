@@ -90,8 +90,20 @@ public class ActivityHandler
 
         // Base XP for sending a message
         int baseXP = 1;
-        // Scale XP based on message length compared to guild average
-        double messageLengthXp = message.Content.Length / (previousActivityInGuild?.GuildAverageMessageLength * 0.1) ?? 1;
+        // Length-based XP with logarithmic taper relative to guild average
+        // r = L / A, clamped to [0, 100]; bonus = B * log(1 + k*r) / log(1 + k)
+        // With B=4, k=0.1 -> at r=1 (about average length), bonus≈4
+        double avgLen = previousActivityInGuild?.GuildAverageMessageLength ?? 0.0;
+        double r = 1.0;
+        if (avgLen > 0.0)
+            r = message.Content.Length / avgLen;
+        if (r < 0.0) r = 0.0; else if (r > 100.0) r = 100.0;
+        const double B_len = 4.0;
+        const double k_len = 0.1;
+        double denom_len = Math.Log(1.0 + k_len);
+        double messageLengthXp = denom_len > 0.0
+            ? B_len * Math.Log(1.0 + (k_len * r)) / denom_len
+            : B_len * r; // extremely unlikely fallback
 
         // If the message hash is the same as the previous message and sent within 60 seconds, no XP is gained
         int similarityPenaltySimple = (previousUserActivityInGuild?.MessageHash == messageHash) && (Math.Abs((now - previousUserActivityInGuild.InsertDate).TotalSeconds) < 60) ? 0 : 1;

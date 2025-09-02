@@ -531,12 +531,21 @@ class Importer:
         # Base XP (match ActivityHandler)
         base_xp = 1
 
-        # messageLengthXp
+        # Length-based XP (logarithmic taper relative to guild average)
+        # r = L / A, clamped to [0, 100]; bonus = B * log(1 + k*r) / log(1 + k)
+        B_len = 4.0
+        k_len = 0.1
         if prev_guild_activity is not None and prev_guild_activity[0] > 0:
-            guild_avg = prev_guild_activity[0]
-            message_length_xp = len(content) / (guild_avg * 0.1)
+            guild_avg = float(prev_guild_activity[0])
+            r = len(content) / guild_avg if guild_avg > 0 else 1.0
         else:
-            message_length_xp = 1.0
+            r = 1.0
+        if r < 0.0:
+            r = 0.0
+        elif r > 100.0:
+            r = 100.0
+        denom_len = math.log(1.0 + k_len)
+        message_length_xp = (B_len * math.log(1.0 + (k_len * r)) / denom_len) if denom_len > 0 else (B_len * r)
 
         # similarityPenaltySimple (same hash within 60s)
         similarity_penalty_simple = 1.0
