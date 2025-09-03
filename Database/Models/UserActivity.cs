@@ -18,6 +18,9 @@ public class UserActivity
     [Required]
     public ulong DiscordChannelId { get; set; }
 
+    [Required]
+    public ulong DiscordMessageId { get; set; }
+
     public string MessageHash { get; set; } = string.Empty;
     // 64-bit SimHash over normalized character trigrams of the message (non-reversible)
     public ulong MessageSimHash { get; set; } = 0UL;

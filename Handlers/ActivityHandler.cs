@@ -193,6 +193,7 @@ public class ActivityHandler
         UserActivity userActivity = new()
         {
             DiscordChannelId = message.Channel.Id,
+            DiscordMessageId = message.Id,
             GuildId = guild.Id,
             InsertDate = now,
             MessageHash = messageHash,
