@@ -457,6 +457,7 @@ class Importer:
     def insert_user_activity(
         self,
         discord_channel_id: int,
+        discord_message_id: int,
         guild_id: int,
         user_id: int,
         insert_date: dt.datetime,
@@ -472,13 +473,14 @@ class Importer:
             cur.execute(
                 """
                 INSERT INTO "UserActivity" (
-                    "DiscordChannelId", "GuildId", "UserId", "InsertDate",
+                    "DiscordChannelId", "DiscordMessageId", "GuildId", "UserId", "InsertDate",
                     "MessageHash", "MessageLength", "MessageSimHash", "NormalizedLength",
                     "XpGained", "GuildAverageMessageLength", "GuildMessageCount"
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     discord_channel_id,
+                    discord_message_id,
                     guild_id,
                     user_id,
                     insert_date,
@@ -714,6 +716,7 @@ class Importer:
                 if not self.dry:
                     self.insert_user_activity(
                         int(export.channel_id),
+                        int(m.id),
                         guild_id,
                         user_id,
                         m.timestamp,
@@ -920,7 +923,7 @@ class Importer:
                 copy_sql = (
                     """
                     COPY "UserActivity" (
-                        "DiscordChannelId", "GuildId", "UserId", "InsertDate",
+                        "DiscordChannelId", "DiscordMessageId", "GuildId", "UserId", "InsertDate",
                         "MessageHash", "MessageLength", "MessageSimHash", "NormalizedLength",
                         "XpGained", "GuildAverageMessageLength", "GuildMessageCount"
                     ) FROM STDIN
@@ -977,6 +980,7 @@ class Importer:
                             # Prepare row
                             row = (
                                 int(channel_id),
+                                int(msg.id),
                                 guild_id,
                                 uid,
                                 ts,
