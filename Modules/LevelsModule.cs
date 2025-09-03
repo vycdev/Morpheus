@@ -1021,6 +1021,75 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         await ReplyAsync(sb.ToString());
     }
 
+    [Name("Invalidate Message XP")]
+    [Summary("Administrator-only: invalidates the XP of the message you reply to by setting its XP to 0 and adjusting totals.")]
+    [Command("invalidatexp")]
+    [Alias("invalidate", "zeroxp")]
+    [RequireContext(ContextType.Guild)]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [RateLimit(3, 30)]
+    public async Task InvalidateMessageXpAsync()
+    {
+        var guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        // Ensure this command is used as a reply
+        if (Context.Message.ReferencedMessage == null)
+        {
+            await ReplyAsync("Please reply to the message whose XP you want to invalidate.");
+            return;
+        }
+
+        // Fetch the referenced message to confirm and get its ID
+        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+        {
+            await ReplyAsync("Couldn't resolve the referenced message in this channel.");
+            return;
+        }
+
+        ulong refMsgId = refMsg.Id;
+        ulong channelId = Context.Channel.Id;
+
+        // Find the single activity record for this message
+        var activity = dbContext.UserActivity
+            .FirstOrDefault(ua => ua.GuildId == guild.Id
+                                && ua.DiscordChannelId == channelId
+                                && ua.DiscordMessageId == refMsgId);
+
+        if (activity == null)
+        {
+            await ReplyAsync("No activity record found for the referenced message.");
+            return;
+        }
+
+        int removed = activity.XpGained;
+        int userId = activity.UserId;
+        if (removed <= 0)
+        {
+            await ReplyAsync("XP was already 0 for the referenced message.");
+            return;
+        }
+
+        activity.XpGained = 0;
+        await dbContext.SaveChangesAsync();
+
+        // Adjust UserLevels totals and level for the affected user in this guild
+        var ul = dbContext.UserLevels.FirstOrDefault(ul => ul.GuildId == guild.Id && ul.UserId == userId);
+        if (ul != null)
+        {
+            long newTotal = Math.Max(0, (long)ul.TotalXp - removed);
+            ul.TotalXp = (int)newTotal;
+            ul.Level = ActivityHandler.CalculateLevel(ul.TotalXp);
+            await dbContext.SaveChangesAsync();
+        }
+
+        await ReplyAsync($"Invalidated XP for the referenced message. Removed {removed} XP from totals.");
+    }
+
     // ---------------------- Helper methods to reduce duplication ----------------------
 
     private bool ValidateDays(int days)
