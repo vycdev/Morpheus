@@ -7,12 +7,15 @@ using Morpheus.Handlers;
 using Discord;
 using Morpheus.Utilities;
 using Morpheus.Database.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Morpheus.Modules;
 
 public class GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private readonly CommandService commands = commands;
+    private readonly DiscordSocketClient client = client;
+    private readonly InteractionsHandler interactionHandler = interactionHandler;
     private readonly IServiceProvider serviceProvider = serviceProvider;
     private readonly DB dbContext = dbContext;
     private readonly int HelpPageSize = 10;
@@ -26,7 +29,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
     {
-        Guild guild = Context.DbGuild!;
+        // Load tracked Guild entity from DB instead of using Context.DbGuild (which may be detached)
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
 
         guild.WelcomeChannelId = channel?.Id ?? 0;
 
@@ -50,11 +59,16 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task SetCommandsPrefix([Remainder] string prefix = "m!")
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 3)
         {
-            await ReplyAsync($"The prefix you picked, `{prefix}`, is not valid. Make sure that the prefix is not empty or is longer than 3 characters.");
+            await ReplyAsync($"The prefix you picked, `{prefix}`, is not valid. Make sure that the prefix is not empty and at most 3 characters.");
             return;
         }
 
@@ -79,7 +93,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
 
         guild.PinsChannelId = channel?.Id ?? 0;
         await dbContext.SaveChangesAsync();
@@ -103,7 +122,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketChannel? channel = null)
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
 
         guild.LevelUpMessagesChannelId = channel?.Id ?? 0;
         await dbContext.SaveChangesAsync();
@@ -126,7 +150,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketChannel? channel = null)
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
 
         guild.LevelUpQuotesChannelId = channel?.Id ?? 0;
         await dbContext.SaveChangesAsync();
@@ -149,7 +178,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task ToggleLevelUpMessages()
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
         guild.LevelUpMessages = !guild.LevelUpMessages;
         await dbContext.SaveChangesAsync();
         await ReplyAsync($"Level up messages are now {(guild.LevelUpMessages ? "enabled" : "disabled")}.");
@@ -164,7 +199,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task ToggleLevelUpQuotes()
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
         guild.LevelUpQuotes = !guild.LevelUpQuotes;
         await dbContext.SaveChangesAsync();
         await ReplyAsync($"Level up quotes are now {(guild.LevelUpQuotes ? "enabled" : "disabled")}.");
@@ -179,7 +220,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task ToggleUseGlobalQuotes()
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
         guild.UseGlobalQuotes = !guild.UseGlobalQuotes;
         await dbContext.SaveChangesAsync();
         if (guild.UseGlobalQuotes)
@@ -203,7 +250,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RateLimit(1, 10)]
     public async Task SetQuotesApprovalChannel([Remainder] SocketChannel? channel = null)
     {
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
         guild.QuotesApprovalChannelId = channel?.Id ?? 0;
         await dbContext.SaveChangesAsync();
 
@@ -213,7 +266,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             return;
         }
 
-        await ReplyAsync($"Quotes approval channel set to <#{guild.QuotesApprovalChannelId}>.");
+        await ReplyAsync($"Quotes approval channel set to <#{guild.QuotesApprovalChannelId}>");
     }
 
     [Name("Set Quote Add Required Approvals")]
@@ -237,7 +290,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             return;
         }
 
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
         guild.QuoteAddRequiredApprovals = approvals;
         await dbContext.SaveChangesAsync();
         await ReplyAsync($"Quote add required approvals set to {approvals}.");
@@ -264,7 +323,13 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             return;
         }
 
-        Guild guild = Context.DbGuild!;
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
         guild.QuoteRemoveRequiredApprovals = approvals;
         await dbContext.SaveChangesAsync();
         await ReplyAsync($"Quote remove required approvals set to {approvals}.");
