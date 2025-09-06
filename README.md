@@ -36,6 +36,18 @@ Example commands: `leaderboard`, `leaderboardpast`, `globalleaderboard`, `global
 `leaderboardmessages`, `leaderboardmessagespast`, `globalleaderboardmessages`, `globalleaderboardmessagespast`,
 `leaderboardavglength`, `globalleaderboardavglength`.
 
+### Quotes and level-up messages
+
+Quotes
+- Morpheus includes a full quotes subsystem: users can submit text quotes that are stored per-guild (or globally when a guild opts into global quotes).
+- Submissions may require approval: a configurable approvals channel can be set per guild and add/remove requests post an approval message with interactive buttons so members can vote. Approval thresholds (add/remove required approvals) are configurable.
+- Administrators may bypass approvals or force-approve/remove when permitted. Quotes support upvote/downvote and numeric rating commands; aggregated scores are used by commands like `quoteoftheday`, `quoteoftheweek`, `quoteofthemonth`, and the `listquotes` / `listquotesglobal` listings.
+
+Level-up messages
+- Level-up announcements are guild-configurable. Admins can set a channel to receive automatic level-up notifications and an optional separate channel for level-up quote posts.
+- All channel targets and related toggles are stored in the guild configuration and can be changed via the guild administration commands (see `GuildModule`).
+- There is also an administrative command to invalidate the XP of a specific message (reply to the message to run it); this will zero the recorded XP for that message and adjust the affected user totals.
+
 ### Activity graphs that scale
 - Per‑day and cumulative XP charts for top users; also 7‑day rolling averages for smoother trends.
 - Guild and global variants, with optional explicit date ranges and a configurable maximum window (ACTIVITY_GRAPHS_MAX_DAYS).
