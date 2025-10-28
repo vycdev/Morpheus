@@ -335,6 +335,57 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         await ReplyAsync($"Quote remove required approvals set to {approvals}.");
     }
 
+    [Name("Set Honeypot Channel")]
+    [Summary("Sets the honeypot channel for the guild.")]
+    [Command("sethoneypotchannel")]
+    [Alias("sethc", "shc", "honeypotchannel")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [RequireBotPermission(GuildPermission.BanMembers)]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(1, 10)]
+    public async Task SetHoneypotChannelAsync([Remainder] SocketChannel? channel = null)
+    {
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        guild.HoneypotChannelId = channel?.Id ?? 0;
+        await dbContext.SaveChangesAsync();
+
+        if (guild.HoneypotChannelId == 0)
+        {
+            await ReplyAsync("Honeypot channel has been removed.");
+            return;
+        }
+
+        await ReplyAsync($"Honeypot channel has been set. Your channel is <#{guild.HoneypotChannelId}>");
+    }
+
+    [Name("Toggle Honeypot Messages")]
+    [Summary("Toggles whether honeypot messages are sent in this guild. This requires the welcome channel to be set.")]
+    [Command("togglehoneypotmessages")]
+    [Alias("togglehoneypotm", "togglehpm", "toghoneypotm")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [RequireBotPermission(GuildPermission.BanMembers)]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(1, 10)]
+    public async Task ToggleHoneypotMessages()
+    {
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        guild.SendHoneypotMessages = !guild.SendHoneypotMessages;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Honeypot messages are now {(guild.SendHoneypotMessages ? "enabled" : "disabled")}.");
+    }
+
     [Name("Guild Info")]
     [Summary("Displays information about the current guild.")]
     [Command("guildinfo")]
@@ -354,6 +405,8 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             $"Prefix: {dbGuild.Prefix}\n" +
             $"Welcome Channel: {ChannelOrNone(dbGuild.WelcomeChannelId)}\n" +
             $"Pins Channel: {ChannelOrNone(dbGuild.PinsChannelId)}\n" +
+            $"Honeypot Channel: {ChannelOrNone(dbGuild.HoneypotChannelId)}\n" +
+            $"Send Honeypot Messages: {BoolStatus(dbGuild.SendHoneypotMessages)}\n" +
             $"Level Up Messages Channel: {ChannelOrNone(dbGuild.LevelUpMessagesChannelId)}\n" +
             $"Level Up Quotes Channel: {ChannelOrNone(dbGuild.LevelUpQuotesChannelId)}\n" +
             $"Level Up Messages: {BoolStatus(dbGuild.LevelUpMessages)}\n" +

@@ -59,6 +59,7 @@ services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
 services.AddScoped<ActivityService>();
 services.AddScoped<BotAvatarJob>();
+services.AddScoped<TemporaryBansJob>();
 
 // Add Quartz 
 services.AddQuartz(q =>
@@ -92,6 +93,12 @@ services.AddQuartz(q =>
         .StartNow()
         .WithCronSchedule("0 0 0 * * ?") // every day at 00:00 UTC
     );
+
+    q.ScheduleJob<TemporaryBansJob>(trigger => trigger
+        .WithIdentity("temporaryBansDaily", "discord")
+        .StartNow()
+        .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
+    );
 });
 
 services.AddQuartzHostedService(options =>
@@ -102,6 +109,7 @@ services.AddQuartzHostedService(options =>
 // Add the handlers (singletons that create a scope per event)
 services.AddSingleton<MessagesHandler>();
 services.AddSingleton<WelcomeHandler>();
+services.AddSingleton<HoneypotHandler>();
 services.AddSingleton<InteractionsHandler>();
 services.AddSingleton<LogsHandler>();
 services.AddSingleton<ActivityHandler>();
@@ -128,6 +136,7 @@ using (var scope = host.Services.CreateScope())
 // Start the handlers 
 _ = host.Services.GetRequiredService<LogsHandler>();
 _ = host.Services.GetRequiredService<WelcomeHandler>();
+_ = host.Services.GetRequiredService<HoneypotHandler>();
 _ = host.Services.GetRequiredService<InteractionsHandler>();
 _ = host.Services.GetRequiredService<ActivityHandler>();
 _ = host.Services.GetRequiredService<FunnyResponsesHandler>();

@@ -20,6 +20,10 @@ public class Guild
     public ulong WelcomeChannelId { get; set; }
     public ulong PinsChannelId { get; set; }
 
+    // Honeypot 
+    public ulong HoneypotChannelId { get; set; }
+    public bool SendHoneypotMessages { get; set; }
+
     // Leveling and Quotes system settings 
     public ulong LevelUpMessagesChannelId { get; set; }
     public ulong LevelUpQuotesChannelId { get; set; }

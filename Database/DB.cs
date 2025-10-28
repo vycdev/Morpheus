@@ -28,6 +28,10 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<QuoteApproval>().HasIndex(a => new { a.QuoteApprovalMessageId, a.UserId }).IsUnique();
         // Speeds up recent per-user, per-guild activity queries
         modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.UserId, ua.GuildId, ua.InsertDate });
+
+        // Indexes for temporary bans processing
+        modelBuilder.Entity<TemporaryBan>().HasIndex(tb => new { tb.GuildId, tb.UserId });
+        modelBuilder.Entity<TemporaryBan>().HasIndex(tb => new { tb.ExpiresAt, tb.UnbannedAt });
     }
 
     public DbSet<User> Users { get; set; }
@@ -43,4 +47,5 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<Role> Roles { get; set; }
     public DbSet<Reminder> Reminders { get; set; }
     public DbSet<BotSetting> BotSettings { get; set; }
+    public DbSet<TemporaryBan> TemporaryBans { get; set; }
 }
