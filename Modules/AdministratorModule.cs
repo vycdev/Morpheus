@@ -12,11 +12,11 @@ namespace Morpheus.Modules;
 public class AdministratorModule(DiscordSocketClient client, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     [Name("Dump Logs")]
-    [Summary("Dumps the latest 25 logs from the database (bot owner only).")]
+    [Summary("Dumps logs from the database (25 logs per page). (bot owner only).")]
     [Command("dumplogs")]
     [RateLimit(3, 30)]
     [Hidden]
-    public async Task DumpLogsAsync()
+    public async Task DumpLogsAsync(int page = 1)
     {
         // Check OWNER_ID environment variable
         string? ownerEnv = Env.Variables["OWNER_ID"];
@@ -32,9 +32,17 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
             return;
         }
 
+        if (page < 1)
+        {
+            await ReplyAsync("Page must be 1 or greater.");
+            return;
+        }
+
+        const int pageSize = 25;
         var logs = dbContext.Logs
             .OrderByDescending(l => l.InsertDate)
-            .Take(25)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToList();
 
         if (!logs.Any())
