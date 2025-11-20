@@ -60,6 +60,7 @@ services.AddScoped<LogsService>();
 services.AddScoped<ActivityService>();
 services.AddScoped<BotAvatarJob>();
 services.AddScoped<TemporaryBansJob>();
+services.AddScoped<HoneypotRenameJob>();
 
 // Add Quartz 
 services.AddQuartz(q =>
@@ -98,6 +99,12 @@ services.AddQuartz(q =>
         .WithIdentity("temporaryBansDaily", "discord")
         .StartNow()
         .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromDays(1)).RepeatForever())
+    );
+
+    q.ScheduleJob<HoneypotRenameJob>(trigger => trigger
+        .WithIdentity("honeypotRenameDaily", "discord")
+        .StartNow()
+        .WithCronSchedule("0 5 0 * * ?") // daily at 00:05 UTC
     );
 });
 
