@@ -332,7 +332,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
         }
-        if (days > maxDaysLb)
+        if (!IsOwner() && days > maxDaysLb)
         {
             await ReplyAsync($"Capping to maximum of {maxDaysLb} days.");
             days = maxDaysLb;
@@ -482,7 +482,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
         }
-        if (days > maxDaysGlb)
+        if (!IsOwner() && days > maxDaysGlb)
         {
             await ReplyAsync($"Capping to maximum of {maxDaysGlb} days.");
             days = maxDaysGlb;
@@ -640,7 +640,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
         }
-        if (days > maxDays)
+        if (!IsOwner() && days > maxDays)
         {
             await ReplyAsync($"Capping to maximum of {maxDays} days.");
             days = maxDays;
@@ -796,7 +796,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync("Please provide a valid number of days greater than 0.");
             return;
         }
-        if (days > maxDays)
+        if (!IsOwner() && days > maxDays)
         {
             await ReplyAsync($"Capping to maximum of {maxDays} days.");
             days = maxDays;
@@ -1092,10 +1092,16 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
 
     // ---------------------- Helper methods to reduce duplication ----------------------
 
+    private bool IsOwner()
+    {
+        ulong ownerId = Env.Get<ulong>("OWNER_ID", 0);
+        return ownerId != 0 && Context.User != null && Context.User.Id == ownerId;
+    }
+
     private bool ValidateDays(int days)
     {
         int maxDays = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
-        if (days <= 0 || days > maxDays)
+        if (!IsOwner() && (days <= 0 || days > maxDays))
         {
             ReplyAsync($"Please provide a number of days between 1 and {maxDays}.").GetAwaiter().GetResult();
             return false;
@@ -1116,6 +1122,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     {
         return Task.Run(async () =>
         {
+            bool isOwner = IsOwner();
             if (string.IsNullOrWhiteSpace(input)) input = "past7days";
 
             input = input.Trim().ToLowerInvariant();
@@ -1128,7 +1135,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
                 if (int.TryParse(num, out int parsed))
                 {
                     if (parsed < 7) parsed = 7;
-                    if (parsed > maxDays) parsed = maxDays;
+                    if (!isOwner && parsed > maxDays) parsed = maxDays;
                     return (true, parsed, (DateTime?)null);
                 }
                 await ReplyAsync($"Please provide a number of days between 7 and {maxDays} or a valid preset (past7days, past30days, past60days, past{maxDays}days).\nOr provide a date range like 2025-01-01..2025-01-31.");
@@ -1138,7 +1145,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             if (int.TryParse(input, out int asInt))
             {
                 if (asInt < 7) asInt = 7;
-                if (asInt > maxDays) asInt = maxDays;
+                if (!isOwner && asInt > maxDays) asInt = maxDays;
                 return (true, asInt, null);
             }
 
@@ -1163,7 +1170,7 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
                         end = start.AddDays(6); // inclusive 7 days
                         span = 7;
                     }
-                    if (span > maxDays)
+                    if (!isOwner && span > maxDays)
                     {
                         await ReplyAsync($"Date range exceeds maximum of {maxDays} days.");
                         return (false, 0, null);
