@@ -4,6 +4,7 @@ using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Drawing;
 using SixLabors.Fonts;
+using System.Numerics;
 
 namespace Morpheus.Utilities.Images;
 
@@ -11,7 +12,7 @@ namespace Morpheus.Utilities.Images;
 public static class ActivityGraphGenerator
 {
     // Returns PNG bytes. series: dictionary of "label" -> list of daily values (oldest -> newest)
-    public static byte[] GenerateLineChart(Dictionary<string, List<int>> series, int days, int width = 1000, int height = 400, DateTime? start = null)
+    public static byte[] GenerateLineChart(Dictionary<string, List<int>> series, int days, int width = 1000, int height = 520, DateTime? start = null)
     {
         if (series == null || series.Count == 0) throw new ArgumentException("No series provided.");
         if (days <= 0) throw new ArgumentOutOfRangeException(nameof(days));
@@ -19,7 +20,7 @@ public static class ActivityGraphGenerator
         int marginLeft = 80;
         int marginRight = 160;
         int marginTop = 40;
-        int marginBottom = 60;
+        int marginBottom = 100;
 
         using Image<Rgba32> image = new Image<Rgba32>(width, height, Color.White);
 
@@ -42,8 +43,13 @@ public static class ActivityGraphGenerator
         if (globalMax <= 0) globalMax = 1;
 
         // grid lines and labels
-        int yTicks = 5;
+        int yTicks = 6;
         Font font = GetFont(12);
+
+        double rawStep = globalMax / (double)yTicks;
+        double niceStep = NiceStep(rawStep);
+        int niceMax = (int)Math.Max(1, Math.Ceiling(niceStep * yTicks));
+        globalMax = niceMax;
 
         image.Mutate(ctx =>
         {
@@ -61,7 +67,7 @@ public static class ActivityGraphGenerator
                 float y = marginTop + t * plotHeight;
                 ctx.Fill(Color.LightGray, new RectangleF(originX, y - 0.5f, plotWidth, 1));
 
-                int labelVal = (int)Math.Round((1 - t) * globalMax);
+                int labelVal = (int)Math.Round((yTicks - i) * niceStep);
                 string lbl = labelVal.ToString();
                 // approximate text size
                 var approxWidth = lbl.Length * font.Size * 0.6f;
@@ -71,13 +77,17 @@ public static class ActivityGraphGenerator
 
             // x labels: show day ticks evenly
             DateTime baseStart = (start ?? DateTime.UtcNow.Date.AddDays(-(days - 1))).Date;
-            for (int d = 0; d < days; d += Math.Max(1, days / 8))
+            int xStep = Math.Max(1, days / 8);
+            int denom = Math.Max(1, days - 1);
+            for (int d = 0; d < days; d += xStep)
             {
-                float x = originX + (d / (float)(days - 1)) * plotWidth;
+                float x = originX + (d / (float)denom) * plotWidth;
                 DateTime dt = baseStart.AddDays(d);
-                string lbl = dt.ToString("MM-dd");
-                var approxWidth = lbl.Length * font.Size * 0.6f;
-                ctx.DrawText(lbl, font, Color.Black, new PointF(x - approxWidth / 2, originY + 6));
+                string lbl = dt.ToString("yyyy-MM-dd");
+                var origin = new PointF(x, originY + 45);
+                ctx.SetDrawingTransform(Matrix3x2.CreateRotation(-0.6f, origin));
+                ctx.DrawText(lbl, font, Color.Black, origin);
+                ctx.SetDrawingTransform(Matrix3x2.Identity);
             }
         });
 
@@ -113,7 +123,8 @@ public static class ActivityGraphGenerator
             PointF[] points = new PointF[days];
             for (int i = 0; i < days; i++)
             {
-                float x = originX + (i / (float)(days - 1)) * plotWidth;
+                int denom = Math.Max(1, days - 1);
+                float x = originX + (i / (float)denom) * plotWidth;
                 float y = marginTop + (1 - (data[i] / (float)globalMax)) * plotHeight;
                 points[i] = new PointF(x, y);
             }
@@ -163,7 +174,7 @@ public static class ActivityGraphGenerator
         image.Mutate(ctx =>
         {
             Font f = GetFont(10);
-            ctx.DrawText($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", f, Color.Gray, new PointF(8, height - marginBottom + 20));
+            ctx.DrawText($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", f, Color.Gray, new PointF(8, height - marginBottom + 70));
         });
 
         using MemoryStream ms = new();
@@ -233,5 +244,18 @@ public static class ActivityGraphGenerator
 
         // If nothing found, provide a helpful exception so caller can log and skip rendering
         throw new InvalidOperationException("No usable font found on the system. Please install a TTF font such as DejaVuSans in the container (e.g. package 'fonts-dejavu').");
+    }
+
+    private static double NiceStep(double step)
+    {
+        if (step <= 0) return 1;
+        double exp = Math.Floor(Math.Log10(step));
+        double frac = step / Math.Pow(10, exp);
+        double niceFrac;
+        if (frac <= 1) niceFrac = 1;
+        else if (frac <= 2) niceFrac = 2;
+        else if (frac <= 5) niceFrac = 5;
+        else niceFrac = 10;
+        return niceFrac * Math.Pow(10, exp);
     }
 }

@@ -1482,6 +1482,97 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         await GenerateAndSendGraph(rolling, daysVal, "global_activity_graph_30day.png", gmsg30, start);
     }
 
+    [Name("Activity Graph (90-day roll)")]
+    [Summary("Generates a 90-day rolling average activity graph for the top 10 users over the past n days.")]
+    [Command("activitygraph90day")]
+    [Alias("actgraph90", "ag90")]
+    [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
+    [RateLimit(2, 60)]
+    public async Task ActivityGraph90DayAsync(string days = "past90days", params IUser[] mentionedUsers)
+    {
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
+
+        Guild? guild = Context.DbGuild;
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+        start = NormalizeToUtc(start);
+
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: guild.Id, global: false, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: guild.Id, global: false);
+        if (!perUser.Any())
+        {
+            await ReplyAsync("No activity data found for the requested period.");
+            return;
+        }
+
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: false, guildId: guild.Id);
+        var rolling = RollingAverage(series, 90);
+        string msg90;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            msg90 = $"Top {rolling.Count} users 90-day rolling average activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            msg90 = $"Top {rolling.Count} users 90-day rolling average activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(rolling, daysVal, "activity_graph_90day.png", msg90, start);
+    }
+
+    [Name("Global Activity Graph (90-day roll)")]
+    [Summary("Generates a global 90-day rolling average activity graph for the top 10 users over the past n days.")]
+    [Command("globalactivitygraph90day")]
+    [Alias("globalactgraph90", "gact90")]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
+    [RateLimit(2, 60)]
+    public async Task GlobalActivityGraph90DayAsync(string days = "past90days", params IUser[] mentionedUsers)
+    {
+        var parse = await TryParseDaysStringAsync(days);
+        if (!parse.success) return;
+        int daysVal = parse.days;
+        DateTime? explicitStart = parse.explicitStart;
+
+        DateTime start = explicitStart ?? GetStartDate(daysVal);
+
+        List<dynamic> perUser;
+        if (mentionedUsers != null && mentionedUsers.Length > 0)
+            perUser = GetTopUsersByWindowForMentions(start, daysVal, guildId: null, global: true, mentionedUsers);
+        else
+            perUser = GetTopUsersByWindow(start, daysVal, guildId: null, global: true);
+        if (!perUser.Any())
+        {
+            await ReplyAsync("No activity data found for the requested period.");
+            return;
+        }
+
+        var series = BuildSeries(perUser, start, daysVal, cumulative: false, global: true, guildId: null);
+        var rolling = RollingAverage(series, 90);
+        string gmsg90;
+        if (explicitStart.HasValue)
+        {
+            var end = explicitStart.Value.AddDays(daysVal - 1).Date;
+            gmsg90 = $"Top {rolling.Count} users global 90-day rolling average activity from {explicitStart.Value:yyyy-MM-dd} to {end:yyyy-MM-dd} ({daysVal} days)";
+        }
+        else
+        {
+            gmsg90 = $"Top {rolling.Count} users global 90-day rolling average activity for the last {daysVal} days";
+        }
+        await GenerateAndSendGraph(rolling, daysVal, "global_activity_graph_90day.png", gmsg90, start);
+    }
+
     private async Task GenerateAndSendGraph(Dictionary<string, List<int>> series, int days, string filename, string message, DateTime? start = null)
     {
         byte[] png;
