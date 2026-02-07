@@ -152,8 +152,6 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
 
         dbContext.ReactionRoleItems.AddRange(items);
         await dbContext.SaveChangesAsync();
-
-        await ReplyAsync(useButtons ? "Button role message created." : "Reaction role message created.");
     }
 
     private async Task HandleReactionRoleInteraction(SocketInteraction interaction)
