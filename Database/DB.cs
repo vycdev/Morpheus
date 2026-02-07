@@ -32,6 +32,10 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         // Indexes for temporary bans processing
         modelBuilder.Entity<TemporaryBan>().HasIndex(tb => new { tb.GuildId, tb.UserId });
         modelBuilder.Entity<TemporaryBan>().HasIndex(tb => new { tb.ExpiresAt, tb.UnbannedAt });
+
+        modelBuilder.Entity<ReactionRoleMessage>().HasIndex(m => m.MessageId).IsUnique();
+        modelBuilder.Entity<ReactionRoleItem>().HasIndex(i => new { i.ReactionRoleMessageId, i.RoleId }).IsUnique();
+        modelBuilder.Entity<ReactionRoleItem>().HasIndex(i => new { i.ReactionRoleMessageId, i.Emoji }).IsUnique();
     }
 
     public DbSet<User> Users { get; set; }
@@ -48,4 +52,6 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<Reminder> Reminders { get; set; }
     public DbSet<BotSetting> BotSettings { get; set; }
     public DbSet<TemporaryBan> TemporaryBans { get; set; }
+    public DbSet<ReactionRoleMessage> ReactionRoleMessages { get; set; }
+    public DbSet<ReactionRoleItem> ReactionRoleItems { get; set; }
 }
