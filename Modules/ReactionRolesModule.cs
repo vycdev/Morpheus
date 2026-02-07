@@ -26,7 +26,7 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
     }
 
     [Name("Reaction Roles")]
-    [Summary("Creates a reaction role message with either buttons or numeric reactions.")]
+    [Summary("Creates a reaction role message with either buttons or numeric reactions. Example usage: `!reactroles --buttons @Role1 @Role2` or `!reactroles --emojis @Role1 @Role2`. If no mode is specified, it defaults to buttons.")]
     [Command("reactroles")]
     [Alias("reactionroles", "rr")]
     [RequireUserPermission(GuildPermission.Administrator)]
@@ -50,8 +50,8 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        if (!useButtons)
-            useEmojis = true;
+        if (!useEmojis)
+            useButtons = true;
 
         var roles = Context.Message.MentionedRoles
             .DistinctBy(r => r.Id)
