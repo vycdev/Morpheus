@@ -7,7 +7,9 @@ namespace Morpheus.Services;
 
 public class StocksService(DB dbContext, LogsService logsService)
 {
-    private const decimal FeeRate = 0.05m; // 5%
+    private const decimal BuyFeeRate = 0.0005m; // 0.05%
+    private const decimal SellProfitTaxRate = 0.10m; // 10% on profit
+    private const decimal TransferFeeRate = 0.05m; // 5%
 
     /// <summary>
     /// Gets or creates a stock for the given entity.
@@ -56,7 +58,7 @@ public class StocksService(DB dbContext, LogsService logsService)
         if (user.Balance < amount) return (false, $"Insufficient balance. You have **${user.Balance:F2}**.", 0);
         if (stock.Price <= 0) return (false, "Stock price is invalid.", 0);
 
-        decimal fee = amount * FeeRate;
+        decimal fee = amount * BuyFeeRate;
         decimal investedAmount = amount - fee;
         decimal sharesBought = investedAmount / stock.Price;
 
@@ -74,7 +76,7 @@ public class StocksService(DB dbContext, LogsService logsService)
                 UserId = userId,
                 StockId = stockId,
                 Shares = sharesBought,
-                TotalInvested = investedAmount,
+                TotalInvested = amount,
                 InsertDate = DateTime.UtcNow
             };
             await dbContext.StockHoldings.AddAsync(holding);
@@ -82,7 +84,7 @@ public class StocksService(DB dbContext, LogsService logsService)
         else
         {
             holding.Shares += sharesBought;
-            holding.TotalInvested += investedAmount;
+            holding.TotalInvested += amount;
         }
 
         // Record transaction
@@ -128,8 +130,20 @@ public class StocksService(DB dbContext, LogsService logsService)
             return (false, $"You only own **{holding.Shares:F4}** shares.", 0);
 
         decimal grossProceeds = actualShares * stock.Price;
-        decimal fee = grossProceeds * FeeRate;
-        decimal netProceeds = grossProceeds - fee;
+
+        // Calculate cost basis for these shares
+        decimal costPerShare = holding.TotalInvested / holding.Shares;
+        decimal costBasis = costPerShare * actualShares;
+
+        decimal profit = grossProceeds - costBasis;
+        decimal tax = 0m;
+
+        if (profit > 0)
+        {
+            tax = profit * SellProfitTaxRate;
+        }
+
+        decimal netProceeds = grossProceeds - tax;
 
         // Credit balance
         user.Balance += netProceeds;
@@ -154,7 +168,7 @@ public class StocksService(DB dbContext, LogsService logsService)
             StockId = stockId,
             Type = TransactionType.StockSell,
             Amount = netProceeds,
-            Fee = fee,
+            Fee = tax,
             Shares = actualShares,
             PriceAtTransaction = stock.Price,
             InsertDate = DateTime.UtcNow
@@ -163,7 +177,7 @@ public class StocksService(DB dbContext, LogsService logsService)
 
         await dbContext.SaveChangesAsync();
 
-        return (true, $"Sold **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nGross: **${grossProceeds:F2}** | Fee: **${fee:F2}** | Net: **${netProceeds:F2}**", netProceeds);
+        return (true, $"Sold **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nGross: **${grossProceeds:F2}** | Tax: **${tax:F2}** | Net: **${netProceeds:F2}**", netProceeds);
     }
 
     /// <summary>
@@ -180,7 +194,7 @@ public class StocksService(DB dbContext, LogsService logsService)
         User? receiver = await dbContext.Users.FindAsync(toUserId);
         if (receiver == null) return (false, "Receiver not found.");
 
-        decimal fee = amount * FeeRate;
+        decimal fee = amount * TransferFeeRate;
         decimal totalCost = amount + fee;
 
         if (sender.Balance < totalCost)

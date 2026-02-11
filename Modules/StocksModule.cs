@@ -66,7 +66,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
     #region Stock Commands
 
     [Name("Stock Buy")]
-    [Summary("Buy shares of a user, guild, or channel stock. 5% deposit fee applies.")]
+    [Summary("Buy shares of a user, guild, or channel stock. 0.05% fee applies.")]
     [Command("stock buy")]
     [Alias("stock invest", "invest")]
     [RequireContext(ContextType.Guild)]
@@ -94,7 +94,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
     }
 
     [Name("Stock Sell")]
-    [Summary("Sell shares of a stock. 5% withdrawal fee applies.")]
+    [Summary("Sell shares of a stock. 10% tax on profits applies.")]
     [Command("stock sell")]
     [Alias("stock withdraw", "withdraw")]
     [RequireContext(ContextType.Guild)]
