@@ -38,8 +38,8 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     {
         if (interaction is SocketMessageComponent messageComponent)
         {
+            if (messageComponent.Data.CustomId != "module_selector") return;
             await interaction.DeferAsync();
-            if (messageComponent.Data.CustomId == "module_selector")
             {
                 Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == interaction.GuildId);
                 string commandPrefix = guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"];
