@@ -45,6 +45,9 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         interactionHandler.RegisterInteraction("emoji_import_select", HandleEmojiSelectInteraction);
         interactionHandler.RegisterInteraction("emoji_import_page", HandleEmojiPageInteraction);
         interactionHandler.RegisterInteraction("emoji_import_cancel", HandleCancelInteraction);
+        interactionHandler.RegisterInteraction("emoji_import_back", HandleBackToServersInteraction);
+        interactionHandler.RegisterInteraction("emoji_import_another", HandleImportAnotherInteraction);
+        interactionHandler.RegisterInteraction("emoji_import_all", HandleImportAllInteraction);
     }
 
     [Name("Use Emoji")]
@@ -357,11 +360,30 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        // Check if the target guild already has an emoji with this name
-        if (targetGuild.Emotes.Any(e => e.Name.Equals(emoji.Name, StringComparison.OrdinalIgnoreCase)))
+        // Check emoji slot limits
+        int staticCount = targetGuild.Emotes.Count(e => !e.Animated);
+        int animatedCount = targetGuild.Emotes.Count(e => e.Animated);
+        int emojiLimit = GetGuildEmojiLimit(targetGuild.PremiumTier);
+
+        if (emoji.Animated && animatedCount >= emojiLimit)
         {
-            await comp.FollowupAsync($"An emoji named **{emoji.Name}** already exists in this server.", ephemeral: true);
+            await comp.FollowupAsync($"This server has reached its animated emoji limit ({animatedCount}/{emojiLimit}). Boost the server to unlock more slots.", ephemeral: true);
             return;
+        }
+        if (!emoji.Animated && staticCount >= emojiLimit)
+        {
+            await comp.FollowupAsync($"This server has reached its static emoji limit ({staticCount}/{emojiLimit}). Boost the server to unlock more slots.", ephemeral: true);
+            return;
+        }
+
+        // Auto-suffix if emoji name already exists
+        string finalName = emoji.Name;
+        if (targetGuild.Emotes.Any(e => e.Name.Equals(finalName, StringComparison.OrdinalIgnoreCase)))
+        {
+            int suffix = 2;
+            while (targetGuild.Emotes.Any(e => e.Name.Equals($"{emoji.Name}_{suffix}", StringComparison.OrdinalIgnoreCase)))
+                suffix++;
+            finalName = $"{emoji.Name}_{suffix}";
         }
 
         try
@@ -373,7 +395,15 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             var image = new Image(stream);
 
             // Add the emoji to the target guild
-            var newEmoji = await targetGuild.CreateEmoteAsync(emoji.Name, image);
+            var newEmoji = await targetGuild.CreateEmoteAsync(finalName, image);
+
+            string renamedNote = finalName != emoji.Name ? $" (renamed to **{finalName}** to avoid conflict)" : "";
+
+            // Build success components with "Import Another" button
+            var successComponents = new ComponentBuilder()
+                .WithButton("Import Another", "emoji_import_another", ButtonStyle.Primary)
+                .WithButton("Done", "emoji_import_cancel", ButtonStyle.Secondary)
+                .Build();
 
             // Update the message to show success
             await comp.ModifyOriginalResponseAsync(msg =>
@@ -381,14 +411,13 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
                 msg.Embed = new EmbedBuilder()
                     .WithColor(Colors.Blue)
                     .WithTitle("✅ Emoji Imported!")
-                    .WithDescription($"Successfully imported {newEmoji} **{newEmoji.Name}** from **{sourceGuild.Name}**.")
+                    .WithDescription($"Successfully imported {newEmoji} **{newEmoji.Name}** from **{sourceGuild.Name}**.{renamedNote}")
                     .WithThumbnailUrl(newEmoji.Url)
                     .Build();
-                msg.Components = new ComponentBuilder().Build();
+                msg.Components = successComponents;
             });
 
-            _importSessions.Remove(messageId);
-            logsService.Log($"Emoji '{emoji.Name}' imported from {sourceGuild.Name} to {targetGuild.Name} by {comp.User}", LogSeverity.Info);
+            logsService.Log($"Emoji '{finalName}' imported from {sourceGuild.Name} to {targetGuild.Name} by {comp.User}", LogSeverity.Info);
         }
         catch (Exception ex)
         {
@@ -508,6 +537,8 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             componentBuilder.WithButton("Next ▶", "emoji_import_page:next", ButtonStyle.Secondary, disabled: session.EmojiPage >= totalPages - 1);
         }
 
+        componentBuilder.WithButton("Import All", "emoji_import_all", ButtonStyle.Success);
+        componentBuilder.WithButton("◀ Back to Servers", "emoji_import_back", ButtonStyle.Primary);
         componentBuilder.WithButton("Cancel", "emoji_import_cancel", ButtonStyle.Danger);
 
         await comp.ModifyOriginalResponseAsync(msg =>
@@ -516,6 +547,272 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             msg.Components = componentBuilder.Build();
         });
     }
+
+    // ─── Interaction: Back to Servers ─────────────────────────────────
+
+    private async Task HandleBackToServersInteraction(SocketInteraction interaction)
+    {
+        if (interaction is not SocketMessageComponent comp) return;
+        if (comp.Data.CustomId != "emoji_import_back") return;
+
+        ulong messageId = comp.Message.Id;
+        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        {
+            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            return;
+        }
+
+        if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
+        {
+            _importSessions.Remove(messageId);
+            await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
+            return;
+        }
+
+        await comp.DeferAsync();
+
+        // Rebuild the server selection menu
+        var sharedGuilds = client.Guilds
+            .Where(g => g.Id != session.TargetGuildId && g.GetUser(session.UserId) != null)
+            .OrderBy(g => g.Name)
+            .Take(EmojiPageSize)
+            .ToList();
+
+        var serverMenu = new SelectMenuBuilder()
+            .WithPlaceholder("Select a server to browse emojis from")
+            .WithCustomId("emoji_import_server")
+            .WithMinValues(1)
+            .WithMaxValues(1);
+
+        foreach (var guild in sharedGuilds)
+        {
+            int emojiCount = guild.Emotes.Count;
+            serverMenu.AddOption(
+                label: guild.Name.Length > 100 ? guild.Name[..100] : guild.Name,
+                value: guild.Id.ToString(),
+                description: $"{emojiCount} emoji{(emojiCount != 1 ? "s" : "")}"
+            );
+        }
+
+        var embed = new EmbedBuilder()
+            .WithColor(Colors.Blue)
+            .WithTitle("📥 Import Emoji")
+            .WithDescription("Select a server to browse its emojis. You can then pick one to import into this server.")
+            .WithFooter("This menu will expire in 5 minutes.")
+            .Build();
+
+        var components = new ComponentBuilder()
+            .WithSelectMenu(serverMenu)
+            .WithButton("Cancel", "emoji_import_cancel", ButtonStyle.Danger)
+            .Build();
+
+        session.SourceGuildId = 0;
+        session.EmojiPage = 0;
+
+        await comp.ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Embed = embed;
+            msg.Components = components;
+        });
+    }
+
+    // ─── Interaction: Import Another ─────────────────────────────────────
+
+    private async Task HandleImportAnotherInteraction(SocketInteraction interaction)
+    {
+        if (interaction is not SocketMessageComponent comp) return;
+        if (comp.Data.CustomId != "emoji_import_another") return;
+
+        ulong messageId = comp.Message.Id;
+        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        {
+            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            return;
+        }
+
+        if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
+        {
+            _importSessions.Remove(messageId);
+            await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
+            return;
+        }
+
+        await comp.DeferAsync();
+
+        // Go back to the emoji list of the same source server
+        var sourceGuild = client.GetGuild(session.SourceGuildId);
+        if (sourceGuild == null || session.SourceGuildId == 0)
+        {
+            // Source guild no longer available, fall back to server selection
+            await comp.FollowupAsync("The source server is no longer accessible. Returning to server selection.", ephemeral: true);
+            // Trigger back to servers logic by resetting
+            session.SourceGuildId = 0;
+            session.EmojiPage = 0;
+            return;
+        }
+
+        session.EmojiPage = 0;
+        var emojis = sourceGuild.Emotes.OrderBy(e => e.Name).ToList();
+
+        if (emojis.Count == 0)
+        {
+            await comp.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Embed = new EmbedBuilder()
+                    .WithColor(Colors.Blue)
+                    .WithTitle("📥 Import Emoji")
+                    .WithDescription($"**{sourceGuild.Name}** has no more custom emojis.")
+                    .Build();
+                msg.Components = new ComponentBuilder().Build();
+            });
+            _importSessions.Remove(messageId);
+            return;
+        }
+
+        await UpdateEmojiSelectionMessage(comp, session, sourceGuild, emojis);
+    }
+
+    // ─── Interaction: Import All ─────────────────────────────────────────
+
+    private async Task HandleImportAllInteraction(SocketInteraction interaction)
+    {
+        if (interaction is not SocketMessageComponent comp) return;
+        if (comp.Data.CustomId != "emoji_import_all") return;
+
+        ulong messageId = comp.Message.Id;
+        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        {
+            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            return;
+        }
+
+        if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
+        {
+            _importSessions.Remove(messageId);
+            await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
+            return;
+        }
+
+        await comp.DeferAsync();
+
+        var sourceGuild = client.GetGuild(session.SourceGuildId);
+        var targetGuild = client.GetGuild(session.TargetGuildId);
+
+        if (sourceGuild == null || targetGuild == null)
+        {
+            await comp.FollowupAsync("One of the servers is no longer accessible.", ephemeral: true);
+            _importSessions.Remove(messageId);
+            return;
+        }
+
+        var emojis = sourceGuild.Emotes.OrderBy(e => e.Name).ToList();
+        int emojiLimit = GetGuildEmojiLimit(targetGuild.PremiumTier);
+        int imported = 0;
+        int skipped = 0;
+        int failed = 0;
+        var importedNames = new List<string>();
+
+        // Show progress embed
+        await comp.ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Embed = new EmbedBuilder()
+                .WithColor(Colors.Blue)
+                .WithTitle("📥 Importing All Emojis...")
+                .WithDescription($"Importing **{emojis.Count}** emojis from **{sourceGuild.Name}**...\nThis may take a while.")
+                .Build();
+            msg.Components = new ComponentBuilder().Build();
+        });
+
+        foreach (var emoji in emojis)
+        {
+            // Check slot limits
+            int staticCount = targetGuild.Emotes.Count(e => !e.Animated);
+            int animatedCount = targetGuild.Emotes.Count(e => e.Animated);
+
+            if ((emoji.Animated && animatedCount >= emojiLimit) || (!emoji.Animated && staticCount >= emojiLimit))
+            {
+                skipped++;
+                continue;
+            }
+
+            // Auto-suffix if name exists
+            string finalName = emoji.Name;
+            if (targetGuild.Emotes.Any(e => e.Name.Equals(finalName, StringComparison.OrdinalIgnoreCase)))
+            {
+                int suffix = 2;
+                while (targetGuild.Emotes.Any(e => e.Name.Equals($"{emoji.Name}_{suffix}", StringComparison.OrdinalIgnoreCase)))
+                    suffix++;
+                finalName = $"{emoji.Name}_{suffix}";
+            }
+
+            try
+            {
+                byte[] imageData = await httpClient.GetByteArrayAsync(emoji.Url);
+                using var stream = new MemoryStream(imageData);
+                var image = new Image(stream);
+                await targetGuild.CreateEmoteAsync(finalName, image);
+                imported++;
+                importedNames.Add(finalName);
+            }
+            catch
+            {
+                failed++;
+            }
+
+            // Update progress every 5 emojis
+            if ((imported + skipped + failed) % 5 == 0)
+            {
+                try
+                {
+                    await comp.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = new EmbedBuilder()
+                            .WithColor(Colors.Blue)
+                            .WithTitle("📥 Importing All Emojis...")
+                            .WithDescription($"Progress: **{imported + skipped + failed}/{emojis.Count}**\n✅ Imported: {imported} | ⏭ Skipped: {skipped} | ❌ Failed: {failed}")
+                            .Build();
+                    });
+                }
+                catch { /* rate limited, ignore */ }
+            }
+        }
+
+        // Final result
+        var resultEmbed = new EmbedBuilder()
+            .WithColor(Colors.Blue)
+            .WithTitle("✅ Bulk Import Complete!")
+            .WithDescription($"Imported emojis from **{sourceGuild.Name}**.")
+            .AddField("Imported", imported.ToString(), true)
+            .AddField("Skipped (limit)", skipped.ToString(), true)
+            .AddField("Failed", failed.ToString(), true);
+
+        if (importedNames.Count > 0 && importedNames.Count <= 20)
+            resultEmbed.AddField("Emojis", string.Join(", ", importedNames));
+        else if (importedNames.Count > 20)
+            resultEmbed.AddField("Emojis", string.Join(", ", importedNames.Take(20)) + $" and {importedNames.Count - 20} more...");
+
+        var doneComponents = new ComponentBuilder()
+            .WithButton("Done", "emoji_import_cancel", ButtonStyle.Secondary)
+            .Build();
+
+        await comp.ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Embed = resultEmbed.Build();
+            msg.Components = doneComponents;
+        });
+
+        logsService.Log($"Bulk emoji import from {sourceGuild.Name} to {targetGuild.Name} by {comp.User}: {imported} imported, {skipped} skipped, {failed} failed", LogSeverity.Info);
+    }
+
+    // ─── Helper: Get guild emoji limit based on boost tier ───────────────
+
+    private static int GetGuildEmojiLimit(PremiumTier tier) => tier switch
+    {
+        PremiumTier.Tier1 => 100,
+        PremiumTier.Tier2 => 150,
+        PremiumTier.Tier3 => 250,
+        _ => 50
+    };
 
     // ─── Cleanup expired sessions ────────────────────────────────────────
 
