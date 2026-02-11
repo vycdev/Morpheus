@@ -93,7 +93,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var guildDb = await db.Guilds.FirstOrDefaultAsync(g => g.Id == quote.GuildId);
+        var guildDb = await db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == quote.GuildId);
         if (guildDb == null)
         {
             await SafeRespond("Guild configuration not found.");
@@ -531,16 +531,28 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [RequireContext(ContextType.Guild)]
     [RequireBotPermission(GuildPermission.AddReactions)]
     [RateLimit(3, 10)]
-    public async Task RemoveQuote(int id, [Remainder] string reason = "")
+    public async Task RemoveQuote([Remainder] string input)
     {
         var guildDb = Context.DbGuild!;
 
-        // support admin force flag by trailing " force" on the reason
+        // Parse: removequote [force] <id> [reason]
+        var trimmed = input.Trim();
         var forceFlag = false;
-        if (!string.IsNullOrWhiteSpace(reason) && reason.EndsWith(" force", StringComparison.OrdinalIgnoreCase))
+        if (trimmed.StartsWith("force ", StringComparison.OrdinalIgnoreCase))
         {
             forceFlag = true;
-            reason = reason.Substring(0, reason.Length - " force".Length).TrimEnd();
+            trimmed = trimmed.Substring("force ".Length).TrimStart();
+        }
+
+        // Split remaining into id and optional reason
+        var spaceIdx = trimmed.IndexOf(' ');
+        var idStr = spaceIdx >= 0 ? trimmed.Substring(0, spaceIdx) : trimmed;
+        var reason = spaceIdx >= 0 ? trimmed.Substring(spaceIdx + 1).Trim() : string.Empty;
+
+        if (!int.TryParse(idStr, out var id))
+        {
+            await ReplyAsync("Invalid quote id. Usage: `removequote [force] <id> [reason]`");
+            return;
         }
 
         var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == id);
@@ -598,6 +610,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
         if (isAdmin && forceFlag)
         {
             quote.Removed = true;
+            db.Quotes.Update(quote);
             await db.SaveChangesAsync();
             await ReplyAsync("Quote removed (admin force).");
             return;
