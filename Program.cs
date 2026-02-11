@@ -121,6 +121,7 @@ services.AddSingleton<InteractionsHandler>();
 services.AddSingleton<LogsHandler>();
 services.AddSingleton<ActivityHandler>();
 services.AddSingleton<FunnyResponsesHandler>();
+services.AddSingleton<ReactionRolesHandler>();
 
 
 // Add the database context
@@ -147,6 +148,7 @@ _ = host.Services.GetRequiredService<HoneypotHandler>();
 _ = host.Services.GetRequiredService<InteractionsHandler>();
 _ = host.Services.GetRequiredService<ActivityHandler>();
 _ = host.Services.GetRequiredService<FunnyResponsesHandler>();
+_ = host.Services.GetRequiredService<ReactionRolesHandler>();
 // ReactionsHandler intentionally not started: approval flows use interaction buttons now.
 MessagesHandler messagesHandler = host.Services.GetRequiredService<MessagesHandler>();
 
