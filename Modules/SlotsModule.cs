@@ -17,7 +17,7 @@ namespace Morpheus.Modules;
 [Summary("Slot machine gambling — spin the reels and test your luck.")]
 public class SlotsModule : ModuleBase<SocketCommandContextExtended>
 {
-    private const decimal FeeRate = 0.05m; // 5% tax on bet (always deducted)
+    private const decimal FeeRate = 0.05m; // 5% tax on profit
     private const decimal MinBet = 1.00m;
     private const decimal MaxBet = 10000.00m;
 
@@ -138,9 +138,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         if (bet < MinBet || bet > MaxBet) return null;
         if (user.Balance < bet) return null;
 
-        // Deduct bet and calculate fee (5% always taxed)
-        decimal fee = bet * FeeRate;
-        decimal playAmount = bet - fee;
+        // Deduct bet (fee is only taken from profits)
         user.Balance -= bet;
 
         // Spin the reels
@@ -150,18 +148,22 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
 
         var (multiplier, resultDescription) = CalculatePayout(r1, r2, r3);
 
-        decimal grossWinnings = playAmount * multiplier;
+        decimal grossWinnings = bet * multiplier;
         bool isWin = multiplier > 0m;
-        decimal profitOrLoss;
+        decimal profit = grossWinnings - bet;
+        decimal fee = 0m;
+
+        if (profit > 0)
+        {
+            fee = profit * FeeRate;
+        }
+
+        decimal netWinnings = grossWinnings - fee;
+        decimal finalProfitOrLoss = netWinnings - bet;
 
         if (isWin)
         {
-            user.Balance += grossWinnings;
-            profitOrLoss = grossWinnings - bet;
-        }
-        else
-        {
-            profitOrLoss = -bet;
+            user.Balance += netWinnings;
         }
 
         // Record transaction
@@ -169,7 +171,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         {
             UserId = user.Id,
             Type = isWin ? TransactionType.SlotsWin : TransactionType.SlotsLoss,
-            Amount = isWin ? grossWinnings : bet,
+            Amount = isWin ? netWinnings : bet,
             Fee = fee,
             InsertDate = DateTime.UtcNow
         };
@@ -184,7 +186,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
 
         string title = multiplier >= 50m ? "🎰 JACKPOT!!!"
                      : multiplier >= 10m ? "🎰 BIG WIN!"
-                     : isWin && profitOrLoss > 0 ? "🎰 Winner!"
+                     : isWin && finalProfitOrLoss > 0 ? "🎰 Winner!"
                      : isWin ? "🎰 Push"
                      : "🎰 No Luck";
 
@@ -192,16 +194,23 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         desc.AppendLine(slotDisplay);
         desc.AppendLine($"**{resultDescription}**");
         desc.AppendLine();
-        desc.AppendLine($"Tax (5%): -**${fee:F2}**");
 
         if (isWin)
         {
-            desc.AppendLine($"Payout: **{multiplier}x** of **${playAmount:F2}** = **${grossWinnings:F2}**");
+            desc.AppendLine($"Payout: **{multiplier}x** of **${bet:F2}** = **${grossWinnings:F2}**");
 
-            if (profitOrLoss >= 0)
-                desc.AppendLine($"Profit: +**${profitOrLoss:F2}** 📈");
+            if (fee > 0)
+            {
+                desc.AppendLine($"Tax (5% on profit): -**${fee:F2}**");
+                desc.AppendLine($"Net Payout: **${netWinnings:F2}**");
+            }
+
+            if (finalProfitOrLoss > 0)
+                desc.AppendLine($"Profit: +**${finalProfitOrLoss:F2}** 📈");
+            else if (finalProfitOrLoss == 0)
+                desc.AppendLine($"Break even (Money back)");
             else
-                desc.AppendLine($"Net loss: -**${Math.Abs(profitOrLoss):F2}** 📉");
+                desc.AppendLine($"Net loss: -**${Math.Abs(finalProfitOrLoss):F2}** 📉");
         }
         else
         {
@@ -351,8 +360,8 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         sb.AppendLine();
         sb.AppendLine("**Rules:**");
         sb.AppendLine($"  Min bet: **${MinBet:F2}** | Max bet: **${MaxBet:F2}**");
-        sb.AppendLine("  5% tax is always deducted from your bet (win or lose)");
-        sb.AppendLine("  Payouts are based on the remaining 95% of your bet");
+        sb.AppendLine("  5% tax is deducted from your profits only");
+        sb.AppendLine("  Payouts are based on the full bet amount");
 
         EmbedBuilder embed = new EmbedBuilder()
             .WithTitle("🎰 Slots Paytable")
