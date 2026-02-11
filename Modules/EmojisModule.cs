@@ -360,9 +360,11 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        // Check emoji slot limits
-        int staticCount = targetGuild.Emotes.Count(e => !e.Animated);
-        int animatedCount = targetGuild.Emotes.Count(e => e.Animated);
+        // Check emoji slot limits (fetch fresh data via REST to avoid stale cache)
+        var freshEmotes = (await client.Rest.GetGuildAsync(session.TargetGuildId))?.Emotes
+            ?? targetGuild.Emotes;
+        int staticCount = freshEmotes.Count(e => !e.Animated);
+        int animatedCount = freshEmotes.Count(e => e.Animated);
         int emojiLimit = GetGuildEmojiLimit(targetGuild.PremiumTier);
 
         if (emoji.Animated && animatedCount >= emojiLimit)
@@ -639,7 +641,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
         await comp.DeferAsync();
 
-        // Go back to the emoji list of the same source server
+        // Go back to the emoji list of the same source server, keeping the same page
         var sourceGuild = client.GetGuild(session.SourceGuildId);
         if (sourceGuild == null || session.SourceGuildId == 0)
         {
@@ -651,7 +653,6 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        session.EmojiPage = 0;
         var emojis = sourceGuild.Emotes.OrderBy(e => e.Name).ToList();
 
         if (emojis.Count == 0)
