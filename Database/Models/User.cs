@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Morpheus.Database.Models;
+
 public class User
 {
     [Key]
@@ -21,9 +22,14 @@ public class User
     public bool LevelUpMessages { get; set; } = true;
     public bool LevelUpQuotes { get; set; } = true;
 
+    // Economy
+    public decimal Balance { get; set; } = 1000.00m;
+
     // Foreign keys
     public List<Quote> Quotes { get; set; }
     public List<ButtonGamePress> ButtonGamePresses { get; set; }
     public List<UserActivity> UserActivity { get; set; }
     public List<UserLevels> UserLevels { get; set; }
+    public List<StockHolding> StockHoldings { get; set; }
+    public List<StockTransaction> StockTransactions { get; set; }
 }

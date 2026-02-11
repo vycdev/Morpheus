@@ -58,9 +58,12 @@ services.AddScoped<GuildService>();
 services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
 services.AddScoped<ActivityService>();
+services.AddScoped<ChannelService>();
+services.AddScoped<StocksService>();
 services.AddScoped<BotAvatarJob>();
 services.AddScoped<TemporaryBansJob>();
 services.AddScoped<HoneypotRenameJob>();
+services.AddScoped<StockUpdateJob>();
 
 // Add Quartz 
 services.AddQuartz(q =>
@@ -106,6 +109,12 @@ services.AddQuartz(q =>
         .StartNow()
         .WithCronSchedule("0 5 0 * * ?") // daily at 00:05 UTC
     );
+
+    q.ScheduleJob<StockUpdateJob>(trigger => trigger
+        .WithIdentity("stockUpdate", "discord")
+        .StartAt(DateTime.UtcNow.AddMinutes(2))
+        .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(5)).RepeatForever())
+    );
 });
 
 services.AddQuartzHostedService(options =>
@@ -139,6 +148,20 @@ using (var scope = host.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<DB>();
     db.Database.Migrate();
+
+    const string balanceBackfillKey = "balance_backfill_v1";
+    var backfill = db.BotSettings.FirstOrDefault(s => s.Key == balanceBackfillKey);
+    if (backfill == null)
+    {
+        int updated = db.Database.ExecuteSqlRaw("UPDATE \"Users\" SET \"Balance\" = 1000.00 WHERE \"Balance\" = 0");
+        db.BotSettings.Add(new Morpheus.Database.Models.BotSetting
+        {
+            Key = balanceBackfillKey,
+            Value = updated.ToString(),
+            UpdateDate = DateTime.UtcNow
+        });
+        db.SaveChanges();
+    }
 }
 
 // Start the handlers 

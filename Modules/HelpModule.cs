@@ -63,7 +63,8 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
             return embed;
 
         int page = int.Parse(moduleName.Split("_")[0]);
-        string name = moduleName.Split("_")[1].Replace("Module", "");
+        string moduleKey = moduleName.Split("_")[1];
+        string name = moduleKey.Replace("Module", "");
 
         EmbedBuilder builder = new()
         {
@@ -72,7 +73,9 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
             Description = "Here are the commands available in this module:"
         };
 
-        ModuleInfo? module = commands.Modules.FirstOrDefault(m => m.Name == name + "Module");
+        ModuleInfo? module = commands.Modules.FirstOrDefault(m =>
+            string.Equals(m.Name, moduleKey, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(m.Name, moduleKey + "Module", StringComparison.OrdinalIgnoreCase));
 
         if (module != null)
         {

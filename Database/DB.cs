@@ -36,6 +36,32 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<ReactionRoleMessage>().HasIndex(m => m.MessageId).IsUnique();
         modelBuilder.Entity<ReactionRoleItem>().HasIndex(i => new { i.ReactionRoleMessageId, i.RoleId }).IsUnique();
         modelBuilder.Entity<ReactionRoleItem>().HasIndex(i => new { i.ReactionRoleMessageId, i.Emoji }).IsUnique();
+
+        // Stocks
+        modelBuilder.Entity<Channel>().HasIndex(c => c.DiscordId).IsUnique();
+        modelBuilder.Entity<Stock>().HasIndex(s => new { s.EntityType, s.EntityId }).IsUnique();
+        modelBuilder.Entity<Stock>().HasIndex(s => new { s.LastUpdatedDate, s.UpdateTimeMinutes });
+        modelBuilder.Entity<StockHolding>().HasIndex(sh => new { sh.UserId, sh.StockId }).IsUnique();
+        modelBuilder.Entity<StockTransaction>().HasIndex(st => new { st.UserId, st.InsertDate });
+
+        // Stock Price uses decimal(18,4) for precision
+        modelBuilder.Entity<Stock>().Property(s => s.Price).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<Stock>().Property(s => s.PreviousPrice).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<Stock>().Property(s => s.DailyChangePercent).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<StockHolding>().Property(sh => sh.Shares).HasColumnType("decimal(18,6)");
+        modelBuilder.Entity<StockHolding>().Property(sh => sh.TotalInvested).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<StockTransaction>().Property(st => st.Amount).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<StockTransaction>().Property(st => st.Fee).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<StockTransaction>().Property(st => st.Shares).HasColumnType("decimal(18,6)");
+        modelBuilder.Entity<StockTransaction>().Property(st => st.PriceAtTransaction).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<User>().Property(u => u.Balance).HasColumnType("decimal(18,4)").HasDefaultValue(1000.00m);
+
+        // Prevent cascade-delete from TargetUser on StockTransaction
+        modelBuilder.Entity<StockTransaction>()
+            .HasOne(st => st.TargetUser)
+            .WithMany()
+            .HasForeignKey(st => st.TargetUserId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 
     public DbSet<User> Users { get; set; }
@@ -54,4 +80,8 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<TemporaryBan> TemporaryBans { get; set; }
     public DbSet<ReactionRoleMessage> ReactionRoleMessages { get; set; }
     public DbSet<ReactionRoleItem> ReactionRoleItems { get; set; }
+    public DbSet<Channel> Channels { get; set; }
+    public DbSet<Stock> Stocks { get; set; }
+    public DbSet<StockHolding> StockHoldings { get; set; }
+    public DbSet<StockTransaction> StockTransactions { get; set; }
 }
