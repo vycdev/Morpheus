@@ -11,5 +11,11 @@ public enum TransactionType
     StockSell = 2,
 
     [Display(Name = "Transfer")]
-    Transfer = 3
+    Transfer = 3,
+
+    [Display(Name = "Slots Win")]
+    SlotsWin = 4,
+
+    [Display(Name = "Slots Loss")]
+    SlotsLoss = 5
 }
