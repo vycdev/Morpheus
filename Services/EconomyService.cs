@@ -56,7 +56,9 @@ public class EconomyService(DB dbContext, LogsService logsService)
     /// </summary>
     public async Task<decimal> GetVaultAmount()
     {
-        BotSetting? setting = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == SlotsVaultKey);
+        BotSetting? setting = await dbContext.BotSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == SlotsVaultKey);
 
         if (setting == null)
         {
@@ -106,7 +108,9 @@ public class EconomyService(DB dbContext, LogsService logsService)
     /// </summary>
     public async Task<decimal> GetPoolAmount()
     {
-        BotSetting? setting = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
+        BotSetting? setting = await dbContext.BotSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
         
         if (setting == null)
         {
