@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Commands;
+using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Extensions;
 using Morpheus.Services;
@@ -101,5 +102,38 @@ public class EconomyModule(EconomyService economyService, UsersService usersServ
         }
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Rob User")]
+    [Summary("Attempt to rob another user. 40% chance of success (20% if they were recently robbed).")]
+    [Command("rob")]
+    [Alias("steal", "pickpocket")]
+    public async Task Rob(IUser target)
+    {
+        if (target.Id == Context.User.Id)
+        {
+            await ReplyAsync("You cannot rob yourself.");
+            return;
+        }
+
+        if (target.IsBot)
+        {
+            await ReplyAsync("You cannot rob bots.");
+            return;
+        }
+
+        var dbRobber = await usersService.TryGetCreateUser(Context.User);
+        var dbVictim = await usersService.TryGetCreateUser((SocketUser)target);
+
+        var (success, message) = await economyService.RobUser(dbRobber.Id, dbVictim.Id);
+
+        if (success)
+        {
+            await ReplyAsync(message);
+        }
+        else
+        {
+            await ReplyAsync($"🚫 {message}");
+        }
     }
 }

@@ -317,6 +317,119 @@ public class EconomyService(DB dbContext, LogsService logsService)
     }
 
     /// <summary>
+    /// Attempts to rob a target user.
+    /// Rules:
+    /// 1. 1h Cooldown per robber.
+    /// 2. 40% Success Chance (20% if victim was robbed in last 24h).
+    /// 3. Success: Steal 1% (5% Crit).
+    /// 4. Failure: Pay victim 1%.
+    /// </summary>
+    public async Task<(bool success, string message)> RobUser(int robberId, int victimId)
+    {
+        if (robberId == victimId) return (false, "You cannot rob yourself.");
+
+        using var transaction = await dbContext.Database.BeginTransactionAsync();
+        try
+        {
+            User? robber = await dbContext.Users.FindAsync(robberId);
+            User? victim = await dbContext.Users.FindAsync(victimId);
+
+            if (robber == null || victim == null) return (false, "User not found.");
+
+            // 1. Check Cooldown
+            if (DateTime.UtcNow < robber.LastRobberyAttempt.AddHours(1))
+            {
+                TimeSpan remaining = robber.LastRobberyAttempt.AddHours(1) - DateTime.UtcNow;
+                string timeStr = remaining.Hours > 0 ? $"{remaining.Hours}h {remaining.Minutes}m" : $"{remaining.Minutes}m {remaining.Seconds}s";
+                return (false, $"You are laying low. You can rob again in **{timeStr}**.");
+            }
+
+            // 2. Determine Success Chance
+            bool isParanoid = DateTime.UtcNow < victim.LastSuccessfullyRobbed.AddHours(24);
+            int successChance = isParanoid ? 20 : 40;
+
+            // 3. Roll
+            int roll = Random.Shared.Next(0, 100);
+            bool isSuccess = roll < successChance;
+
+            // Update timestamp immediately
+            robber.LastRobberyAttempt = DateTime.UtcNow;
+
+            if (isSuccess)
+            {
+                // CRIT CHECK (10% chance relative to success, or absolute? "low 10% chance on top of the 40%")
+                // Interpreting "low 10% on top" as: IF successful, check for crit.
+                // Let's say 10% chance of Crit.
+                bool isCrit = Random.Shared.Next(0, 100) < 10;
+                decimal stealPercent = isCrit ? 0.05m : 0.01m;
+
+                decimal stolenAmount = Math.Floor(victim.Balance * stealPercent * 100) / 100; // Round down to cents
+                if (stolenAmount < 0.01m) stolenAmount = 0;
+
+                if (stolenAmount > 0)
+                {
+                    victim.Balance -= stolenAmount;
+                    robber.Balance += stolenAmount;
+                    victim.LastSuccessfullyRobbed = DateTime.UtcNow;
+
+                    // Log Transactions
+                    await dbContext.StockTransactions.AddAsync(new StockTransaction
+                    {
+                        UserId = robberId,
+                        TargetUserId = victimId,
+                        Type = TransactionType.RobberyWin,
+                        Amount = stolenAmount,
+                        Fee = 0,
+                        InsertDate = DateTime.UtcNow
+                    });
+                }
+                
+                await dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                string verb = isCrit ? "**HEIST!** You pulled off a master plan" : "You successfully pickpocketed";
+                return (true, $"🥷 {verb} and stole **${stolenAmount:F2}** from **{victim.Username}**!");
+            }
+            else
+            {
+                // FAILURE: Pay 1% of ROBBER's balance to VICTIM
+                decimal penaltyAmount = Math.Floor(robber.Balance * 0.01m * 100) / 100;
+                if (penaltyAmount < 0.01m) penaltyAmount = 0;
+
+                if (penaltyAmount > 0)
+                {
+                    robber.Balance -= penaltyAmount;
+                    victim.Balance += penaltyAmount;
+
+                    // Log Transactions
+                    await dbContext.StockTransactions.AddAsync(new StockTransaction
+                    {
+                        UserId = robberId, // The person who lost money
+                        TargetUserId = victimId,
+                        Type = TransactionType.RobberyLoss,
+                        Amount = penaltyAmount, // Negative? No, amount is usually absolute, Type defines direction.
+                                                // Wait, usually Amount is money moving.
+                                                // For a Loss, Robber loses Amount.
+                        Fee = 0,
+                        InsertDate = DateTime.UtcNow
+                    });
+                }
+
+                await dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return (true, $"👮 **BUSTED!** You were caught trying to rob **{victim.Username}** and had to pay them **${penaltyAmount:F2}** as a settlement.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            logsService.Log($"Error processing robbery: {ex.Message}", Discord.LogSeverity.Error);
+            return (false, "An error occurred while attempting the robbery.");
+        }
+    }
+
+    /// <summary>
     /// Gets the top donors to the UBI pool.
     /// </summary>
     public async Task<List<(string Username, decimal TotalDonated)>> GetTopDonors(int count = 10)

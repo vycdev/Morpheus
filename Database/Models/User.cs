@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Morpheus.Database.Models;
@@ -24,6 +24,9 @@ public class User
 
     // Economy
     public decimal Balance { get; set; } = 1000.00m;
+
+    public DateTime LastRobberyAttempt { get; set; } = DateTime.MinValue;
+    public DateTime LastSuccessfullyRobbed { get; set; } = DateTime.MinValue;
 
     // Foreign keys
     public List<Quote> Quotes { get; set; }
