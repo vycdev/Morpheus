@@ -17,9 +17,32 @@ public class EconomyService(DB dbContext, LogsService logsService)
 
         // Atomic update using raw SQL to prevent race conditions
         // We cast to text because the Value column is a string
-        await dbContext.Database.ExecuteSqlRawAsync(
+        int affected = await dbContext.Database.ExecuteSqlRawAsync(
             "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
             amount, UbiPoolKey);
+
+        // If no row was updated, it means the key doesn't exist yet. Initialize it.
+        if (affected == 0)
+        {
+            var existing = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
+            if (existing == null)
+            {
+                dbContext.BotSettings.Add(new BotSetting
+                {
+                    Key = UbiPoolKey,
+                    Value = amount.ToString("F2"),
+                    UpdateDate = DateTime.UtcNow
+                });
+                await dbContext.SaveChangesAsync();
+            }
+            else
+            {
+                // It was created concurrently, retry the update
+                await dbContext.Database.ExecuteSqlRawAsync(
+                    "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
+                    amount, UbiPoolKey);
+            }
+        }
     }
 
     /// <summary>
