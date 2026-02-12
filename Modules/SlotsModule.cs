@@ -227,7 +227,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         // 4. Build Visuals
         var (r1, r2, r3) = GenerateReels(outcome.name);
         string slotDisplay = BuildSlotMachine(r1, r2, r3);
-
+        
         Color embedColor = outcome.isJackpot ? new Color(255, 215, 0) // Gold
                          : grossWinnings > bet ? Color.Green
                          : grossWinnings == bet ? Color.Blue
@@ -235,8 +235,40 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
 
         string title = outcome.isJackpot ? "🎰 JACKPOT!!!" : "🎰 Slots";
 
+        // Calculate potential jackpots for THIS bet using CURRENT vault (post-spin)
+        // This entices the user for the next spin or shows what they were playing for.
+        // Vault has just been updated, so get fresh amount.
+        decimal freshVault = await economyService.GetVaultAmount();
+        decimal currentBetScale = bet / MaxBet;
+        
+        // Helper to calculate theoretical jackpot
+        decimal GetJackpotVal(decimal pct, decimal capPct, decimal baseMult)
+        {
+            decimal val = (bet * baseMult) + (freshVault * pct * currentBetScale);
+            // Cap applies to the TOTAL payout relative to the Vault size.
+            decimal cap = freshVault * capPct;
+            if (val > cap) val = cap;
+            // Also check liability disable
+            if (MaxBet * baseMult > freshVault) return 0; // Disabled
+            return val;
+        }
+
+        decimal grandPot = GetJackpotVal(0.25m, 0.50m, 500m);
+        decimal majorPot = GetJackpotVal(0.15m, 0.25m, 100m);
+        decimal miniPot = GetJackpotVal(0.05m, 0.10m, 50m);
+
         StringBuilder desc = new();
         desc.AppendLine(slotDisplay);
+        
+        // Show potential jackpots cleanly
+        string pots = "";
+        if (grandPot > 0) pots += $"💎 ${grandPot:N0}  ";
+        if (majorPot > 0) pots += $"👑 ${majorPot:N0}  ";
+        if (miniPot > 0) pots += $"🏆 ${miniPot:N0}";
+        
+        if (!string.IsNullOrWhiteSpace(pots))
+            desc.AppendLine($"*{pots.Trim()}*");
+
         desc.AppendLine($"**{resultDescription}**");
         desc.AppendLine();
 
