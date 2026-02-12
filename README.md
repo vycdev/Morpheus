@@ -59,7 +59,18 @@ Level-up messages
 - Roles are created automatically if missing, existing holders are cleared, and fresh recipients are assigned based on up‑to‑date activity.
 - Gentle pacing and robust logging keep it reliable across large servers.
 
+### A dynamic, XP-driven economy
+Morpheus features a fully integrated economic system where value is directly tied to server activity:
+
+- **Universal Basic Income (UBI):** A central pool of wealth is periodically distributed to all users. This pool is funded by a 0.01% daily wealth tax on all liquid balances, stock trading fees, profit taxes, and generous user donations.
+- **Social-Stock Market:** Buy and sell "shares" of users, channels, or entire guilds. Stock prices are algorithmically determined by XP production: if an entity is more active today than their 7-day average, their stock price rises. Daily fluctuations are capped at ±10% to maintain stability.
+- **High-Stakes Interaction:**
+    - **Stealing:** Risk your own capital to attempt to pickpocket or heist other users. Success depends on the victim's "paranoia" (whether they've been robbed recently). Failure results in a settlement payment to the victim.
+    - **Slots:** Gamble against the server's "Slots Vault" — a central bank that grows with losses and pays out from its own reserves.
+- **Wealth Transfers:** Securely send money to other users, with a 5% fee (contributed to the UBI pool) to discourage circular loops and encourage a healthy velocity of money.
+
 ## Contributing
+
 
 Contributions welcome! If you'd like to contribute bug fixes, new features, or improvements, please read the contributing guide for setup, workflow, and expectations: [CONTRIBUTING.md](./CONTRIBUTING.md).
 
