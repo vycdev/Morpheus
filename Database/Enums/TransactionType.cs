@@ -17,5 +17,8 @@ public enum TransactionType
     SlotsWin = 4,
 
     [Display(Name = "Slots Loss")]
-    SlotsLoss = 5
+    SlotsLoss = 5,
+
+    [Display(Name = "Donation")]
+    Donation = 6
 }

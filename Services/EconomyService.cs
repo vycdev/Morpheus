@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
+using Morpheus.Database.Enums;
 using Morpheus.Database.Models;
 
 namespace Morpheus.Services;
@@ -254,5 +255,93 @@ public class EconomyService(DB dbContext, LogsService logsService)
             await transaction.RollbackAsync();
             logsService.Log($"Error collecting Wealth Tax: {ex.Message}", Discord.LogSeverity.Error);
         }
+    }
+
+    /// <summary>
+    /// Donate money to the UBI pool.
+    /// </summary>
+    public async Task<(bool success, string message)> DonateToUbi(int userId, decimal amount)
+    {
+        if (amount <= 0) return (false, "Amount must be positive.");
+
+        using var transaction = await dbContext.Database.BeginTransactionAsync();
+        try
+        {
+            User? user = await dbContext.Users.FindAsync(userId);
+            if (user == null) return (false, "User not found.");
+
+            if (user.Balance < amount)
+                return (false, $"Insufficient balance. You have **${user.Balance:F2}**.");
+
+            // Deduct from user
+            user.Balance -= amount;
+
+            // Add to pool
+            // We reuse the logic but implement it inline for the transaction safety
+            BotSetting? setting = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
+            if (setting == null)
+            {
+                setting = new BotSetting { Key = UbiPoolKey, Value = "0.00" };
+                dbContext.BotSettings.Add(setting);
+            }
+
+            if (decimal.TryParse(setting.Value, out decimal currentPool))
+            {
+                setting.Value = (currentPool + amount).ToString("F2");
+                setting.UpdateDate = DateTime.UtcNow;
+            }
+
+            // Record transaction
+            StockTransaction stockTransaction = new()
+            {
+                UserId = userId,
+                Type = TransactionType.Donation,
+                Amount = amount,
+                Fee = 0,
+                InsertDate = DateTime.UtcNow
+            };
+            await dbContext.StockTransactions.AddAsync(stockTransaction);
+
+            await dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            logsService.Log($"User #{userId} donated ${amount:F2} to UBI pool.", Discord.LogSeverity.Info);
+            return (true, $"You donated **${amount:F2}** to the UBI pool! Thank you for your generosity.");
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            logsService.Log($"Error processing donation: {ex.Message}", Discord.LogSeverity.Error);
+            return (false, "An error occurred while processing your donation.");
+        }
+    }
+
+    /// <summary>
+    /// Gets the top donors to the UBI pool.
+    /// </summary>
+    public async Task<List<(string Username, decimal TotalDonated)>> GetTopDonors(int count = 10)
+    {
+        var topDonors = await dbContext.StockTransactions
+            .AsNoTracking()
+            .Where(t => t.Type == TransactionType.Donation)
+            .GroupBy(t => t.UserId)
+            .Select(g => new
+            {
+                UserId = g.Key,
+                TotalDonated = g.Sum(t => t.Amount)
+            })
+            .OrderByDescending(x => x.TotalDonated)
+            .Take(count)
+            .ToListAsync();
+
+        var userIds = topDonors.Select(x => x.UserId).ToList();
+        var users = await dbContext.Users
+            .AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Username);
+
+        return topDonors
+            .Select(x => (users.GetValueOrDefault(x.UserId, "Unknown"), x.TotalDonated))
+            .ToList();
     }
 }

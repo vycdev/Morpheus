@@ -9,7 +9,7 @@ namespace Morpheus.Modules;
 
 [Name("Economy")]
 [Summary("Commands related to the server economy.")]
-public class EconomyModule(EconomyService economyService) : ModuleBase<SocketCommandContextExtended>
+public class EconomyModule(EconomyService economyService, UsersService usersService) : ModuleBase<SocketCommandContextExtended>
 {
     [Name("UBI Status")]
     [Summary("Check the current Universal Basic Income pool and time until next distribution.")]
@@ -36,6 +36,69 @@ public class EconomyModule(EconomyService economyService) : ModuleBase<SocketCom
             .WithColor(Color.Gold)
             .WithFooter("All fees and taxes fund this pool.")
             .WithCurrentTimestamp();
+
+        await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Donate to UBI")]
+    [Summary("Donate money to the Universal Basic Income pool.")]
+    [Command("ubi donate")]
+    [Alias("donate")]
+    public async Task Donate(decimal amount)
+    {
+        if (amount <= 0)
+        {
+            await ReplyAsync("Please specify a positive amount to donate.");
+            return;
+        }
+
+        var dbUser = await usersService.TryGetCreateUser(Context.User);
+        var (success, message) = await economyService.DonateToUbi(dbUser.Id, amount);
+
+        if (success)
+        {
+            await ReplyAsync($"✅ {message}");
+        }
+        else
+        {
+            await ReplyAsync($"❌ {message}");
+        }
+    }
+
+    [Name("UBI Leaderboard")]
+    [Summary("Shows the top donors to the UBI pool.")]
+    [Command("ubi leaderboard")]
+    [Alias("ubi top", "ubidonors", "donors")]
+    public async Task UbiLeaderboard()
+    {
+        var topDonors = await economyService.GetTopDonors(10);
+
+        if (topDonors.Count == 0)
+        {
+            await ReplyAsync("No donations have been made yet. Be the first!");
+            return;
+        }
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithTitle("🏆 UBI Donation Leaderboard")
+            .WithDescription("Top philanthropists who have contributed to the community pool.")
+            .WithColor(Color.Gold)
+            .WithCurrentTimestamp();
+
+        int rank = 1;
+        foreach (var donor in topDonors)
+        {
+            string medal = rank switch
+            {
+                1 => "🥇",
+                2 => "🥈",
+                3 => "🥉",
+                _ => $"#{rank}"
+            };
+
+            embed.AddField($"{medal} {donor.Username}", $"**${donor.TotalDonated:F2}**", true);
+            rank++;
+        }
 
         await ReplyAsync(embed: embed.Build());
     }
