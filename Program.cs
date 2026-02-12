@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
@@ -59,13 +59,15 @@ services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
 services.AddScoped<ActivityService>();
 services.AddScoped<ChannelService>();
+services.AddScoped<EconomyService>();
 services.AddScoped<StocksService>();
 services.AddScoped<BotAvatarJob>();
 services.AddScoped<TemporaryBansJob>();
-services.AddScoped<HoneypotRenameJob>();
-services.AddScoped<StockUpdateJob>();
+    services.AddScoped<HoneypotRenameJob>();
+    services.AddScoped<StockUpdateJob>();
+    services.AddScoped<UbiJob>();
 
-// Add Quartz 
+    // Add Quartz
 services.AddQuartz(q =>
 {
     q.ScheduleJob<BotActivityJob>(trigger => trigger
@@ -108,6 +110,12 @@ services.AddQuartz(q =>
         .WithIdentity("honeypotRenameDaily", "discord")
         .StartNow()
         .WithCronSchedule("0 5 0 * * ?") // daily at 00:05 UTC
+    );
+
+    q.ScheduleJob<UbiJob>(trigger => trigger
+        .WithIdentity("ubiDistribution", "discord")
+        .StartNow()
+        .WithCronSchedule("0 0 0 * * ?") // every day at 00:00 UTC
     );
 
     q.ScheduleJob<StockUpdateJob>(trigger => trigger

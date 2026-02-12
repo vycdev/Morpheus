@@ -8,6 +8,7 @@ using Morpheus.Database.Enums;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
+using Morpheus.Services;
 using Morpheus.Utilities;
 using System.Text;
 
@@ -17,15 +18,17 @@ namespace Morpheus.Modules;
 [Summary("Slot machine gambling — spin the reels and test your luck.")]
 public class SlotsModule : ModuleBase<SocketCommandContextExtended>
 {
-    private const decimal FeeRate = 0.05m; // 5% tax on profit
+    private const decimal TaxRate = 0.05m; // 5% tax on profit
     private const decimal MinBet = 1.00m;
     private const decimal MaxBet = 10000.00m;
 
     private readonly DB dbContext;
+    private readonly EconomyService economyService;
 
-    public SlotsModule(DB dbContext, InteractionsHandler interactionHandler)
+    public SlotsModule(DB dbContext, InteractionsHandler interactionHandler, EconomyService economyService)
     {
         this.dbContext = dbContext;
+        this.economyService = economyService;
         interactionHandler.RegisterInteraction("slots_spin", HandleSpinInteraction);
     }
 
@@ -138,7 +141,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         if (bet < MinBet || bet > MaxBet) return null;
         if (user.Balance < bet) return null;
 
-        // Deduct bet (fee is only taken from profits)
+        // Deduct bet (tax is only taken from profits)
         user.Balance -= bet;
 
         // Spin the reels
@@ -151,14 +154,17 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         decimal grossWinnings = bet * multiplier;
         bool isWin = multiplier > 0m;
         decimal profit = grossWinnings - bet;
-        decimal fee = 0m;
+        decimal tax = 0m;
 
         if (profit > 0)
         {
-            fee = profit * FeeRate;
+            tax = profit * TaxRate;
         }
 
-        decimal netWinnings = grossWinnings - fee;
+        // Add tax to UBI pool
+        await economyService.AddToPool(tax);
+
+        decimal netWinnings = grossWinnings - tax;
         decimal finalProfitOrLoss = netWinnings - bet;
 
         if (isWin)
@@ -172,7 +178,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
             UserId = user.Id,
             Type = isWin ? TransactionType.SlotsWin : TransactionType.SlotsLoss,
             Amount = isWin ? netWinnings : bet,
-            Fee = fee,
+            Fee = tax,
             InsertDate = DateTime.UtcNow
         };
         await dbContext.StockTransactions.AddAsync(transaction);
@@ -199,9 +205,9 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         {
             desc.AppendLine($"Payout: **{multiplier}x** of **${bet:F2}** = **${grossWinnings:F2}**");
 
-            if (fee > 0)
+            if (tax > 0)
             {
-                desc.AppendLine($"Tax (5% on profit): -**${fee:F2}**");
+                desc.AppendLine($"Tax (5% on profit): -**${tax:F2}**");
                 desc.AppendLine($"Net Payout: **${netWinnings:F2}**");
             }
 

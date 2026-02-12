@@ -5,7 +5,7 @@ using Morpheus.Database.Models;
 
 namespace Morpheus.Services;
 
-public class StocksService(DB dbContext, LogsService logsService)
+public class StocksService(DB dbContext, LogsService logsService, EconomyService economyService)
 {
     private const decimal BuyFeeRate = 0.0005m; // 0.05%
     private const decimal SellProfitTaxRate = 0.10m; // 10% on profit
@@ -64,6 +64,9 @@ public class StocksService(DB dbContext, LogsService logsService)
 
         // Deduct from balance
         user.Balance -= amount;
+        
+        // Add fee to UBI pool
+        await economyService.AddToPool(fee);
 
         // Get or create holding
         StockHolding? holding = await dbContext.StockHoldings
@@ -145,6 +148,9 @@ public class StocksService(DB dbContext, LogsService logsService)
 
         decimal netProceeds = grossProceeds - tax;
 
+        // Add tax to UBI pool
+        await economyService.AddToPool(tax);
+
         // Credit balance
         user.Balance += netProceeds;
 
@@ -202,6 +208,9 @@ public class StocksService(DB dbContext, LogsService logsService)
 
         sender.Balance -= totalCost;
         receiver.Balance += amount;
+
+        // Add fee to UBI pool
+        await economyService.AddToPool(fee);
 
         // Record transaction
         StockTransaction transaction = new()
