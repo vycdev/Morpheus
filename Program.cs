@@ -66,6 +66,7 @@ services.AddScoped<TemporaryBansJob>();
     services.AddScoped<HoneypotRenameJob>();
     services.AddScoped<StockUpdateJob>();
     services.AddScoped<UbiJob>();
+    services.AddScoped<WealthTaxJob>();
 
     // Add Quartz
 services.AddQuartz(q =>
@@ -116,6 +117,12 @@ services.AddQuartz(q =>
         .WithIdentity("ubiDistribution", "discord")
         .StartNow()
         .WithCronSchedule("0 0 0 * * ?") // every day at 00:00 UTC
+    );
+
+    q.ScheduleJob<WealthTaxJob>(trigger => trigger
+        .WithIdentity("wealthTax", "discord")
+        .StartNow()
+        .WithCronSchedule("0 30 23 * * ?") // every day at 23:30 UTC (before UBI)
     );
 
     q.ScheduleJob<StockUpdateJob>(trigger => trigger

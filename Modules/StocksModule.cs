@@ -265,6 +265,206 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
         await ReplyAsync(embed: embed.Build());
     }
 
+    [Name("Stock Gainers")]
+    [Summary("Shows the top gaining stocks in this server for the day.")]
+    [Command("stock gainers")]
+    [Alias("gainers", "topgainers", "bulls")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 10)]
+    public async Task StockGainersAsync(int page = 1)
+    {
+        if (page < 1)
+        {
+            await ReplyAsync("Invalid page number.");
+            return;
+        }
+
+        Guild? guild = Context.DbGuild;
+        if (guild == null) return;
+
+        List<ulong> channelIds = Context.Guild.Channels.Select(c => c.Id).ToList();
+
+        int totalGainers = await stocksService.GetLocalGainersCount(guild.Id, channelIds);
+        if (totalGainers == 0)
+        {
+            await ReplyAsync("No local gainers today yet.");
+            return;
+        }
+
+        int totalPages = (int)Math.Ceiling(totalGainers / 10.0);
+        if (page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Max page is {totalPages}.");
+            return;
+        }
+
+        List<Stock> gainers = await stocksService.GetLocalGainers(guild.Id, channelIds, page, 10);
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithTitle($"📈 Top Gainers: {Context.Guild.Name}")
+            .WithColor(Color.Green)
+            .WithCurrentTimestamp();
+
+        StringBuilder sb = new();
+        for (int i = 0; i < gainers.Count; i++)
+        {
+            string name = await stocksService.GetStockDisplayName(gainers[i]);
+            sb.AppendLine($"{((page - 1) * 10) + i + 1}. **{name}** ({gainers[i].EntityType}) — +{gainers[i].DailyChangePercent:F2}% (${gainers[i].Price:F2})");
+        }
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+
+        embed.WithDescription(sb.ToString());
+        await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Stock Losers")]
+    [Summary("Shows the top losing stocks in this server for the day.")]
+    [Command("stock losers")]
+    [Alias("losers", "toplosers", "bears")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 10)]
+    public async Task StockLosersAsync(int page = 1)
+    {
+        if (page < 1)
+        {
+            await ReplyAsync("Invalid page number.");
+            return;
+        }
+
+        Guild? guild = Context.DbGuild;
+        if (guild == null) return;
+
+        List<ulong> channelIds = Context.Guild.Channels.Select(c => c.Id).ToList();
+
+        int totalLosers = await stocksService.GetLocalLosersCount(guild.Id, channelIds);
+        if (totalLosers == 0)
+        {
+            await ReplyAsync("No local losers today yet.");
+            return;
+        }
+
+        int totalPages = (int)Math.Ceiling(totalLosers / 10.0);
+        if (page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Max page is {totalPages}.");
+            return;
+        }
+
+        List<Stock> losers = await stocksService.GetLocalLosers(guild.Id, channelIds, page, 10);
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithTitle($"📉 Top Losers: {Context.Guild.Name}")
+            .WithColor(Color.Red)
+            .WithCurrentTimestamp();
+
+        StringBuilder sb = new();
+        for (int i = 0; i < losers.Count; i++)
+        {
+            string name = await stocksService.GetStockDisplayName(losers[i]);
+            sb.AppendLine($"{((page - 1) * 10) + i + 1}. **{name}** ({losers[i].EntityType}) — {losers[i].DailyChangePercent:F2}% (${losers[i].Price:F2})");
+        }
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+
+        embed.WithDescription(sb.ToString());
+        await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Stock Global Gainers")]
+    [Summary("Shows the top gaining stocks globally (censored).")]
+    [Command("stock globalgainers")]
+    [Alias("globalgainers", "topgainersglobal", "bullsglobal")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 10)]
+    public async Task StockGlobalGainersAsync(int page = 1)
+    {
+        if (page < 1)
+        {
+            await ReplyAsync("Invalid page number. Please choose a page of 1 or higher.");
+            return;
+        }
+
+        int totalGainers = await stocksService.GetGainersCount();
+        if (totalGainers == 0)
+        {
+            await ReplyAsync("No gainers today yet.");
+            return;
+        }
+
+        int totalPages = (int)Math.Ceiling(totalGainers / 10.0);
+        if (page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        List<Stock> gainers = await stocksService.GetTopGainers(page, 10);
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithTitle("📈 Today's Global Gainers")
+            .WithColor(Color.Green)
+            .WithCurrentTimestamp();
+
+        StringBuilder sb = new();
+        for (int i = 0; i < gainers.Count; i++)
+        {
+            // Censor names for privacy
+            string name = $"{gainers[i].EntityType} #{gainers[i].EntityId}";
+            sb.AppendLine($"{((page - 1) * 10) + i + 1}. **{name}** — +{gainers[i].DailyChangePercent:F2}% (${gainers[i].Price:F2})");
+        }
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+
+        embed.WithDescription(sb.ToString());
+        await ReplyAsync(embed: embed.Build());
+    }
+
+    [Name("Stock Global Losers")]
+    [Summary("Shows the top losing stocks globally (censored).")]
+    [Command("stock globallosers")]
+    [Alias("globallosers", "toplosersglobal", "bearsglobal")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 10)]
+    public async Task StockGlobalLosersAsync(int page = 1)
+    {
+        if (page < 1)
+        {
+            await ReplyAsync("Invalid page number. Please choose a page of 1 or higher.");
+            return;
+        }
+
+        int totalLosers = await stocksService.GetLosersCount();
+        if (totalLosers == 0)
+        {
+            await ReplyAsync("No losers today yet.");
+            return;
+        }
+
+        int totalPages = (int)Math.Ceiling(totalLosers / 10.0);
+        if (page > totalPages)
+        {
+            await ReplyAsync($"Invalid page number. Please choose a page between 1 and {totalPages}.");
+            return;
+        }
+
+        List<Stock> losers = await stocksService.GetTopLosers(page, 10);
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithTitle("📉 Today's Global Losers")
+            .WithColor(Color.Red)
+            .WithCurrentTimestamp();
+
+        StringBuilder sb = new();
+        for (int i = 0; i < losers.Count; i++)
+        {
+            // Censor names for privacy
+            string name = $"{losers[i].EntityType} #{losers[i].EntityId}";
+            sb.AppendLine($"{((page - 1) * 10) + i + 1}. **{name}** — {losers[i].DailyChangePercent:F2}% (${losers[i].Price:F2})");
+        }
+        sb.AppendLine($"\n(Page {page}/{totalPages})");
+
+        embed.WithDescription(sb.ToString());
+        await ReplyAsync(embed: embed.Build());
+    }
+
     [Name("Stock Movers")]
     [Summary("Shows the top 5 biggest stock gainers and losers of the day.")]
     [Command("stock movers")]
@@ -287,8 +487,9 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
             sb.AppendLine("**🟢 Top Gainers**");
             for (int i = 0; i < gainers.Count; i++)
             {
-                string name = await stocksService.GetStockDisplayName(gainers[i]);
-                sb.AppendLine($"{i + 1}. **{name}** ({gainers[i].EntityType}) — +{gainers[i].DailyChangePercent:F2}% (${gainers[i].Price:F2})");
+                // Censor names for privacy
+                string name = $"{gainers[i].EntityType} #{gainers[i].EntityId}";
+                sb.AppendLine($"{i + 1}. **{name}** — +{gainers[i].DailyChangePercent:F2}% (${gainers[i].Price:F2})");
             }
             sb.AppendLine();
         }
@@ -302,8 +503,9 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
             sb.AppendLine("**🔴 Top Losers**");
             for (int i = 0; i < losers.Count; i++)
             {
-                string name = await stocksService.GetStockDisplayName(losers[i]);
-                sb.AppendLine($"{i + 1}. **{name}** ({losers[i].EntityType}) — {losers[i].DailyChangePercent:F2}% (${losers[i].Price:F2})");
+                // Censor names for privacy
+                string name = $"{losers[i].EntityType} #{losers[i].EntityId}";
+                sb.AppendLine($"{i + 1}. **{name}** — {losers[i].DailyChangePercent:F2}% (${losers[i].Price:F2})");
             }
         }
         else

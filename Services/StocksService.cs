@@ -309,6 +309,158 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     }
 
     /// <summary>
+    /// Get the top gaining stocks for the current UTC day.
+    /// </summary>
+    public async Task<List<Stock>> GetTopGainers(int page = 1, int pageSize = 10)
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        return await dbContext.Stocks
+            .AsNoTracking()
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
+            .OrderByDescending(s => s.DailyChangePercent)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Get the total count of gaining stocks for pagination.
+    /// </summary>
+    public async Task<int> GetGainersCount()
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        return await dbContext.Stocks
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
+            .CountAsync();
+    }
+
+    /// <summary>
+    /// Get the top losing stocks for the current UTC day.
+    /// </summary>
+    public async Task<List<Stock>> GetTopLosers(int page = 1, int pageSize = 10)
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        return await dbContext.Stocks
+            .AsNoTracking()
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
+            .OrderBy(s => s.DailyChangePercent)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Get the total count of losing stocks for pagination.
+    /// </summary>
+    public async Task<int> GetLosersCount()
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        return await dbContext.Stocks
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
+            .CountAsync();
+    }
+
+    /// <summary>
+    /// Get the top gaining stocks for the current UTC day within a specific guild.
+    /// Filters by: The Guild itself, Channels in the guild, and Users active in the guild.
+    /// </summary>
+    public async Task<List<Stock>> GetLocalGainers(int guildId, List<ulong> guildChannelDiscordIds, int page = 1, int pageSize = 10)
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        var validUserIds = dbContext.UserActivity
+            .Where(ua => ua.GuildId == guildId)
+            .Select(ua => ua.UserId);
+
+        var validChannelIds = dbContext.Channels
+            .Where(c => guildChannelDiscordIds.Contains(c.DiscordId))
+            .Select(c => c.Id);
+
+        return await dbContext.Stocks
+            .AsNoTracking()
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
+            .Where(s =>
+                (s.EntityType == StockEntityType.Guild && s.EntityId == guildId) ||
+                (s.EntityType == StockEntityType.Channel && validChannelIds.Contains(s.EntityId)) ||
+                (s.EntityType == StockEntityType.User && validUserIds.Contains(s.EntityId))
+            )
+            .OrderByDescending(s => s.DailyChangePercent)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+
+    public async Task<int> GetLocalGainersCount(int guildId, List<ulong> guildChannelDiscordIds)
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        var validUserIds = dbContext.UserActivity.Where(ua => ua.GuildId == guildId).Select(ua => ua.UserId);
+        var validChannelIds = dbContext.Channels.Where(c => guildChannelDiscordIds.Contains(c.DiscordId)).Select(c => c.Id);
+
+        return await dbContext.Stocks
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
+            .Where(s =>
+                (s.EntityType == StockEntityType.Guild && s.EntityId == guildId) ||
+                (s.EntityType == StockEntityType.Channel && validChannelIds.Contains(s.EntityId)) ||
+                (s.EntityType == StockEntityType.User && validUserIds.Contains(s.EntityId))
+            )
+            .CountAsync();
+    }
+
+    /// <summary>
+    /// Get the top losing stocks for the current UTC day within a specific guild.
+    /// </summary>
+    public async Task<List<Stock>> GetLocalLosers(int guildId, List<ulong> guildChannelDiscordIds, int page = 1, int pageSize = 10)
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        var validUserIds = dbContext.UserActivity.Where(ua => ua.GuildId == guildId).Select(ua => ua.UserId);
+        var validChannelIds = dbContext.Channels.Where(c => guildChannelDiscordIds.Contains(c.DiscordId)).Select(c => c.Id);
+
+        return await dbContext.Stocks
+            .AsNoTracking()
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
+            .Where(s =>
+                (s.EntityType == StockEntityType.Guild && s.EntityId == guildId) ||
+                (s.EntityType == StockEntityType.Channel && validChannelIds.Contains(s.EntityId)) ||
+                (s.EntityType == StockEntityType.User && validUserIds.Contains(s.EntityId))
+            )
+            .OrderBy(s => s.DailyChangePercent)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+
+    public async Task<int> GetLocalLosersCount(int guildId, List<ulong> guildChannelDiscordIds)
+    {
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        var validUserIds = dbContext.UserActivity.Where(ua => ua.GuildId == guildId).Select(ua => ua.UserId);
+        var validChannelIds = dbContext.Channels.Where(c => guildChannelDiscordIds.Contains(c.DiscordId)).Select(c => c.Id);
+
+        return await dbContext.Stocks
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
+            .Where(s =>
+                (s.EntityType == StockEntityType.Guild && s.EntityId == guildId) ||
+                (s.EntityType == StockEntityType.Channel && validChannelIds.Contains(s.EntityId)) ||
+                (s.EntityType == StockEntityType.User && validUserIds.Contains(s.EntityId))
+            )
+            .CountAsync();
+    }
+
+    /// <summary>
     /// Get the top movers (biggest daily % changes) across all stocks.
     /// Returns (gainers, losers) each sorted by magnitude.
     /// </summary>
