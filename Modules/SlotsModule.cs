@@ -174,7 +174,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
                                     outcome.name.Contains("Major") ? 0.25m : 0.10m;
 
             decimal bonusWin = vaultAmount * percentage * scale;
-            
+
             // Cap applies to the TOTAL payout relative to the Vault size.
             // It protects the vault from being drained by a single massive win.
             // It does NOT scale with bet size (it's a global safety limit).
@@ -383,18 +383,18 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         decimal vault = await economyService.GetVaultAmount();
         StringBuilder sb = new();
 
-        sb.AppendLine($"**🎰 Community Vault: ${vault:N0}**");
+        sb.AppendLine($"**Community Vault: ${vault:N0}**");
         sb.AppendLine("Bets fund the vault. Wins are paid from the vault.");
         sb.AppendLine();
 
-        sb.AppendLine("**🏆 Jackpots (Scaled by Bet/MaxBet):**");
+        sb.AppendLine("**Jackpots (Scaled by Bet/MaxBet):**");
         sb.AppendLine($"  💎 **Grand:** 500x + 25% of Vault (Max 50%) — *1 in 1,000,000*");
         sb.AppendLine($"  👑 **Major:** 100x + 15% of Vault (Max 25%) — *1 in 200,000*");
         sb.AppendLine($"  🏆 **Mini:**   50x + 5% of Vault (Max 10%) — *1 in 50,000*");
         sb.AppendLine("  *(Disabled if Vault < Max Liability)*");
         sb.AppendLine();
 
-        sb.AppendLine("**💰 Multipliers:**");
+        sb.AppendLine("**Multipliers:**");
         sb.AppendLine("  🔔 **Mega:** 10x — *1 in 10,000*");
         sb.AppendLine("  🍓 **Big:** 5x — *1 in 2,000*");
         sb.AppendLine("  🍋 **Med:** 3x — *1 in 400*");
