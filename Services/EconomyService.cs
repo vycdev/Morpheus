@@ -45,6 +45,62 @@ public class EconomyService(DB dbContext, LogsService logsService)
         }
     }
 
+    // ── SLOTS VAULT ──
+
+    private const string SlotsVaultKey = "slots_vault";
+    private const decimal SlotsSeedAmount = 10000.00m;
+
+    /// <summary>
+    /// Gets the current amount in the Slots Vault.
+    /// If it doesn't exist, it seeds it with $10,000.
+    /// </summary>
+    public async Task<decimal> GetVaultAmount()
+    {
+        BotSetting? setting = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == SlotsVaultKey);
+
+        if (setting == null)
+        {
+            // Seed the vault
+            setting = new BotSetting { Key = SlotsVaultKey, Value = SlotsSeedAmount.ToString("F2") };
+            dbContext.BotSettings.Add(setting);
+            await dbContext.SaveChangesAsync();
+            return SlotsSeedAmount;
+        }
+
+        if (decimal.TryParse(setting.Value, out decimal vault))
+        {
+            return vault;
+        }
+
+        return SlotsSeedAmount; // Fallback
+    }
+
+    /// <summary>
+    /// Updates the Slots Vault by adding (positive) or removing (negative) an amount.
+    /// Returns the new vault balance.
+    /// </summary>
+    public async Task<decimal> UpdateVault(decimal amount)
+    {
+        if (amount == 0) return await GetVaultAmount();
+
+        // Atomic update
+        int affected = await dbContext.Database.ExecuteSqlRawAsync(
+            "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
+            amount, SlotsVaultKey);
+
+        if (affected == 0)
+        {
+            // Initialize if missing
+            await GetVaultAmount();
+            // Retry update
+            await dbContext.Database.ExecuteSqlRawAsync(
+                "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
+                amount, SlotsVaultKey);
+        }
+
+        return await GetVaultAmount();
+    }
+
     /// <summary>
     /// Gets the current amount in the UBI pool.
     /// </summary>
