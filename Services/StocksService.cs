@@ -231,37 +231,35 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
 
     /// <summary>
     /// Calculate and update the stock price based on entity XP activity.
-    /// Compares yesterday's total XP to the day before yesterday.
-    /// Change is clamped to ±10%.
+    /// Uses a logarithmic scale comparing "Yesterday's Performance" vs "7-Day Moving Average".
+    /// Change = 10 * Log2(Current / Baseline).
     /// </summary>
     public async Task UpdateStockPrice(Stock stock, DateTime utcNow)
     {
         DateOnly today = DateOnly.FromDateTime(utcNow);
         DateOnly yesterday = today.AddDays(-1);
-        DateOnly dayBefore = today.AddDays(-2);
 
+        // Get XP for yesterday (Target Day)
         long xpYesterday = await GetEntityXpForDate(stock.EntityType, stock.EntityId, yesterday);
-        long xpDayBefore = await GetEntityXpForDate(stock.EntityType, stock.EntityId, dayBefore);
 
-        decimal changePercent;
+        // Get XP for the 7 days prior to yesterday (Baseline)
+        DateOnly baselineStart = yesterday.AddDays(-7);
+        long xpBaselineTotal = await GetEntityXpForPeriod(stock.EntityType, stock.EntityId, baselineStart, yesterday);
 
-        if (xpDayBefore == 0 && xpYesterday == 0)
-        {
-            changePercent = 0m;
-        }
-        else if (xpDayBefore == 0)
-        {
-            changePercent = 10m; // cap at +10%
-        }
-        else if (xpYesterday == 0)
-        {
-            changePercent = -10m; // cap at -10%
-        }
-        else
-        {
-            changePercent = ((decimal)(xpYesterday - xpDayBefore) / xpDayBefore) * 100m;
-            changePercent = Math.Clamp(changePercent, -10m, 10m);
-        }
+        // Calculate average daily XP for the baseline period
+        decimal xpBaselineAverage = xpBaselineTotal / 7m;
+
+        // Smoothing constant to prevent volatility at low volumes and avoid division by zero
+        const decimal smoothing = 1000m;
+
+        decimal currentMetric = xpYesterday + smoothing;
+        decimal baselineMetric = xpBaselineAverage + smoothing;
+
+        decimal ratio = currentMetric / baselineMetric;
+        decimal changePercent = 10m * (decimal)Math.Log2((double)ratio);
+
+        // Hard cap at ±10% to prevent economy breaking
+        changePercent = Math.Clamp(changePercent, -10m, 10m);
 
         stock.PreviousPrice = stock.Price;
         stock.Price *= (1m + changePercent / 100m);
@@ -281,30 +279,44 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     {
         DateTime dayStart = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         DateTime dayEnd = dayStart.AddDays(1);
+        return await GetEntityXpForRange(entityType, entityId, dayStart, dayEnd);
+    }
 
+    /// <summary>
+    /// Get total XP for a given entity over a period of dates (start inclusive, end exclusive).
+    /// </summary>
+    private async Task<long> GetEntityXpForPeriod(StockEntityType entityType, int entityId, DateOnly startDate, DateOnly endDate)
+    {
+        DateTime start = startDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        DateTime end = endDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        return await GetEntityXpForRange(entityType, entityId, start, end);
+    }
+
+    private async Task<long> GetEntityXpForRange(StockEntityType entityType, int entityId, DateTime start, DateTime end)
+    {
         return entityType switch
         {
             StockEntityType.User => await dbContext.UserActivity
-                .Where(ua => ua.UserId == entityId && ua.InsertDate >= dayStart && ua.InsertDate < dayEnd)
+                .Where(ua => ua.UserId == entityId && ua.InsertDate >= start && ua.InsertDate < end)
                 .SumAsync(ua => (long)ua.XpGained),
 
             StockEntityType.Guild => await dbContext.UserActivity
-                .Where(ua => ua.GuildId == entityId && ua.InsertDate >= dayStart && ua.InsertDate < dayEnd)
+                .Where(ua => ua.GuildId == entityId && ua.InsertDate >= start && ua.InsertDate < end)
                 .SumAsync(ua => (long)ua.XpGained),
 
-            StockEntityType.Channel => await GetChannelXpForDate(entityId, dayStart, dayEnd),
+            StockEntityType.Channel => await GetChannelXpForRange(entityId, start, end),
 
             _ => 0
         };
     }
 
-    private async Task<long> GetChannelXpForDate(int channelEntityId, DateTime dayStart, DateTime dayEnd)
+    private async Task<long> GetChannelXpForRange(int channelEntityId, DateTime start, DateTime end)
     {
         Channel? channel = await dbContext.Channels.FindAsync(channelEntityId);
         if (channel == null) return 0;
 
         return await dbContext.UserActivity
-            .Where(ua => ua.DiscordChannelId == channel.DiscordId && ua.InsertDate >= dayStart && ua.InsertDate < dayEnd)
+            .Where(ua => ua.DiscordChannelId == channel.DiscordId && ua.InsertDate >= start && ua.InsertDate < end)
             .SumAsync(ua => (long)ua.XpGained);
     }
 
