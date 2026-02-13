@@ -220,9 +220,7 @@ public static class ImageDeepFryer
     {
         foreach (string name in EmojiFontNames)
         {
-            FontFamily? family = SystemFonts.Families
-                .FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
-            if (family != null)
+            if (SystemFonts.TryGet(name, out FontFamily family))
                 return family;
         }
         return null;
