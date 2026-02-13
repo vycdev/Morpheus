@@ -300,7 +300,7 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
         }
 
         MemoryStream stream = new(deepfriedImage);
-        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_extra.png", "Here's your extra crispy deepfried image! 🔥", isSpoiler: false);
+        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_extra.jpg", "Here's your extra crispy deepfried image! 🔥", isSpoiler: false);
         stream.Dispose();
 
         if (uploadResult == null)

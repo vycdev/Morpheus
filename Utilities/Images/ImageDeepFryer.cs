@@ -53,7 +53,7 @@ public static class ImageDeepFryer
     /// <param name="saturationFactor">Factor for increasing saturation (e.g., 1.5 to 3.0). Higher is more saturated.</param>
     /// <param name="noiseAmount">Amount of noise to add (e.g., 20 to 50). Max 255.</param>
     /// <returns>A byte array representing the deep-fried image.</returns>
-    public static byte[] DeepFry(byte[] imageData, double contrastFactor = 2.5, float saturationFactor = 2.0f, int noiseAmount = 30)
+    public static byte[] DeepFry(byte[] imageData, double contrastFactor = 1.8, float saturationFactor = 1.5f, int noiseAmount = 25, int jpegQuality = 0)
     {
         if (imageData == null || imageData.Length == 0)
         {
@@ -106,22 +106,20 @@ public static class ImageDeepFryer
                 }
             }
 
+            // JPEG compression artifacts: encode at low quality to bake in blockiness
+            if (jpegQuality > 0 && jpegQuality < 100)
+            {
+                using MemoryStream jpegMs = new();
+                output.SaveAsJpeg(jpegMs, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = jpegQuality });
+                return jpegMs.ToArray();
+            }
+
             using MemoryStream outputMs = new();
 
-            // Prefer to save as PNG for safety; if original is JPEG and doesn't have alpha, save as JPEG
             if (originalFormat != null && string.Equals(originalFormat.Name, "JPEG", StringComparison.OrdinalIgnoreCase))
-            {
                 output.SaveAsJpeg(outputMs);
-            }
-            else if (originalFormat != null && string.Equals(originalFormat.Name, "GIF", StringComparison.OrdinalIgnoreCase))
-            {
-                // animated GIFs are not handled; save as PNG
-                output.SaveAsPng(outputMs);
-            }
             else
-            {
                 output.SaveAsPng(outputMs);
-            }
 
             return outputMs.ToArray();
         }
@@ -150,7 +148,7 @@ public static class ImageDeepFryer
     /// </summary>
     public static byte[] DeepFryExtra(byte[] imageData)
     {
-        byte[] friedData = DeepFry(imageData, contrastFactor: 3.5, saturationFactor: 3.0f, noiseAmount: 45);
+        byte[] friedData = DeepFry(imageData, contrastFactor: 2.5, saturationFactor: 2.0f, noiseAmount: 35, jpegQuality: 10);
 
         IImageFormat? originalFormat = null;
         using MemoryStream ms = new(friedData);
@@ -187,14 +185,11 @@ public static class ImageDeepFryer
             ApplyTwist(image, random);
 
         // 3. Vignette (darkened edges)
-        image.Mutate(ctx => ctx.Vignette(width * 0.75f, height * 0.75f));
+        image.Mutate(ctx => ctx.Vignette(width * 0.9f, height * 0.9f));
 
+        // Final save as low-quality JPEG for extra compression artifacts
         using MemoryStream outputMs = new();
-        if (originalFormat != null && string.Equals(originalFormat.Name, "JPEG", StringComparison.OrdinalIgnoreCase))
-            image.SaveAsJpeg(outputMs);
-        else
-            image.SaveAsPng(outputMs);
-
+        image.SaveAsJpeg(outputMs, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 15 });
         return outputMs.ToArray();
     }
 
