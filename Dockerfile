@@ -14,7 +14,7 @@ COPY ["Morpheus.csproj", "."]
 RUN dotnet restore "./Morpheus.csproj"
 COPY . .
 WORKDIR "/src/."
-RUN dotnet build "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/build 
+RUN dotnet build "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
@@ -26,7 +26,7 @@ FROM base AS final
 USER root
 # Install a common TTF font so ImageSharp can render text in Linux containers
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends fonts-dejavu-core fonts-noto-color-emoji && \
+    apt-get install -y --no-install-recommends fonts-dejavu-core && \
     rm -rf /var/lib/apt/lists/*
 
 USER app

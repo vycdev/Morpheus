@@ -9,40 +9,19 @@ namespace Morpheus.Utilities.Images;
 
 public static class ImageDeepFryer
 {
-    private static readonly string[] UnicodeEmojis =
-    [
-        "😂", "🤣", "💀", "😭", "😤", "😈", "😎", "🤡", "👹", "👺",
-        "💯", "🔥", "🅱", "👌", "👀", "🗿", "🥶", "🥵", "😩", "😳",
-        "🤯", "😱", "🫡", "🫠", "🤑", "🤮", "🤧", "😵", "🤪", "😏",
-        "🧠", "💅", "🙏", "👊", "✊", "🤝", "👏", "🫵", "☝️", "✌️",
-        "🤌", "💪", "👁️", "👄", "👁️‍🗨️", "🦴", "🦷", "👻", "💩", "🤖",
-        "👽", "🎃", "☠️", "🕶️", "🧢", "🎩", "👑", "💎", "💰", "💸",
-        "🚀", "🛸", "💣", "🧨", "⚡", "🌈", "🌶️", "🍑", "🍆", "🌽",
-        "🍕", "🍟", "🧃", "🍺", "🗑️", "🚽", "🪦", "⚰️", "🏆", "🥇",
-        "🎯", "🎮", "🕹️", "📱", "💻", "🔔", "📢", "🔊", "❗", "❓",
-        "‼️", "⁉️", "⚠️", "🚫", "🔞", "🆘", "🅰️", "🅾️", "🆒", "🆕",
-        "✅", "❌", "⭐", "💫", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣"
-    ];
+    // Directory containing pre-rendered Twemoji PNG files (72x72)
+    private static readonly string EmojiImageDir =
+        Path.Combine(AppContext.BaseDirectory, "Assets", "Emojis");
 
-    private static readonly string[] TextEmojis =
-    [
-        "XD", "B", ":D", "100", "OOF", ":3", "UwU", "OwO", ">:)", "lol",
-        "B)", "<3", "o_O", "D:", "X_X", ":P", ";)", ":O", "xD", "^^",
-        ":^)", "._.", "-_-", ">_<", "T_T", ":V", "c:", ":c", "0_0", ">:("
-    ];
+    // Cached list of emoji image paths, loaded once on first use
+    private static readonly Lazy<string[]> _emojiImages = new(() =>
+        Directory.Exists(EmojiImageDir)
+            ? Directory.GetFiles(EmojiImageDir, "*.png")
+            : []);
 
-    // Known emoji font names by platform
-    private static readonly string[] EmojiFontNames =
+    private static readonly string[] ShitpostTexts =
     [
-        "Segoe UI Emoji",       // Windows
-        "Noto Color Emoji",     // Linux
-        "Noto Emoji",           // Linux fallback
-        "Apple Color Emoji",    // macOS
-        "Segoe UI Symbol"       // Windows fallback
-    ];
-
-    private static readonly string[] ShitpostPhrases =
-    [
+        // Phrases
         "BRUH", "LMAO", "WHO DID THIS", "IM DEAD", "BOTTOM TEXT",
         "NO CAP", "FR FR", "NAH BRO", "SHEESH", "AYO?!", "REAL",
         "NPC BEHAVIOR", "CAUGHT IN 4K", "EMOTIONAL DAMAGE", "SUS",
@@ -50,7 +29,11 @@ public static class ImageDeepFryer
         "GONE WRONG", "NOT CLICKBAIT", "LITERALLY SHAKING",
         "I CANT", "HELP", "WHO ASKED", "RATIO", "COPE",
         "SEETHE", "TOUCH GRASS", "ITS GIVING", "NO SHOT",
-        "WHAT THE SIGMA", "SKIBIDI", "GYATT"
+        "WHAT THE SIGMA", "SKIBIDI", "GYATT",
+        // Text emojis
+        "XD", "B", ":D", "100", "OOF", ":3", "UwU", "OwO", ">:)", "lol",
+        "B)", "<3", "o_O", "D:", "X_X", ":P", ";)", ":O", "xD", "^^",
+        ":^)", "._.", "-_-", ">_<", "T_T", ":V", "c:", ":c", "0_0", ">:("
     ];
 
     private static readonly Color[] BrightColors =
@@ -179,32 +162,23 @@ public static class ImageDeepFryer
         int width = image.Width;
         int height = image.Height;
 
-        // 1. Text overlays (before effects so they get distorted too)
-        if (!SystemFonts.Families.Any())
-            throw new InvalidOperationException("No system fonts available");
-
-        FontFamily defaultFont = SystemFonts.Families.First();
-        FontFamily? emojiFontOrNull = FindEmojiFont();
-        FontFamily emojiFont = emojiFontOrNull ?? defaultFont;
-        bool hasEmojiFont = emojiFontOrNull.HasValue;
-
-        // Only use unicode emojis if an emoji font is available, otherwise stick to text
-        string[] emojiPool = hasEmojiFont
-            ? UnicodeEmojis.Concat(TextEmojis).ToArray()
-            : TextEmojis;
-        string emoji = emojiPool[random.Next(emojiPool.Length)];
-        string phrase = ShitpostPhrases[random.Next(ShitpostPhrases.Length)];
-
+        // 1. Overlays (before effects so they get distorted too)
         (Rectangle regionA, Rectangle regionB) = GetPlacementRegions(width, height, random);
         bool emojiFirst = random.Next(2) == 0;
         Rectangle emojiRegion = emojiFirst ? regionA : regionB;
-        Rectangle phraseRegion = emojiFirst ? regionB : regionA;
+        Rectangle textRegion = emojiFirst ? regionB : regionA;
 
-        bool isUnicodeEmoji = emoji.Any(c => c > 127);
-        FontFamily emojiFontFamily = isUnicodeEmoji ? emojiFont : defaultFont;
+        // Emoji overlay from pre-rendered Twemoji PNGs
+        string[] emojiFiles = _emojiImages.Value;
+        if (emojiFiles.Length > 0)
+            TryOverlayEmojiImage(image, emojiFiles[random.Next(emojiFiles.Length)], random, emojiRegion);
 
-        OverlayFittedText(image, emoji, emojiFontFamily, random, emojiRegion);
-        OverlayFittedText(image, phrase, defaultFont, random, phraseRegion);
+        // Text overlay (phrases + text emojis)
+        if (!SystemFonts.Families.Any())
+            throw new InvalidOperationException("No system fonts available");
+        FontFamily defaultFont = SystemFonts.Families.First();
+        string text = ShitpostTexts[random.Next(ShitpostTexts.Length)];
+        TryOverlayFittedText(image, text, defaultFont, random, textRegion);
 
         // 2. Random distortion: bulge or twist
         if (random.Next(2) == 0)
@@ -224,14 +198,58 @@ public static class ImageDeepFryer
         return outputMs.ToArray();
     }
 
-    private static FontFamily? FindEmojiFont()
+    private static void TryOverlayEmojiImage(Image<Rgba32> target, string emojiPath, Random random, Rectangle region)
     {
-        foreach (string name in EmojiFontNames)
+        try
         {
-            if (SystemFonts.TryGet(name, out FontFamily family))
-                return family;
+            using Image<Rgba32> emojiImage = Image.Load<Rgba32>(emojiPath);
+
+            // Scale to fit region (30-60% of region height)
+            float targetSize = region.Height * (0.3f + (float)(random.NextDouble() * 0.3));
+            float scale = targetSize / Math.Max(emojiImage.Width, emojiImage.Height);
+            int newW = Math.Max(1, (int)(emojiImage.Width * scale));
+            int newH = Math.Max(1, (int)(emojiImage.Height * scale));
+            emojiImage.Mutate(ctx => ctx.Resize(newW, newH));
+
+            // Boost brightness so emoji survives the deepfry darkening
+            emojiImage.Mutate(ctx => ctx.Brightness(1.5f).Contrast(1.5f));
+
+            // Random non-uniform stretching, clamped to region
+            float stretchX = 0.6f + (float)(random.NextDouble() * 1.5);
+            float stretchY = 0.6f + (float)(random.NextDouble() * 1.5);
+            int finalW = Math.Clamp((int)(emojiImage.Width * stretchX), 1, region.Width);
+            int finalH = Math.Clamp((int)(emojiImage.Height * stretchY), 1, region.Height);
+            emojiImage.Mutate(ctx => ctx.Resize(finalW, finalH));
+
+            // Mild rotation (-20 to +20 degrees)
+            float angle = (float)(random.NextDouble() * 40 - 20);
+            emojiImage.Mutate(ctx => ctx.Rotate(angle));
+
+            // Position within the region
+            int maxX = Math.Max(0, region.Right - emojiImage.Width);
+            int maxY = Math.Max(0, region.Bottom - emojiImage.Height);
+            int x = random.Next(region.X, Math.Max(region.X + 1, maxX + 1));
+            int y = random.Next(region.Y, Math.Max(region.Y + 1, maxY + 1));
+
+            float opacity = 0.9f + (float)(random.NextDouble() * 0.1);
+            target.Mutate(ctx => ctx.DrawImage(emojiImage, new Point(x, y), opacity));
         }
-        return null;
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY] Emoji image overlay failed for \"{emojiPath}\": {ex.Message}");
+        }
+    }
+
+    private static void TryOverlayFittedText(Image<Rgba32> target, string text, FontFamily fontFamily, Random random, Rectangle region)
+    {
+        try
+        {
+            OverlayFittedText(target, text, fontFamily, random, region);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY] Text overlay failed for \"{text}\": {ex.Message}");
+        }
     }
 
     private static (Rectangle, Rectangle) GetPlacementRegions(int width, int height, Random random)
