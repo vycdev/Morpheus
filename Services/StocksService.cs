@@ -243,6 +243,90 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     }
 
     /// <summary>
+    /// Transfer stock shares between users. No fees or taxes.
+    /// Pass null for sharesToTransfer to transfer all shares.
+    /// </summary>
+    public async Task<(bool success, string message)> TransferStock(int fromUserId, int toUserId, int stockId, decimal? sharesToTransfer)
+    {
+        if (fromUserId == toUserId) return (false, "You can't transfer shares to yourself.");
+
+        User? sender = await dbContext.Users.FindAsync(fromUserId);
+        if (sender == null) return (false, "Sender not found.");
+
+        User? receiver = await dbContext.Users.FindAsync(toUserId);
+        if (receiver == null) return (false, "Receiver not found.");
+
+        Stock? stock = await dbContext.Stocks.FindAsync(stockId);
+        if (stock == null) return (false, "Stock not found.");
+
+        StockHolding? senderHolding = await dbContext.StockHoldings
+            .FirstOrDefaultAsync(sh => sh.UserId == fromUserId && sh.StockId == stockId);
+
+        if (senderHolding == null || senderHolding.Shares <= 0)
+            return (false, "You don't own any shares of this stock.");
+
+        decimal actualShares = sharesToTransfer ?? senderHolding.Shares;
+        if (actualShares <= 0) return (false, "Amount must be positive.");
+        if (actualShares > senderHolding.Shares)
+            return (false, $"You only own **{senderHolding.Shares:F4}** shares.");
+
+        // Calculate proportional cost basis
+        decimal investedRatio = actualShares / senderHolding.Shares;
+        decimal investedTransferred = senderHolding.TotalInvested * investedRatio;
+
+        // Deduct from sender
+        senderHolding.Shares -= actualShares;
+        senderHolding.TotalInvested -= investedTransferred;
+
+        if (senderHolding.Shares <= 0.000001m) // float cleanup
+        {
+            senderHolding.Shares = 0;
+            senderHolding.TotalInvested = 0;
+        }
+
+        // Get or create receiver holding
+        StockHolding? receiverHolding = await dbContext.StockHoldings
+            .FirstOrDefaultAsync(sh => sh.UserId == toUserId && sh.StockId == stockId);
+
+        if (receiverHolding == null)
+        {
+            receiverHolding = new StockHolding
+            {
+                UserId = toUserId,
+                StockId = stockId,
+                Shares = actualShares,
+                TotalInvested = investedTransferred,
+                InsertDate = DateTime.UtcNow
+            };
+            await dbContext.StockHoldings.AddAsync(receiverHolding);
+        }
+        else
+        {
+            receiverHolding.Shares += actualShares;
+            receiverHolding.TotalInvested += investedTransferred;
+        }
+
+        // Record transaction
+        StockTransaction transaction = new()
+        {
+            UserId = fromUserId,
+            TargetUserId = toUserId,
+            StockId = stockId,
+            Type = TransactionType.StockTransfer,
+            Amount = actualShares * stock.Price,
+            Fee = 0,
+            Shares = actualShares,
+            PriceAtTransaction = stock.Price,
+            InsertDate = DateTime.UtcNow
+        };
+        await dbContext.StockTransactions.AddAsync(transaction);
+
+        await dbContext.SaveChangesAsync();
+
+        return (true, $"Transferred **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nValue: **${actualShares * stock.Price:F2}** | Fee: **$0.00**");
+    }
+
+    /// <summary>
     /// Calculate and update the stock price based on entity XP activity.
     /// Uses a logarithmic scale comparing "Yesterday's Performance" vs "7-Day Moving Average".
     /// Change = 10 * Log2(Current / Baseline).

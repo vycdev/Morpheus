@@ -26,5 +26,8 @@ public enum TransactionType
     RobberyWin = 7,
 
     [Display(Name = "Robbery Loss")]
-    RobberyLoss = 8
+    RobberyLoss = 8,
+
+    [Display(Name = "Stock Transfer")]
+    StockTransfer = 9
 }

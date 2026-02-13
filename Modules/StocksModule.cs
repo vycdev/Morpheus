@@ -136,6 +136,58 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
         await ReplyAsync(embed: embed.Build());
     }
 
+    [Name("Stock Transfer")]
+    [Summary("Transfer stock shares to another user. No fees or taxes.")]
+    [Command("stock transfer")]
+    [Alias("stock give")]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 30)]
+    public async Task StockTransferAsync(string target, IUser targetUser, string amountStr = "all")
+    {
+        User? sender = Context.DbUser;
+        if (sender == null) { await ReplyAsync("User not found."); return; }
+
+        var resolved = await ResolveTarget(target);
+        if (resolved == null) { await ReplyAsync("Invalid target. Mention a user, #channel, or use `guild`."); return; }
+        var (_, entityType, entityId, displayName) = resolved.Value;
+
+        Stock? stock = await dbContext.Stocks
+            .FirstOrDefaultAsync(s => s.EntityType == entityType && s.EntityId == entityId);
+
+        if (stock == null) { await ReplyAsync("No stock found for that target."); return; }
+
+        User? receiver = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == targetUser.Id);
+        if (receiver == null)
+        {
+            if (targetUser is SocketUser socketTarget)
+                receiver = await usersService.TryGetCreateUser(socketTarget);
+        }
+
+        if (receiver == null) { await ReplyAsync("Recipient not found."); return; }
+
+        decimal? sharesToTransfer = null;
+        if (amountStr.ToLower() != "all")
+        {
+            if (!decimal.TryParse(amountStr, out decimal parsed) || parsed <= 0)
+            {
+                await ReplyAsync("Invalid amount. Use a positive number or `all`.");
+                return;
+            }
+            sharesToTransfer = parsed;
+        }
+
+        var (success, message) = await stocksService.TransferStock(sender.Id, receiver.Id, stock.Id, sharesToTransfer);
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .WithTitle(success ? "Stock Transfer Complete" : "Transfer Failed")
+            .WithDescription(message)
+            .WithColor(success ? Color.Green : Color.Red)
+            .WithFooter($"Stock: {displayName} ({entityType}) | {Context.User.Username} → {targetUser.Username}")
+            .WithCurrentTimestamp();
+
+        await ReplyAsync(embed: embed.Build());
+    }
+
     [Name("Stock Portfolio")]
     [Summary("View your stock portfolio or another user's. Shows all holdings with current values.")]
     [Command("stock portfolio")]
