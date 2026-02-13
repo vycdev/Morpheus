@@ -94,7 +94,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
     }
 
     [Name("Stock Sell")]
-    [Summary("Sell shares of a stock. 10% tax on profits applies.")]
+    [Summary("Sell shares of a stock. 10% tax on profits (35% if sold within 48h of buying).")]
     [Command("stock sell")]
     [Alias("stock withdraw", "withdraw")]
     [RequireContext(ContextType.Guild)]

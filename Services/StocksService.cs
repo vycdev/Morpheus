@@ -9,7 +9,10 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
 {
     private const decimal BuyFeeRate = 0.0005m; // 0.05%
     private const decimal SellProfitTaxRate = 0.10m; // 10% on profit
+    private const decimal ShortTermSellProfitTaxRate = 0.35m; // 35% on profit if sold within short-term window
+    private static readonly TimeSpan ShortTermWindow = TimeSpan.FromHours(48);
     private const decimal TransferFeeRate = 0.05m; // 5%
+    private const int MinBaselineDays = 7; // Minimum days before stock price starts moving
 
     /// <summary>
     /// Gets or creates a stock for the given entity.
@@ -138,12 +141,21 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         decimal costPerShare = holding.TotalInvested / holding.Shares;
         decimal costBasis = costPerShare * actualShares;
 
+        // Check if the most recent buy was within the short-term window
+        StockTransaction? lastBuy = await dbContext.StockTransactions
+            .Where(t => t.UserId == userId && t.StockId == stockId && t.Type == TransactionType.StockBuy)
+            .OrderByDescending(t => t.InsertDate)
+            .FirstOrDefaultAsync();
+
+        bool isShortTerm = lastBuy != null && (DateTime.UtcNow - lastBuy.InsertDate) < ShortTermWindow;
+
         decimal profit = grossProceeds - costBasis;
         decimal tax = 0m;
 
         if (profit > 0)
         {
-            tax = profit * SellProfitTaxRate;
+            decimal taxRate = isShortTerm ? ShortTermSellProfitTaxRate : SellProfitTaxRate;
+            tax = profit * taxRate;
         }
 
         decimal netProceeds = grossProceeds - tax;
@@ -183,7 +195,8 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
 
         await dbContext.SaveChangesAsync();
 
-        return (true, $"Sold **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nGross: **${grossProceeds:F2}** | Tax: **${tax:F2}** | Net: **${netProceeds:F2}**", netProceeds);
+        string taxLabel = isShortTerm ? "Tax (short-term 35%)" : "Tax (10%)";
+        return (true, $"Sold **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nGross: **${grossProceeds:F2}** | {taxLabel}: **${tax:F2}** | Net: **${netProceeds:F2}**", netProceeds);
     }
 
     /// <summary>
@@ -236,6 +249,16 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     /// </summary>
     public async Task UpdateStockPrice(Stock stock, DateTime utcNow)
     {
+        // Don't update price until the entity has at least MinBaselineDays of activity history
+        // Without enough history, the baseline is meaningless and easily gamed
+        DateTime? earliestActivity = await GetEarliestActivityDate(stock.EntityType, stock.EntityId);
+        if (earliestActivity == null || (utcNow - earliestActivity.Value).TotalDays < MinBaselineDays)
+        {
+            stock.DailyChangePercent = 0;
+            stock.LastUpdatedDate = utcNow;
+            return;
+        }
+
         DateOnly today = DateOnly.FromDateTime(utcNow);
         DateOnly yesterday = today.AddDays(-1);
 
@@ -250,7 +273,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         decimal xpBaselineAverage = xpBaselineTotal / 7m;
 
         // Smoothing constant to prevent volatility at low volumes and avoid division by zero
-        const decimal smoothing = 1000m;
+        const decimal smoothing = 50m;
 
         decimal currentMetric = xpYesterday + smoothing;
         decimal baselineMetric = xpBaselineAverage + smoothing;
@@ -318,6 +341,33 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         return await dbContext.UserActivity
             .Where(ua => ua.DiscordChannelId == channel.DiscordId && ua.InsertDate >= start && ua.InsertDate < end)
             .SumAsync(ua => (long)ua.XpGained);
+    }
+
+    /// <summary>
+    /// Get the earliest activity date for an entity, to determine if enough history exists.
+    /// </summary>
+    private async Task<DateTime?> GetEarliestActivityDate(StockEntityType entityType, int entityId)
+    {
+        IQueryable<DateTime> query = entityType switch
+        {
+            StockEntityType.User => dbContext.UserActivity
+                .Where(ua => ua.UserId == entityId)
+                .Select(ua => ua.InsertDate),
+
+            StockEntityType.Guild => dbContext.UserActivity
+                .Where(ua => ua.GuildId == entityId)
+                .Select(ua => ua.InsertDate),
+
+            StockEntityType.Channel => dbContext.Channels
+                .Where(c => c.Id == entityId)
+                .Join(dbContext.UserActivity, c => c.DiscordId, ua => ua.DiscordChannelId, (c, ua) => ua.InsertDate),
+
+            _ => dbContext.UserActivity.Where(ua => false).Select(ua => ua.InsertDate)
+        };
+
+        return await query.OrderBy(d => d).FirstOrDefaultAsync() is DateTime dt && dt != default
+            ? dt
+            : null;
     }
 
     /// <summary>
