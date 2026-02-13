@@ -26,7 +26,7 @@ FROM base AS final
 USER root
 # Install a common TTF font so ImageSharp can render text in Linux containers
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends fonts-dejavu-core && \
+    apt-get install -y --no-install-recommends fonts-dejavu-core fonts-noto-color-emoji && \
     rm -rf /var/lib/apt/lists/*
 
 USER app

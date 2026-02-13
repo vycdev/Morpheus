@@ -9,9 +9,8 @@ namespace Morpheus.Utilities.Images;
 
 public static class ImageDeepFryer
 {
-    private static readonly string[] ShitpostEmojis =
+    private static readonly string[] UnicodeEmojis =
     [
-        // Classic shitpost emojis
         "😂", "🤣", "💀", "😭", "😤", "😈", "😎", "🤡", "👹", "👺",
         "💯", "🔥", "🅱", "👌", "👀", "🗿", "🥶", "🥵", "😩", "😳",
         "🤯", "😱", "🫡", "🫠", "🤑", "🤮", "🤧", "😵", "🤪", "😏",
@@ -22,8 +21,11 @@ public static class ImageDeepFryer
         "🍕", "🍟", "🧃", "🍺", "🗑️", "🚽", "🪦", "⚰️", "🏆", "🥇",
         "🎯", "🎮", "🕹️", "📱", "💻", "🔔", "📢", "🔊", "❗", "❓",
         "‼️", "⁉️", "⚠️", "🚫", "🔞", "🆘", "🅰️", "🅾️", "🆒", "🆕",
-        "✅", "❌", "⭐", "💫", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣",
-        // Text-based emojis (always render)
+        "✅", "❌", "⭐", "💫", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣"
+    ];
+
+    private static readonly string[] TextEmojis =
+    [
         "XD", "B", ":D", "100", "OOF", ":3", "UwU", "OwO", ">:)", "lol",
         "B)", "<3", "o_O", "D:", "X_X", ":P", ";)", ":O", "xD", "^^",
         ":^)", "._.", "-_-", ">_<", "T_T", ":V", "c:", ":c", "0_0", ">:("
@@ -182,9 +184,15 @@ public static class ImageDeepFryer
             throw new InvalidOperationException("No system fonts available");
 
         FontFamily defaultFont = SystemFonts.Families.First();
-        FontFamily emojiFont = FindEmojiFont() ?? defaultFont;
+        FontFamily? emojiFontOrNull = FindEmojiFont();
+        FontFamily emojiFont = emojiFontOrNull ?? defaultFont;
+        bool hasEmojiFont = emojiFontOrNull.HasValue;
 
-        string emoji = ShitpostEmojis[random.Next(ShitpostEmojis.Length)];
+        // Only use unicode emojis if an emoji font is available, otherwise stick to text
+        string[] emojiPool = hasEmojiFont
+            ? UnicodeEmojis.Concat(TextEmojis).ToArray()
+            : TextEmojis;
+        string emoji = emojiPool[random.Next(emojiPool.Length)];
         string phrase = ShitpostPhrases[random.Next(ShitpostPhrases.Length)];
 
         (Rectangle regionA, Rectangle regionB) = GetPlacementRegions(width, height, random);
