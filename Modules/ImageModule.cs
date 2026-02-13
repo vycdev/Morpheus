@@ -227,6 +227,89 @@ public class ImageModule(DiscordSocketClient client, CommandService commands, In
         }
     }
 
+    [Name("Deepfry Extra")]
+    [Summary("Deepfry an image with random emojis and shitpost text overlaid.")]
+    [Command("deepfryextra")]
+    [Alias("deepfryplus", "extrafry", "shitfry")]
+    [RequireBotPermission(GuildPermission.EmbedLinks)]
+    [RequireBotPermission(GuildPermission.AttachFiles)]
+    [RequireUserPermission(GuildPermission.AttachFiles)]
+    [RateLimit(3, 30)]
+    public async Task DeepfryExtraAsync()
+    {
+        using var typing = Context.Channel.EnterTypingState();
+
+        IAttachment? attachment = null;
+        if (Context.Message.Attachments.Count > 0)
+        {
+            attachment = Context.Message.Attachments.First();
+        }
+        else if (Context.Message.ReferencedMessage != null)
+        {
+            if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage refMsg)
+            {
+                await ReplyAsync("You need to reply to a message that contains an image or attach one to this command.");
+                return;
+            }
+
+            if (refMsg.Attachments.Count == 0)
+            {
+                await ReplyAsync("The message you replied to does not contain an attachment. Please attach an image or reply to a message that has one.");
+                return;
+            }
+
+            attachment = refMsg.Attachments.First();
+        }
+
+        if (attachment == null)
+        {
+            await ReplyAsync("Please attach an image to deepfry or reply to a message that contains one.");
+            return;
+        }
+
+        byte[] imageBytes;
+        try
+        {
+            using HttpResponseMessage response = await httpClient.GetAsync(attachment.Url);
+            response.EnsureSuccessStatusCode();
+            imageBytes = await response.Content.ReadAsByteArrayAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY EXTRA ERROR] Failed to download image: {ex}");
+            await ReplyAsync("Failed to download the image. Please try again later.");
+            return;
+        }
+
+        byte[] deepfriedImage;
+        try
+        {
+            deepfriedImage = ImageDeepFryer.DeepFryExtra(imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY EXTRA ERROR] Processing failed: {ex}");
+            await ReplyAsync("Failed to deepfry the image. Please try again with a different image.");
+            return;
+        }
+
+        if (deepfriedImage == null || deepfriedImage.Length == 0)
+        {
+            await ReplyAsync("Failed to deepfry the image. Please try again with a different image.");
+            return;
+        }
+
+        MemoryStream stream = new(deepfriedImage);
+        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_extra.png", "Here's your extra crispy deepfried image! 🔥", isSpoiler: false);
+        stream.Dispose();
+
+        if (uploadResult == null)
+        {
+            await ReplyAsync("Failed to upload the deepfried image. Please try again later.");
+            return;
+        }
+    }
+
     [Name("Get Captcha")]
     [Summary("Get a captcha image to prove you're not a bot.")]
     [Command("captcha")]
