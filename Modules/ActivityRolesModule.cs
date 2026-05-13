@@ -30,24 +30,18 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
         dbContext.Guilds.Update(dbGuild);
 
         // Get activity roles for the guild and delete them if they exist 
-        // For each type in ActivityRoleType
         await ReplyAsync("Attempting to delete existing activity roles if they are present...");
-        foreach (RoleType roleType in Enum.GetValues(typeof(ActivityRoleType)).Cast<RoleType>())
+        List<RoleType> activityRoleTypes = [.. ActivityService.ActivityRoleDefinitions.Select(d => d.RoleType)];
+        List<Role> existingRoleRecords = [.. dbContext.Roles.Where(r => r.GuildId == dbGuild.Id && activityRoleTypes.Contains(r.RoleType))];
+
+        foreach (ulong roleId in existingRoleRecords.Select(r => r.RoleId).Distinct())
         {
-            // Find the role in the database
-            Role? role = dbContext.Roles.FirstOrDefault(r => r.GuildId == dbGuild.Id && r.RoleType == roleType);
-
-            if (role == null)
-            {
-                continue; // If the role doesn't exist, skip to the next one
-            }
-
             // Find the role in the guild
-            SocketRole guildRole = Context.Guild.GetRole(role.RoleId);
+            SocketRole guildRole = Context.Guild.GetRole(roleId);
 
             if (guildRole == null)
             {
-                continue; // If the role doesn't exist in the guild, skip to the next one
+                continue; // If the role doesn't exist in the guild, only the database record needs cleanup
             }
 
             // Delete the role from the guild
@@ -60,22 +54,23 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
             {
                 await ReplyAsync($"Failed to delete role: {guildRole.Name}.");
             }
-
-            // Remove the role from the database
-            dbContext.Roles.RemoveRange(dbContext.Roles.Where(r => r.GuildId == dbGuild.Id && r.RoleType == roleType));
         }
+
+        // Remove all old activity role records, including stale records whose Discord role no longer exists
+        dbContext.Roles.RemoveRange(existingRoleRecords);
 
         // If activity roles have been enabled
         if (dbGuild.UseActivityRoles)
         {
             await ReplyAsync("Activity roles have been enabled. Creating new roles...");
-            List<RestRole> newRoles = [];
+            Dictionary<RoleType, RestRole> newRoles = [];
 
             // For each type in RoleType
-            foreach (RoleType roleType in Enum.GetValues(typeof(ActivityRoleType)).Cast<RoleType>())
+            foreach (ActivityRoleDefinition definition in ActivityService.ActivityRoleDefinitions)
             {
+                RoleType roleType = definition.RoleType;
                 RestRole role = await Context.Guild.CreateRoleAsync(name: roleType.GetDisplayName(), color: roleType.GetDiscordColor(), isHoisted: false);
-                newRoles.Add(role);
+                newRoles[roleType] = role;
 
                 // Add the role to the database
                 dbContext.Roles.Add(new Role
@@ -89,22 +84,26 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
             await ReplyAsync("New roles have been created. Grabbing most active users...");
 
             // Assign the roles to the users based on their activity 
-            List<UserLevels> userLevels = activityService.GetTopActivity(dbGuild.Id);
-            List<List<User>> slices = activityService.GetUserSlices(userLevels, [0.01, 0.05, 0.10, 0.20, 0.30]);
+            List<IGuildUser> guildUsers = [.. (await Context.Guild.GetUsersAsync().FlattenAsync()).Where(u => !u.IsBot)];
+            ActivityRoleAssignmentResult assignments = activityService.GetActivityRoleAssignments(dbGuild.Id, guildUsers.Select(u => u.Id));
 
-            await ReplyAsync($"Top 1%: {slices[0].Count}, Top 5%: {slices[1].Count}, Top 10%: {slices[2].Count}, Top 20%: {slices[3].Count}, Top 30%: {slices[4].Count}");
+            await ReplyAsync($"Eligible active users: {assignments.EligibleUserCount}");
+            await ReplyAsync(FormatAssignmentCounts(assignments));
             await ReplyAsync("Assigning roles to users. This might take a while...");
             try
             {
-                for (int i = 0; i < 5; i++)
+                foreach (ActivityRoleDefinition definition in ActivityService.ActivityRoleDefinitions)
                 {
-                    foreach (User user in slices[i])
+                    RoleType roleType = definition.RoleType;
+                    RestRole role = newRoles[roleType];
+
+                    foreach (User user in assignments.UsersByRole[roleType])
                     {
                         SocketGuildUser guildUser = Context.Guild.GetUser(user.DiscordId);
 
                         if (guildUser != null)
                         {
-                            await guildUser.AddRoleAsync(newRoles[i].Id);
+                            await guildUser.AddRoleAsync(role.Id);
                             await Task.Delay(100); // Adding a small delay to avoid hitting rate limits
                         }
                     }
@@ -127,5 +126,14 @@ public class ActivityRolesModule(DB dbContext, ActivityService activityService) 
             await ReplyAsync("You can customize the roles however you want. But if you delete a role a new one will be created in it's place");
             await ReplyAsync("Make sure the bot can continue to manage the created roles.");
         }
+    }
+
+    private static string FormatAssignmentCounts(ActivityRoleAssignmentResult assignments)
+    {
+        return string.Join(", ", ActivityService.ActivityRoleDefinitions.Select(definition =>
+        {
+            assignments.UsersByRole.TryGetValue(definition.RoleType, out List<User>? users);
+            return $"{definition.RoleType.GetDisplayName()}: {users?.Count ?? 0}";
+        }));
     }
 }
