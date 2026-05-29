@@ -15,6 +15,12 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
     private void Log(string message) =>
         logsService.Log($"Quartz Job - {message}");
 
+    private void LogWarning(string message, Exception ex) =>
+        logsService.Log($"Quartz Job - {message}: {ex.GetType().Name}: {ex.Message}", LogSeverity.Warning);
+
+    private void LogError(string message, Exception ex) =>
+        logsService.Log($"Quartz Job - {message}: {ex.GetType().Name}: {ex.Message}", LogSeverity.Error);
+
     public async Task Execute(IJobExecutionContext context)
     {
         // Take all guilds that has activity roles enabled
@@ -51,20 +57,28 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
                 foreach (ActivityRoleDefinition definition in ActivityService.ActivityRoleDefinitions)
                 {
                     RoleType roleType = definition.RoleType;
-                    Role? role = await EnsureActivityRole(discordGuild, guild, roleType);
-
-                    if (role == null)
+                    try
                     {
-                        Log($"Failed to ensure role {roleType.GetDisplayName()} in guild {guild.Name}. Skipping assignment.");
-                        continue;
-                    }
+                        Role? role = await EnsureActivityRole(discordGuild, guild, roleType);
 
-                    await ReconcileActivityRoleUsers(discordGuild, guildUsers, roleType, role.RoleId, assignments.UsersByRole[roleType]);
+                        if (role == null)
+                        {
+                            Log($"Failed to ensure role {roleType.GetDisplayName()} in guild {guild.Name}. Skipping assignment.");
+                            continue;
+                        }
+
+                        await ReconcileActivityRoleUsers(discordGuild, guildUsers, roleType, role.RoleId, assignments.UsersByRole[roleType]);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error reconciling role {roleType.GetDisplayName()} for guild {guild.Name}", ex);
+                        dB.ChangeTracker.Clear();
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Log($"Error processing activity roles for guild {guild.Name}: {ex.Message}");
+                LogError($"Error processing activity roles for guild {guild.Name}", ex);
             }
 
             await Task.Delay(1000);
@@ -136,7 +150,15 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
         {
             Log($"Removing role {roleName} from user {user.Username} ({user.Id}) in guild {discordGuild.Name}.");
 
-            await user.RemoveRoleAsync(roleId);
+            try
+            {
+                await user.RemoveRoleAsync(roleId);
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Failed to remove role {roleName} from user {user.Username} ({user.Id}) in guild {discordGuild.Name}", ex);
+            }
+
             await Task.Delay(100);
         }
 
@@ -147,8 +169,16 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
 
             Log($"Adding role {roleName} to user {user.Username} ({user.Id}) in guild {discordGuild.Name}.");
 
-            await user.AddRoleAsync(roleId);
-            usersWithRoleIds.Add(desiredUserId);
+            try
+            {
+                await user.AddRoleAsync(roleId);
+                usersWithRoleIds.Add(desiredUserId);
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Failed to add role {roleName} to user {user.Username} ({user.Id}) in guild {discordGuild.Name}", ex);
+            }
+
             await Task.Delay(100);
         }
     }
