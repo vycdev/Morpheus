@@ -23,6 +23,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Create unique index on DiscordId
+        modelBuilder.Entity<BotSetting>().HasIndex(s => s.Key).IsUnique();
         modelBuilder.Entity<User>().HasIndex(u => u.DiscordId).IsUnique();
         modelBuilder.Entity<Guild>().HasIndex(g => g.DiscordId).IsUnique();
         modelBuilder.Entity<QuoteApproval>().HasIndex(a => new { a.QuoteApprovalMessageId, a.UserId }).IsUnique();
