@@ -10,7 +10,7 @@ using System.Text.Json;
 
 namespace Morpheus.Modules;
 
-public class ImageModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class ImageModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
 

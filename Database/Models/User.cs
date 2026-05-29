@@ -12,7 +12,7 @@ public class User
     [Required]
     public ulong DiscordId { get; set; }
 
-    public string Username { get; set; }
+    public string Username { get; set; } = string.Empty;
 
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
@@ -29,10 +29,10 @@ public class User
     public DateTime LastSuccessfullyRobbed { get; set; } = DateTime.MinValue;
 
     // Foreign keys
-    public List<Quote> Quotes { get; set; }
-    public List<ButtonGamePress> ButtonGamePresses { get; set; }
-    public List<UserActivity> UserActivity { get; set; }
-    public List<UserLevels> UserLevels { get; set; }
-    public List<StockHolding> StockHoldings { get; set; }
-    public List<StockTransaction> StockTransactions { get; set; }
+    public List<Quote> Quotes { get; set; } = [];
+    public List<ButtonGamePress> ButtonGamePresses { get; set; } = [];
+    public List<UserActivity> UserActivity { get; set; } = [];
+    public List<UserLevels> UserLevels { get; set; } = [];
+    public List<StockHolding> StockHoldings { get; set; } = [];
+    public List<StockTransaction> StockTransactions { get; set; } = [];
 }

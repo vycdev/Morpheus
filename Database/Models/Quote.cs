@@ -16,7 +16,7 @@ public class Quote
     public int UserId { get; set; }
 
     [Required]
-    public string Content { get; set; }
+    public string Content { get; set; } = string.Empty;
 
     public bool Approved { get; set; } = false;
 
@@ -26,10 +26,10 @@ public class Quote
 
     // Foreign keys
     [ForeignKey("UserId")]
-    public User User { get; set; }
+    public User User { get; set; } = null!;
 
     [ForeignKey("GuildId")]
-    public Guild Guild { get; set; }
+    public Guild Guild { get; set; } = null!;
 
-    public List<QuoteScore> Scores { get; set; }
+    public List<QuoteScore> Scores { get; set; } = [];
 }

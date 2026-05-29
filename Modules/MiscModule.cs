@@ -16,7 +16,7 @@ using System.Text;
 
 namespace Morpheus.Modules;
 
-public class MiscModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
 
@@ -442,6 +442,11 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     public async Task HowGay(SocketGuildUser? user = null)
     {
         user ??= Context.User as SocketGuildUser;
+        if (user == null)
+        {
+            await ReplyAsync("User not found.");
+            return;
+        }
 
         string name = user.Nickname ?? user.Username;
 
@@ -519,20 +524,27 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
 
         string json = await response.Content.ReadAsStringAsync();
         JObject data = JObject.Parse(json);
-        JArray list = (JArray)data["list"];
+        JArray? list = data["list"] as JArray;
 
-        if (list.Count == 0)
+        if (list == null || list.Count == 0)
         {
             await ReplyAsync($"No definition found for **{word}**.");
             return;
         }
 
-        string definition = list[0]["definition"].ToString();
-        string example = list[0]["example"].ToString();
-        string permalink = list[0]["permalink"].ToString();
+        JObject? entry = list[0] as JObject;
+        if (entry == null)
+        {
+            await ReplyAsync("Urban Dictionary returned an unexpected response. Try again later.");
+            return;
+        }
+
+        string definition = entry.Value<string>("definition") ?? "No definition found.";
+        string example = entry.Value<string>("example") ?? "";
+        string permalink = entry.Value<string>("permalink") ?? "https://www.urbandictionary.com/";
 
         EmbedBuilder embed = new EmbedBuilder()
-            .WithTitle($"Urban Dictionary: **{word}**")
+            .WithTitle($"Urban Dictionary: **{word ?? "Random"}**")
             .WithUrl(permalink)
             .WithDescription(definition.Length > 1024 ? definition[..1021] + "..." : definition)
             .AddField("Example", string.IsNullOrWhiteSpace(example) ? "N/A" : example.Length > 1024 ? example[..1021] + "..." : example, false)
@@ -564,7 +576,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
         JObject data = JObject.Parse(content);
 
         // Check if server is online
-        if (data["online"] == null || !data["online"].Value<bool>())
+        if (data.Value<bool?>("online") != true)
         {
             Embed offlineEmbed = new EmbedBuilder()
                 .WithColor(Color.Orange)
@@ -589,7 +601,7 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
         int playersOnline = data["players"]?["online"]?.Value<int>() ?? 0;
         int maxPlayers = data["players"]?["max"]?.Value<int>() ?? 0;
         string software = data["software"]?.ToString() ?? "Unknown";
-        string serverImageBase64 = data["icon"]?.ToString(); // Base64 encoded image
+        string? serverImageBase64 = data["icon"]?.ToString(); // Base64 encoded image
 
         // Build a nicely formatted embed
         EmbedBuilder embed = new EmbedBuilder()
@@ -676,6 +688,11 @@ public class MiscModule(DiscordSocketClient client, CommandService commands, Int
     public async Task LoveCompatibility(SocketGuildUser user1, SocketGuildUser? user2)
     {
         user2 ??= Context.User as SocketGuildUser;
+        if (user2 == null)
+        {
+            await ReplyAsync("User not found.");
+            return;
+        }
 
         string name1 = user1.Nickname ?? user1.Username;
         string name2 = user2.Nickname ?? user2.Username;

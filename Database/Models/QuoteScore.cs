@@ -20,8 +20,8 @@ public class QuoteScore
 
     // Foreign keys
     [ForeignKey("QuoteId")]
-    public Quote Quote { get; set; }
+    public Quote Quote { get; set; } = null!;
 
     [ForeignKey("UserId")]
-    public User User { get; set; }
+    public User User { get; set; } = null!;
 }

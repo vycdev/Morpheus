@@ -17,6 +17,6 @@ public class ButtonGamePress
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
     // Foreign keys
-    public User User { get; set; }
-    public Guild Guild { get; set; }
+    public User User { get; set; } = null!;
+    public Guild? Guild { get; set; }
 }

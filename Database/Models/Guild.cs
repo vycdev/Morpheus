@@ -41,9 +41,9 @@ public class Guild
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
     // Foreign keys
-    public List<Quote> Quotes { get; set; }
-    public List<ButtonGamePress> ButtonGamePresses { get; set; }
-    public List<UserActivity> UserActivity { get; set; }
-    public List<UserLevels> UserLevels { get; set; }
-    public List<Role> Roles { get; set; }
+    public List<Quote> Quotes { get; set; } = [];
+    public List<ButtonGamePress> ButtonGamePresses { get; set; } = [];
+    public List<UserActivity> UserActivity { get; set; } = [];
+    public List<UserLevels> UserLevels { get; set; } = [];
+    public List<Role> Roles { get; set; } = [];
 }

@@ -9,9 +9,9 @@ public class Log
     public long Id { get; set; }
 
     public int Severity { get; set; }
-    public string Message { get; set; }
+    public string Message { get; set; } = string.Empty;
 
-    public string Version { get; set; }
+    public string Version { get; set; } = string.Empty;
 
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 }

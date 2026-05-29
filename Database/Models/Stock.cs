@@ -32,5 +32,5 @@ public class Stock
     public DateTime InsertDate { get; set; } = DateTime.UtcNow;
 
     // Navigation
-    public List<StockHolding> StockHoldings { get; set; }
+    public List<StockHolding> StockHoldings { get; set; } = [];
 }

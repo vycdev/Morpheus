@@ -19,7 +19,6 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     private readonly InteractionsHandler interactionHandler = interactionHandler;
     private readonly IServiceProvider serviceProvider = serviceProvider;
     private readonly DB dbContext = dbContext;
-    private readonly int HelpPageSize = 10;
 
     [Name("Set Welcome Channel")]
     [Summary("Sets the welcome channel where new join messages will appear.")]
