@@ -6,10 +6,6 @@ using Morpheus.Database.Models;
 using Morpheus.Services;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Utilities.Lists;
-using System.IO.Hashing;
-using System.Text;
-using Morpheus.Utilities.Text;
-using Morpheus.Utilities;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Morpheus.Handlers;
@@ -54,6 +50,7 @@ public class ActivityHandler
         var usersService = scope.ServiceProvider.GetRequiredService<UsersService>();
         var guildService = scope.ServiceProvider.GetRequiredService<GuildService>();
         var dbContext = scope.ServiceProvider.GetRequiredService<DB>();
+        var activityScoringService = scope.ServiceProvider.GetRequiredService<ActivityScoringService>();
         var activityLevelService = scope.ServiceProvider.GetRequiredService<ActivityLevelService>();
 
         User user = await usersService.TryGetCreateUser(message.Author);
@@ -62,150 +59,14 @@ public class ActivityHandler
         // If the guild doesn't exist, create it and then get it
         Guild guild = await guildService.TryGetCreateGuild(guildChannel.Guild);
 
-        // Timestamp and config
         DateTime now = DateTime.UtcNow;
-        int similarityWindowMinutes = Env.Get<int>("ACTIVITY_SIMILARITY_WINDOW_MINUTES", 10);
-        DateTime similarityWindowStart = now.AddMinutes(-similarityWindowMinutes);
-
-        string messageHash = Convert.ToBase64String(XxHash64.Hash(Encoding.UTF8.GetBytes(message.Content)));
-        // Compute SimHash over normalized trigrams (non-reversible)
-        (ulong simHash, int normLen) = SimHasher.ComputeSimHash(message.Content);
-
-        UserActivity? previousUserActivityInGuild = dbContext.UserActivity
-                .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id)
-                .OrderByDescending(ua => ua.InsertDate)
-                .FirstOrDefault();
-
-        // Fetch recent user activities for similarity checks within time window (cap for safety)
-        var recentForSimilarity = dbContext.UserActivity
-                .Where(ua => ua.UserId == user.Id && ua.GuildId == guild.Id && ua.InsertDate >= similarityWindowStart)
-                .OrderByDescending(ua => ua.InsertDate)
-                .Select(ua => new { ua.MessageSimHash, ua.NormalizedLength, ua.InsertDate })
-                .Take(200)
-                .ToList();
-
-        UserActivity? previousActivityInGuild = dbContext.UserActivity
-                .Where(ua => ua.GuildId == guild.Id)
-                .OrderByDescending(ua => ua.InsertDate)
-                .FirstOrDefault();
-
-        // Base XP for sending a message
-        int baseXP = 1;
-        // Length-based XP with logarithmic taper relative to guild average
-        // r = L / A, clamped to [0, 100]; bonus = B * log(1 + k*r) / log(1 + k)
-        // With B=4, k=0.1 -> at r=1 (about average length), bonus≈4
-        double avgLen = previousActivityInGuild?.GuildAverageMessageLength ?? 0.0;
-        double r = 1.0;
-        if (avgLen > 0.0)
-            r = message.Content.Length / avgLen;
-        if (r < 0.0) r = 0.0; else if (r > 100.0) r = 100.0;
-        const double B_len = 4.0;
-        const double k_len = 0.025;
-        double denom_len = Math.Log(1.0 + k_len);
-        double messageLengthXp = denom_len > 0.0
-            ? B_len * Math.Log(1.0 + (k_len * r)) / denom_len
-            : B_len * r; // extremely unlikely fallback
-
-        // If the message hash is the same as the previous message and sent within 60 seconds, no XP is gained
-        int similarityPenaltySimple = (previousUserActivityInGuild?.MessageHash == messageHash) && (Math.Abs((now - previousUserActivityInGuild.InsertDate).TotalSeconds) < 60) ? 0 : 1;
-
-        // Time-based factor: logarithmic rise over 0..5 seconds
-        // 0s => 0 (100% penalty), ~2.5s => >0.5 (most penalty gone), 5s => ~1 (almost no penalty)
-        double speedPenaltySimple = 1.0;
-        if (previousUserActivityInGuild != null)
-        {
-            double dtSec = (now - previousUserActivityInGuild.InsertDate).TotalSeconds;
-            if (dtSec < 0) dtSec = 0; else if (dtSec > 5) dtSec = 5;
-            const double k = 9.0; // curvature
-            speedPenaltySimple = Math.Log(1.0 + k * dtSec) / Math.Log(1.0 + k * 5.0);
-        }
-
-        // Similarity penalty via SimHash against recent messages in configured time window (ignore very short normalized texts)
-        double similarityPenaltyComplex = 1.0;
-        if (normLen >= 12 && recentForSimilarity.Count > 0 && simHash != 0UL)
-        {
-            double maxSimilarity = 0.0;
-            foreach (var prev in recentForSimilarity)
-            {
-                if (prev.MessageSimHash == 0UL || prev.NormalizedLength < 12)
-                    continue;
-                int hd = SimHasher.HammingDistance(simHash, prev.MessageSimHash);
-                double sim = 1.0 - (hd / 64.0);
-                if (sim > maxSimilarity)
-                    maxSimilarity = sim;
-            }
-
-            // Apply thresholded penalty (tuneable)
-            if (maxSimilarity >= 0.92)
-                similarityPenaltyComplex = 0.0; // effectively no XP for near-duplicates
-            else if (maxSimilarity >= 0.85)
-                similarityPenaltyComplex = 0.25; // heavy penalty
-        }
-
-        // Typing speed penalty based on WPM estimated from time since previous user activity
-        double speedPenaltyComplex = 1.0;
-        if (previousUserActivityInGuild != null && message.Content.Length >= 50)
-        {
-            double minutesSincePrev = Math.Max((now - previousUserActivityInGuild.InsertDate).TotalMinutes, 1e-6); // avoid div-by-zero
-            double charsTyped = message.Content.Length;
-            double cpm = charsTyped / minutesSincePrev; // characters per minute
-            double wpm = cpm / 5.0; // 5 chars ≈ 1 word
-
-            if (wpm > 200)
-            {
-                if (wpm >= 300)
-                {
-                    speedPenaltyComplex = 0.0;
-                }
-                else
-                {
-                    // Map wpm in (200,300) to x in (0,1) and use a logarithmic drop
-                    double x = (wpm - 200.0) / 100.0; // 0..1
-                    // dec goes 0->1 using log base 10: ln(1+9x)/ln(10)
-                    double dec = Math.Log(1.0 + 9.0 * x) / Math.Log(10.0);
-                    speedPenaltyComplex = 1.0 - dec; // 1->0
-                }
-            }
-        }
-
-        // Final XP: length and hash/time factors; timeXp applies to short messages, speedPenalty to fast typing, simPenalty for similarity
-        int xp = (int)Math.Floor((baseXP + messageLengthXp) * similarityPenaltySimple * similarityPenaltyComplex * speedPenaltySimple * speedPenaltyComplex);
-
-        // Calculate EMA average message length and message count
-        const double emaAlpha = 2.0 / (500.0 + 1.0); // N=500
-        double averageMessageLength;
-        int messageCount;
-        if (previousActivityInGuild == null)
-        {
-            messageCount = 1;
-            averageMessageLength = message.Content.Length;
-        }
-        else
-        {
-            messageCount = previousActivityInGuild.GuildMessageCount + 1;
-            double prevAvg = previousActivityInGuild.GuildAverageMessageLength;
-            if (prevAvg <= 0.0)
-                averageMessageLength = message.Content.Length;
-            else
-                averageMessageLength = (1.0 - emaAlpha) * prevAvg + emaAlpha * message.Content.Length;
-        }
-
-        // Create new user activity record
-        UserActivity userActivity = new()
-        {
-            DiscordChannelId = message.Channel.Id,
-            DiscordMessageId = message.Id,
-            GuildId = guild.Id,
-            InsertDate = now,
-            MessageHash = messageHash,
-            UserId = user.Id,
-            XpGained = xp,
-            MessageLength = message.Content.Length,
-            MessageSimHash = simHash,
-            NormalizedLength = normLen,
-            GuildAverageMessageLength = averageMessageLength,
-            GuildMessageCount = messageCount
-        };
+        UserActivity userActivity = await activityScoringService.CreateActivityAsync(
+            user.Id,
+            guild.Id,
+            message.Channel.Id,
+            message.Id,
+            message.Content,
+            now);
 
         var postSaveActions = new List<Func<Task>>();
 

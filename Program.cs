@@ -59,6 +59,7 @@ services.AddScoped<GuildService>();
 services.AddScoped<UsersService>();
 services.AddScoped<LogsService>();
 services.AddScoped<ActivityService>();
+services.AddScoped<ActivityScoringService>();
 services.AddScoped<ActivityLevelService>();
 services.AddScoped<ChannelService>();
 services.AddScoped<EconomyService>();

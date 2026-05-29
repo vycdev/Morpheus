@@ -47,6 +47,11 @@
 		</None>
 	</ItemGroup>
 	<ItemGroup>
+		<Compile Remove="Morpheus.Tests\**\*.cs" />
+		<EmbeddedResource Remove="Morpheus.Tests\**" />
+		<None Remove="Morpheus.Tests\**" />
+	</ItemGroup>
+	<ItemGroup>
 		<Folder Include="Migrations\" />
 		<Folder Include="Properties\PublishProfiles\" />
 	</ItemGroup>
