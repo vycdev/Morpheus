@@ -52,6 +52,7 @@ services.AddSingleton<DiscordSocketClient>();
 
 services.AddSingleton(commandServiceConfig);
 services.AddSingleton<CommandService>();
+services.AddSingleton<GuildPrefixService>();
 
 // Scoped Services
 services.AddScoped<GuildService>();

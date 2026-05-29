@@ -8,10 +8,11 @@ using Discord;
 using Morpheus.Utilities;
 using Morpheus.Database.Models;
 using Microsoft.EntityFrameworkCore;
+using Morpheus.Services;
 
 namespace Morpheus.Modules;
 
-public class GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext, GuildPrefixService guildPrefixService) : ModuleBase<SocketCommandContextExtended>
 {
     private readonly CommandService commands = commands;
     private readonly DiscordSocketClient client = client;
@@ -57,7 +58,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetCommandsPrefix([Remainder] string prefix = "m!")
+    public async Task SetCommandsPrefix([Remainder] string? prefix = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -65,6 +66,8 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             await ReplyAsync("Guild not found.");
             return;
         }
+
+        prefix ??= guildPrefixService.DefaultPrefix;
 
         if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 3)
         {
@@ -74,10 +77,11 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
 
         guild.Prefix = prefix;
         await dbContext.SaveChangesAsync();
+        guildPrefixService.SetPrefix(Context.Guild.Id, prefix);
 
-        if (prefix == "m!")
+        if (prefix == guildPrefixService.DefaultPrefix)
         {
-            await ReplyAsync("Prefix has been reset back to `m!`.");
+            await ReplyAsync($"Prefix has been reset back to `{guildPrefixService.DefaultPrefix}`.");
             return;
         }
 
