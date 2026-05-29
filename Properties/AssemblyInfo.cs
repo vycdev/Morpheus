@@ -1,5 +1,6 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Resources;
+using System.Runtime.CompilerServices;
 
 // General Information
 [assembly: AssemblyTitle("Morpheus")]
@@ -8,3 +9,4 @@ using System.Resources;
 // Version information
 [assembly: AssemblyVersion("1.5.*")]
 [assembly: NeutralResourcesLanguage("en-US")]
+[assembly: InternalsVisibleTo("Morpheus.Tests")]

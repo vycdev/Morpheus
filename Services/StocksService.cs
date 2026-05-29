@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Enums;
@@ -20,11 +21,18 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     /// </summary>
     public async Task<Stock> GetOrCreateStock(StockEntityType entityType, int entityId)
     {
+        await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        await LockStockEntityKeyForUpdate(entityType, entityId);
+
         Stock? stock = await dbContext.Stocks
             .FirstOrDefaultAsync(s => s.EntityType == entityType && s.EntityId == entityId);
 
         if (stock != null)
+        {
+            await dbTransaction.CommitAsync();
             return stock;
+        }
 
         stock = new Stock
         {
@@ -39,6 +47,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
 
         await dbContext.Stocks.AddAsync(stock);
         await dbContext.SaveChangesAsync();
+        await dbTransaction.CommitAsync();
 
         logsService.Log($"New stock created: {entityType} #{entityId}", Discord.LogSeverity.Verbose);
 
@@ -51,13 +60,18 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     /// </summary>
     public async Task<(bool success, string message, decimal sharesBought)> BuyStock(int userId, int stockId, decimal amount)
     {
-        User? user = await dbContext.Users.FindAsync(userId);
-        if (user == null) return (false, "User not found.", 0);
+        if (amount <= 0) return (false, "Amount must be positive.", 0);
 
-        Stock? stock = await dbContext.Stocks.FindAsync(stockId);
+        await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        await economyService.LockPoolForUpdate();
+
+        Stock? stock = await LockStockForUpdate(stockId);
         if (stock == null) return (false, "Stock not found.", 0);
 
-        if (amount <= 0) return (false, "Amount must be positive.", 0);
+        User? user = await economyService.LockUserForUpdate(userId);
+        if (user == null) return (false, "User not found.", 0);
+
         if (user.Balance < amount) return (false, $"Insufficient balance. You have **${user.Balance:F2}**.", 0);
         if (stock.Price <= 0) return (false, "Stock price is invalid.", 0);
 
@@ -72,8 +86,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         await economyService.AddToPool(fee);
 
         // Get or create holding
-        StockHolding? holding = await dbContext.StockHoldings
-            .FirstOrDefaultAsync(sh => sh.UserId == userId && sh.StockId == stockId);
+        StockHolding? holding = await LockStockHoldingForUpdate(userId, stockId);
 
         if (holding == null)
         {
@@ -108,6 +121,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         await dbContext.StockTransactions.AddAsync(transaction);
 
         await dbContext.SaveChangesAsync();
+        await dbTransaction.CommitAsync();
 
         return (true, $"Bought **{sharesBought:F4}** shares at **${stock.Price:F2}**/share.\nFee: **${fee:F2}** | Invested: **${investedAmount:F2}**", sharesBought);
     }
@@ -118,14 +132,17 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     /// </summary>
     public async Task<(bool success, string message, decimal proceeds)> SellStock(int userId, int stockId, decimal? sharesToSell)
     {
-        User? user = await dbContext.Users.FindAsync(userId);
-        if (user == null) return (false, "User not found.", 0);
+        await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
 
-        Stock? stock = await dbContext.Stocks.FindAsync(stockId);
+        await economyService.LockPoolForUpdate();
+
+        Stock? stock = await LockStockForUpdate(stockId);
         if (stock == null) return (false, "Stock not found.", 0);
 
-        StockHolding? holding = await dbContext.StockHoldings
-            .FirstOrDefaultAsync(sh => sh.UserId == userId && sh.StockId == stockId);
+        User? user = await economyService.LockUserForUpdate(userId);
+        if (user == null) return (false, "User not found.", 0);
+
+        StockHolding? holding = await LockStockHoldingForUpdate(userId, stockId);
 
         if (holding == null || holding.Shares <= 0)
             return (false, "You don't own any shares of this stock.", 0);
@@ -194,6 +211,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         await dbContext.StockTransactions.AddAsync(transaction);
 
         await dbContext.SaveChangesAsync();
+        await dbTransaction.CommitAsync();
 
         string taxLabel = isShortTerm ? "Tax (short-term 35%)" : "Tax (10%)";
         return (true, $"Sold **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nGross: **${grossProceeds:F2}** | {taxLabel}: **${tax:F2}** | Net: **${netProceeds:F2}**", netProceeds);
@@ -207,10 +225,15 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         if (fromUserId == toUserId) return (false, "You can't transfer money to yourself.");
         if (amount <= 0) return (false, "Amount must be positive.");
 
-        User? sender = await dbContext.Users.FindAsync(fromUserId);
-        if (sender == null) return (false, "Sender not found.");
+        await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
 
-        User? receiver = await dbContext.Users.FindAsync(toUserId);
+        await economyService.LockPoolForUpdate();
+
+        Dictionary<int, User> users = await economyService.LockUsersForUpdate(fromUserId, toUserId);
+        users.TryGetValue(fromUserId, out User? sender);
+        users.TryGetValue(toUserId, out User? receiver);
+
+        if (sender == null) return (false, "Sender not found.");
         if (receiver == null) return (false, "Receiver not found.");
 
         decimal fee = amount * TransferFeeRate;
@@ -238,6 +261,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         await dbContext.StockTransactions.AddAsync(transaction);
 
         await dbContext.SaveChangesAsync();
+        await dbTransaction.CommitAsync();
 
         return (true, $"Transferred **${amount:F2}** to the recipient.\nFee: **${fee:F2}** | Total cost: **${totalCost:F2}**");
     }
@@ -250,17 +274,23 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     {
         if (fromUserId == toUserId) return (false, "You can't transfer shares to yourself.");
 
-        User? sender = await dbContext.Users.FindAsync(fromUserId);
-        if (sender == null) return (false, "Sender not found.");
+        await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
 
-        User? receiver = await dbContext.Users.FindAsync(toUserId);
-        if (receiver == null) return (false, "Receiver not found.");
-
-        Stock? stock = await dbContext.Stocks.FindAsync(stockId);
+        Stock? stock = await LockStockForUpdate(stockId);
         if (stock == null) return (false, "Stock not found.");
 
-        StockHolding? senderHolding = await dbContext.StockHoldings
-            .FirstOrDefaultAsync(sh => sh.UserId == fromUserId && sh.StockId == stockId);
+        Dictionary<int, User> users = await economyService.LockUsersForUpdate(fromUserId, toUserId);
+        users.TryGetValue(fromUserId, out User? sender);
+        users.TryGetValue(toUserId, out User? receiver);
+
+        if (sender == null) return (false, "Sender not found.");
+        if (receiver == null) return (false, "Receiver not found.");
+
+        Dictionary<(int UserId, int StockId), StockHolding> holdings = await LockStockHoldingsForUpdate(
+            (fromUserId, stockId),
+            (toUserId, stockId));
+        holdings.TryGetValue((fromUserId, stockId), out StockHolding? senderHolding);
+        holdings.TryGetValue((toUserId, stockId), out StockHolding? receiverHolding);
 
         if (senderHolding == null || senderHolding.Shares <= 0)
             return (false, "You don't own any shares of this stock.");
@@ -283,10 +313,6 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
             senderHolding.Shares = 0;
             senderHolding.TotalInvested = 0;
         }
-
-        // Get or create receiver holding
-        StockHolding? receiverHolding = await dbContext.StockHoldings
-            .FirstOrDefaultAsync(sh => sh.UserId == toUserId && sh.StockId == stockId);
 
         if (receiverHolding == null)
         {
@@ -322,6 +348,7 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         await dbContext.StockTransactions.AddAsync(transaction);
 
         await dbContext.SaveChangesAsync();
+        await dbTransaction.CommitAsync();
 
         return (true, $"Transferred **{actualShares:F4}** shares at **${stock.Price:F2}**/share.\nValue: **${actualShares * stock.Price:F2}** | Fee: **$0.00**");
     }
@@ -655,4 +682,90 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
             .Where(sh => sh.UserId == userId && sh.Shares > 0)
             .ToListAsync();
     }
+
+    private async Task<Stock?> LockStockForUpdate(int stockId)
+    {
+        EnsureCurrentTransaction();
+
+        Stock? stock = await dbContext.Stocks
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "Stocks"
+                WHERE "Id" = {stockId}
+                FOR UPDATE
+                """)
+            .SingleOrDefaultAsync();
+
+        if (stock != null)
+            await dbContext.Entry(stock).ReloadAsync();
+
+        return stock;
+    }
+
+    private async Task LockStockEntityKeyForUpdate(StockEntityType entityType, int entityId)
+    {
+        EnsureCurrentTransaction();
+
+        string key = BuildStockEntityLockKey(entityType, entityId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""SELECT pg_advisory_xact_lock(hashtext({key}))""");
+    }
+
+    private async Task<StockHolding?> LockStockHoldingForUpdate(int userId, int stockId)
+    {
+        EnsureCurrentTransaction();
+
+        string key = BuildStockHoldingLockKey(userId, stockId);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""SELECT pg_advisory_xact_lock(hashtext({key}))""");
+
+        StockHolding? holding = await dbContext.StockHoldings
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "StockHoldings"
+                WHERE "UserId" = {userId}
+                  AND "StockId" = {stockId}
+                FOR UPDATE
+                """)
+            .SingleOrDefaultAsync();
+
+        if (holding != null)
+            await dbContext.Entry(holding).ReloadAsync();
+
+        return holding;
+    }
+
+    private async Task<Dictionary<(int UserId, int StockId), StockHolding>> LockStockHoldingsForUpdate(
+        params (int UserId, int StockId)[] holdingKeys)
+    {
+        Dictionary<(int UserId, int StockId), StockHolding> holdings = [];
+
+        foreach ((int userId, int stockId) in OrderStockHoldingKeysForUpdate(holdingKeys))
+        {
+            StockHolding? holding = await LockStockHoldingForUpdate(userId, stockId);
+            if (holding != null)
+                holdings[(userId, stockId)] = holding;
+        }
+
+        return holdings;
+    }
+
+    private void EnsureCurrentTransaction()
+    {
+        if (dbContext.Database.CurrentTransaction == null)
+            throw new InvalidOperationException("Stock row locks require an active database transaction.");
+    }
+
+    internal static IEnumerable<(int UserId, int StockId)> OrderStockHoldingKeysForUpdate(
+        IEnumerable<(int UserId, int StockId)> holdingKeys) =>
+        holdingKeys
+            .Distinct()
+            .OrderBy(key => key.StockId)
+            .ThenBy(key => key.UserId);
+
+    internal static string BuildStockEntityLockKey(StockEntityType entityType, int entityId) =>
+        $"stock:{(int)entityType}:{entityId}";
+
+    internal static string BuildStockHoldingLockKey(int userId, int stockId) =>
+        $"stockholding:{stockId}:{userId}";
 }

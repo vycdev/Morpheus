@@ -1,3 +1,5 @@
+using System.Data;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Enums;
@@ -16,34 +18,15 @@ public class EconomyService(DB dbContext, LogsService logsService)
     {
         if (amount <= 0) return;
 
-        // Atomic update using raw SQL to prevent race conditions
-        // We cast to text because the Value column is a string
-        int affected = await dbContext.Database.ExecuteSqlRawAsync(
-            "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
-            amount, UbiPoolKey);
-
-        // If no row was updated, it means the key doesn't exist yet. Initialize it.
-        if (affected == 0)
+        if (dbContext.Database.CurrentTransaction != null)
         {
-            var existing = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
-            if (existing == null)
-            {
-                dbContext.BotSettings.Add(new BotSetting
-                {
-                    Key = UbiPoolKey,
-                    Value = amount.ToString("F2"),
-                    UpdateDate = DateTime.UtcNow
-                });
-                await dbContext.SaveChangesAsync();
-            }
-            else
-            {
-                // It was created concurrently, retry the update
-                await dbContext.Database.ExecuteSqlRawAsync(
-                    "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
-                    amount, UbiPoolKey);
-            }
+            await AdjustMoneySettingForUpdate(UbiPoolKey, 0m, amount);
+            return;
         }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await AdjustMoneySettingForUpdate(UbiPoolKey, 0m, amount);
+        await transaction.CommitAsync();
     }
 
     // ── SLOTS VAULT ──
@@ -57,25 +40,16 @@ public class EconomyService(DB dbContext, LogsService logsService)
     /// </summary>
     public async Task<decimal> GetVaultAmount()
     {
-        BotSetting? setting = await dbContext.BotSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Key == SlotsVaultKey);
-
-        if (setting == null)
+        if (dbContext.Database.CurrentTransaction != null)
         {
-            // Seed the vault
-            setting = new BotSetting { Key = SlotsVaultKey, Value = SlotsSeedAmount.ToString("F2") };
-            dbContext.BotSettings.Add(setting);
-            await dbContext.SaveChangesAsync();
-            return SlotsSeedAmount;
+            MoneySetting moneySetting = await GetMoneySettingForUpdate(SlotsVaultKey, SlotsSeedAmount);
+            return moneySetting.Amount;
         }
 
-        if (decimal.TryParse(setting.Value, out decimal vault))
-        {
-            return vault;
-        }
-
-        return SlotsSeedAmount; // Fallback
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        MoneySetting setting = await GetMoneySettingForUpdate(SlotsVaultKey, SlotsSeedAmount);
+        await transaction.CommitAsync();
+        return setting.Amount;
     }
 
     /// <summary>
@@ -86,22 +60,15 @@ public class EconomyService(DB dbContext, LogsService logsService)
     {
         if (amount == 0) return await GetVaultAmount();
 
-        // Atomic update
-        int affected = await dbContext.Database.ExecuteSqlRawAsync(
-            "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
-            amount, SlotsVaultKey);
-
-        if (affected == 0)
+        if (dbContext.Database.CurrentTransaction != null)
         {
-            // Initialize if missing
-            await GetVaultAmount();
-            // Retry update
-            await dbContext.Database.ExecuteSqlRawAsync(
-                "UPDATE \"BotSettings\" SET \"Value\" = CAST((CAST(\"Value\" AS DECIMAL) + {0}) AS TEXT) WHERE \"Key\" = {1}",
-                amount, SlotsVaultKey);
+            return await AdjustMoneySettingForUpdate(SlotsVaultKey, SlotsSeedAmount, amount);
         }
 
-        return await GetVaultAmount();
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        decimal updated = await AdjustMoneySettingForUpdate(SlotsVaultKey, SlotsSeedAmount, amount);
+        await transaction.CommitAsync();
+        return updated;
     }
 
     /// <summary>
@@ -109,25 +76,16 @@ public class EconomyService(DB dbContext, LogsService logsService)
     /// </summary>
     public async Task<decimal> GetPoolAmount()
     {
-        BotSetting? setting = await dbContext.BotSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
-        
-        if (setting == null)
+        if (dbContext.Database.CurrentTransaction != null)
         {
-            // Initialize if not exists
-            setting = new BotSetting { Key = UbiPoolKey, Value = "0.00" };
-            dbContext.BotSettings.Add(setting);
-            await dbContext.SaveChangesAsync();
-            return 0m;
+            MoneySetting moneySetting = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
+            return moneySetting.Amount;
         }
 
-        if (decimal.TryParse(setting.Value, out decimal pool))
-        {
-            return pool;
-        }
-
-        return 0m;
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        MoneySetting setting = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
+        await transaction.CommitAsync();
+        return setting.Amount;
     }
 
     /// <summary>
@@ -136,18 +94,12 @@ public class EconomyService(DB dbContext, LogsService logsService)
     public async Task<string> DistributeUbi()
     {
         // Use a transaction to ensure we read and reset the pool atomically
-        using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try
         {
-            // Lock the row and get current value
-            // We use a raw query to ensure we get the latest value and lock it if possible, 
-            // but EF Core's transaction is usually enough for this level of concurrency.
-            // For extra safety, we can re-fetch.
-            
-            BotSetting? setting = await dbContext.BotSettings
-                .FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
+            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
 
-            if (setting == null || !decimal.TryParse(setting.Value, out decimal poolAmount) || poolAmount <= 0)
+            if (pool.Amount <= 0)
             {
                 return "Pool is empty.";
             }
@@ -155,23 +107,23 @@ public class EconomyService(DB dbContext, LogsService logsService)
             int userCount = await dbContext.Users.CountAsync();
             if (userCount == 0) return "No users found.";
 
-            decimal payoutPerUser = poolAmount / userCount;
+            decimal payoutPerUser = pool.Amount / userCount;
             
             // Round down to 2 decimal places to be safe
             payoutPerUser = Math.Floor(payoutPerUser * 100) / 100;
 
             if (payoutPerUser <= 0)
             {
-                return $"Pool amount (${poolAmount}) is too small to distribute among {userCount} users.";
+                return $"Pool amount (${pool.Amount}) is too small to distribute among {userCount} users.";
             }
 
             // 1. Reset pool to remaining (dust) or 0
             // We keep the dust in the pool
             decimal distributedTotal = payoutPerUser * userCount;
-            decimal remaining = poolAmount - distributedTotal;
+            decimal remaining = pool.Amount - distributedTotal;
             
-            setting.Value = remaining.ToString("F2");
-            setting.UpdateDate = DateTime.UtcNow;
+            pool.Setting.Value = FormatMoneyForStorage(remaining);
+            pool.Setting.UpdateDate = DateTime.UtcNow;
             await dbContext.SaveChangesAsync();
 
             // 2. Bulk update users
@@ -181,7 +133,7 @@ public class EconomyService(DB dbContext, LogsService logsService)
 
             await transaction.CommitAsync();
 
-            string msg = $"Distributed **${poolAmount:F2}** to **{userCount}** users (**${payoutPerUser:F2}** each). Rollover: **${remaining:F2}**.";
+            string msg = $"Distributed **${pool.Amount:F2}** to **{userCount}** users (**${payoutPerUser:F2}** each). Rollover: **${remaining:F2}**.";
             logsService.Log(msg, Discord.LogSeverity.Info);
             return msg;
         }
@@ -210,45 +162,34 @@ public class EconomyService(DB dbContext, LogsService logsService)
         // B. Update Users (Balance = Balance * 0.9999)
         // C. Add difference to Pool
 
-        using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try
         {
-            // Get total liquid money in the system (only positive balances)
-            decimal totalLiquidity = await dbContext.Users
-                .Where(u => u.Balance > 0)
-                .SumAsync(u => u.Balance);
+            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
 
-            if (totalLiquidity <= 0) return;
+            decimal totalTaxCollected = await dbContext.Database.SqlQueryRaw<decimal>(
+                """
+                WITH taxed AS (
+                    UPDATE "Users"
+                    SET "Balance" = "Balance" - ("Balance" * {0})
+                    WHERE "Balance" > 0
+                    RETURNING "Balance" * ({0} / (1 - {0})) AS "Value"
+                )
+                SELECT COALESCE(SUM("Value"), 0) AS "Value"
+                FROM taxed
+                """,
+                TaxRate)
+                .SingleAsync();
 
-            decimal totalTaxCollected = totalLiquidity * TaxRate;
+            if (totalTaxCollected <= 0) return;
 
-            // Apply tax: specific update for all users with money
-            await dbContext.Database.ExecuteSqlRawAsync(
-                "UPDATE \"Users\" SET \"Balance\" = \"Balance\" - (\"Balance\" * {0}) WHERE \"Balance\" > 0",
-                TaxRate);
-
-            // Add to pool
-            // We use the helper method but since we are in a transaction we need to be careful not to deadlock
-            // But AddToPool uses a separate atomic query. 
-            // Better to do it manually inside this transaction for consistency.
-
-            BotSetting? setting = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
-            if (setting == null)
-            {
-                setting = new BotSetting { Key = UbiPoolKey, Value = "0.00" };
-                dbContext.BotSettings.Add(setting);
-            }
-
-            if (decimal.TryParse(setting.Value, out decimal currentPool))
-            {
-                setting.Value = (currentPool + totalTaxCollected).ToString("F2");
-                setting.UpdateDate = DateTime.UtcNow;
-            }
+            pool.Setting.Value = FormatMoneyForStorage(pool.Amount + totalTaxCollected);
+            pool.Setting.UpdateDate = DateTime.UtcNow;
 
             await dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            logsService.Log($"Wealth Tax Collected: ${totalTaxCollected:F2} from total liquidity ${totalLiquidity:F2}", Discord.LogSeverity.Info);
+            logsService.Log($"Wealth Tax Collected: ${totalTaxCollected:F2}", Discord.LogSeverity.Info);
         }
         catch (Exception ex)
         {
@@ -264,10 +205,11 @@ public class EconomyService(DB dbContext, LogsService logsService)
     {
         if (amount <= 0) return (false, "Amount must be positive.");
 
-        using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try
         {
-            User? user = await dbContext.Users.FindAsync(userId);
+            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
+            User? user = await LockUserForUpdate(userId);
             if (user == null) return (false, "User not found.");
 
             if (user.Balance < amount)
@@ -276,20 +218,8 @@ public class EconomyService(DB dbContext, LogsService logsService)
             // Deduct from user
             user.Balance -= amount;
 
-            // Add to pool
-            // We reuse the logic but implement it inline for the transaction safety
-            BotSetting? setting = await dbContext.BotSettings.FirstOrDefaultAsync(s => s.Key == UbiPoolKey);
-            if (setting == null)
-            {
-                setting = new BotSetting { Key = UbiPoolKey, Value = "0.00" };
-                dbContext.BotSettings.Add(setting);
-            }
-
-            if (decimal.TryParse(setting.Value, out decimal currentPool))
-            {
-                setting.Value = (currentPool + amount).ToString("F2");
-                setting.UpdateDate = DateTime.UtcNow;
-            }
+            pool.Setting.Value = FormatMoneyForStorage(pool.Amount + amount);
+            pool.Setting.UpdateDate = DateTime.UtcNow;
 
             // Record transaction
             StockTransaction stockTransaction = new()
@@ -328,11 +258,12 @@ public class EconomyService(DB dbContext, LogsService logsService)
     {
         if (robberId == victimId) return (false, "You cannot rob yourself.");
 
-        using var transaction = await dbContext.Database.BeginTransactionAsync();
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try
         {
-            User? robber = await dbContext.Users.FindAsync(robberId);
-            User? victim = await dbContext.Users.FindAsync(victimId);
+            Dictionary<int, User> users = await LockUsersForUpdate(robberId, victimId);
+            users.TryGetValue(robberId, out User? robber);
+            users.TryGetValue(victimId, out User? victim);
 
             if (robber == null || victim == null) return (false, "User not found.");
 
@@ -457,4 +388,149 @@ public class EconomyService(DB dbContext, LogsService logsService)
             .Select(x => (users.GetValueOrDefault(x.UserId, "Unknown"), x.TotalDonated))
             .ToList();
     }
+
+    internal async Task<User?> LockUserForUpdate(int userId)
+    {
+        EnsureCurrentTransaction();
+
+        User? user = await dbContext.Users
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "Users"
+                WHERE "Id" = {userId}
+                FOR UPDATE
+                """)
+            .SingleOrDefaultAsync();
+
+        if (user != null)
+            await dbContext.Entry(user).ReloadAsync();
+
+        return user;
+    }
+
+    internal async Task<Dictionary<int, User>> LockUsersForUpdate(params int[] userIds)
+    {
+        Dictionary<int, User> users = [];
+
+        foreach (int userId in OrderUserIdsForUpdate(userIds))
+        {
+            User? user = await LockUserForUpdate(userId);
+            if (user != null)
+                users[userId] = user;
+        }
+
+        return users;
+    }
+
+    internal async Task<decimal> LockPoolForUpdate()
+    {
+        MoneySetting setting = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
+        return setting.Amount;
+    }
+
+    internal async Task<decimal> LockVaultForUpdate()
+    {
+        MoneySetting setting = await GetMoneySettingForUpdate(SlotsVaultKey, SlotsSeedAmount);
+        return setting.Amount;
+    }
+
+    private async Task<decimal> AdjustMoneySettingForUpdate(string key, decimal defaultAmount, decimal amount)
+    {
+        MoneySetting setting = await GetMoneySettingForUpdate(key, defaultAmount);
+        decimal updated = setting.Amount + amount;
+
+        setting.Setting.Value = FormatMoneyForStorage(updated);
+        setting.Setting.UpdateDate = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync();
+
+        return updated;
+    }
+
+    private async Task<MoneySetting> GetMoneySettingForUpdate(string key, decimal defaultAmount)
+    {
+        EnsureCurrentTransaction();
+
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""SELECT pg_advisory_xact_lock(hashtext({key}))""");
+
+        List<BotSetting> settings = await dbContext.BotSettings
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "BotSettings"
+                WHERE "Key" = {key}
+                ORDER BY "Id"
+                FOR UPDATE
+                """)
+            .ToListAsync();
+
+        if (settings.Count == 0)
+        {
+            BotSetting setting = new()
+            {
+                Key = key,
+                Value = FormatMoneyForStorage(defaultAmount),
+                UpdateDate = DateTime.UtcNow
+            };
+
+            dbContext.BotSettings.Add(setting);
+            await dbContext.SaveChangesAsync();
+
+            return new MoneySetting(setting, defaultAmount);
+        }
+
+        foreach (BotSetting setting in settings)
+            await dbContext.Entry(setting).ReloadAsync();
+
+        BotSetting primary = settings[0];
+        decimal amount = settings.Sum(setting => ParseMoneyFromStorage(setting.Value, defaultAmount));
+
+        if (settings.Count > 1)
+        {
+            primary.Value = FormatMoneyForStorage(amount);
+            primary.UpdateDate = DateTime.UtcNow;
+
+            dbContext.BotSettings.RemoveRange(settings.Skip(1));
+            await dbContext.SaveChangesAsync();
+        }
+
+        return new MoneySetting(primary, amount);
+    }
+
+    internal static IEnumerable<int> OrderUserIdsForUpdate(IEnumerable<int> userIds) =>
+        userIds.Distinct().OrderBy(id => id);
+
+    internal static decimal ParseMoneyFromStorage(string value, decimal fallback)
+    {
+        CultureInfo currentCulture = CultureInfo.CurrentCulture;
+        string currentDecimalSeparator = currentCulture.NumberFormat.NumberDecimalSeparator;
+        string invariantDecimalSeparator = CultureInfo.InvariantCulture.NumberFormat.NumberDecimalSeparator;
+
+        bool valueLooksLocal =
+            currentDecimalSeparator != invariantDecimalSeparator &&
+            value.Contains(currentDecimalSeparator, StringComparison.Ordinal) &&
+            !value.Contains(invariantDecimalSeparator, StringComparison.Ordinal);
+
+        if (valueLooksLocal &&
+            decimal.TryParse(value, NumberStyles.Number, currentCulture, out decimal localFirstAmount))
+            return localFirstAmount;
+
+        if (decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal invariantAmount))
+            return invariantAmount;
+
+        if (decimal.TryParse(value, NumberStyles.Number, currentCulture, out decimal localAmount))
+            return localAmount;
+
+        return fallback;
+    }
+
+    internal static string FormatMoneyForStorage(decimal amount) =>
+        amount.ToString("F2", CultureInfo.InvariantCulture);
+
+    private void EnsureCurrentTransaction()
+    {
+        if (dbContext.Database.CurrentTransaction == null)
+            throw new InvalidOperationException("Economy row locks require an active database transaction.");
+    }
+
+    private sealed record MoneySetting(BotSetting Setting, decimal Amount);
 }

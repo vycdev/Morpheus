@@ -10,6 +10,7 @@ using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Services;
 using Morpheus.Utilities;
+using System.Data;
 using System.Text;
 
 namespace Morpheus.Modules;
@@ -109,7 +110,12 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
     /// </summary>
     private async Task<(Embed embed, decimal bet, ComponentBuilder components)?> ExecuteSpin(int userId, decimal bet)
     {
-        User? user = await dbContext.Users.FindAsync(userId);
+        await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        await economyService.LockPoolForUpdate();
+        decimal vaultAmount = await economyService.LockVaultForUpdate();
+
+        User? user = await economyService.LockUserForUpdate(userId);
         if (user == null) return null;
 
         // Validate bet
@@ -135,7 +141,6 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // 2. Calculate Winnings (Dynamic)
-        decimal vaultAmount = await economyService.GetVaultAmount();
         decimal grossWinnings = 0m;
         string resultDescription = outcome.name;
 
@@ -223,6 +228,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         };
         await dbContext.StockTransactions.AddAsync(transaction);
         await dbContext.SaveChangesAsync();
+        await dbTransaction.CommitAsync();
 
         // 4. Build Visuals
         var (r1, r2, r3) = GenerateReels(outcome.name);
