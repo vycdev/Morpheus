@@ -19,23 +19,8 @@ public class ActivityService(DB dbContext)
     public ActivityRoleAssignmentResult GetActivityRoleAssignments(int dbGuildId, IEnumerable<ulong> currentGuildMemberIds, int days = 30)
     {
         List<ActivityRoleCandidate> candidates = GetTopActivity(dbGuildId, currentGuildMemberIds, days);
-        Dictionary<RoleType, List<User>> usersByRole = [];
 
-        foreach (ActivityRoleDefinition definition in ActivityRoleDefinitions)
-        {
-            int userCount = GetCumulativeRoleUserCount(candidates.Count, definition.Percent);
-
-            usersByRole[definition.RoleType] = candidates
-                .Take(userCount)
-                .Select(c => c.User)
-                .ToList();
-        }
-
-        return new ActivityRoleAssignmentResult
-        {
-            Candidates = candidates,
-            UsersByRole = usersByRole
-        };
+        return BuildActivityRoleAssignments(candidates);
     }
 
     public List<ActivityRoleCandidate> GetTopActivity(int dbGuildId, IEnumerable<ulong>? currentGuildMemberIds = null, int days = 30)
@@ -83,7 +68,28 @@ public class ActivityService(DB dbContext)
         return candidates;
     }
 
-    private static int GetCumulativeRoleUserCount(int totalUsers, double percent)
+    public static ActivityRoleAssignmentResult BuildActivityRoleAssignments(List<ActivityRoleCandidate> candidates)
+    {
+        Dictionary<RoleType, List<User>> usersByRole = [];
+
+        foreach (ActivityRoleDefinition definition in ActivityRoleDefinitions)
+        {
+            int userCount = GetCumulativeRoleUserCount(candidates.Count, definition.Percent);
+
+            usersByRole[definition.RoleType] = candidates
+                .Take(userCount)
+                .Select(c => c.User)
+                .ToList();
+        }
+
+        return new ActivityRoleAssignmentResult
+        {
+            Candidates = candidates,
+            UsersByRole = usersByRole
+        };
+    }
+
+    public static int GetCumulativeRoleUserCount(int totalUsers, double percent)
     {
         if (totalUsers <= 0)
             return 0;

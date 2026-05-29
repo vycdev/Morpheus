@@ -71,6 +71,40 @@ public class ActivityLevelService(DB dbContext)
         return (int)Math.Pow(Math.Log10((xp + 111) / 111), 5.0243);
     }
 
+    public static int CalculateXp(int level)
+    {
+        if (level <= 0)
+            return 0;
+
+        long estimate = Math.Max(0, (long)Math.Floor(111 * Math.Pow(10, Math.Pow(level, 1.0 / 5.0243)) - 111));
+        long lower = Math.Max(0, estimate - 111);
+        long upper = Math.Max(estimate + 111, 1);
+
+        while (CalculateLevel(upper) < level)
+        {
+            lower = upper;
+            upper *= 2;
+
+            if (upper > int.MaxValue)
+                throw new OverflowException($"Level {level} requires more XP than can be represented as an integer.");
+        }
+
+        if (upper > int.MaxValue)
+            throw new OverflowException($"Level {level} requires more XP than can be represented as an integer.");
+
+        while (lower + 1 < upper)
+        {
+            long midpoint = lower + ((upper - lower) / 2);
+
+            if (CalculateLevel(midpoint) >= level)
+                upper = midpoint;
+            else
+                lower = midpoint;
+        }
+
+        return (int)upper;
+    }
+
     private static void ApplyActivityToUserLevel(UserLevels userLevel, UserActivity activity)
     {
         userLevel.TotalXp += activity.XpGained;

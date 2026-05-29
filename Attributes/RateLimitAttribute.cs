@@ -9,6 +9,43 @@ public class RateLimitData
     public int Count { get; set; }
 }
 
+public sealed record RateLimitDecision(bool IsAllowed, TimeSpan RetryAfter)
+{
+    public static RateLimitDecision Allowed { get; } = new(true, TimeSpan.Zero);
+}
+
+public static class RateLimitPolicy
+{
+    public static RateLimitDecision Apply(
+        IDictionary<(ulong UserId, string CommandName), RateLimitData> rateLimitData,
+        (ulong UserId, string CommandName) key,
+        int uses,
+        TimeSpan period,
+        DateTime now)
+    {
+        if (rateLimitData.TryGetValue(key, out RateLimitData? data))
+        {
+            TimeSpan elapsed = now - data.StartTime;
+
+            if (elapsed < period)
+            {
+                if (data.Count >= uses)
+                    return new RateLimitDecision(false, period - elapsed);
+
+                data.Count++;
+                return RateLimitDecision.Allowed;
+            }
+
+            data.StartTime = now;
+            data.Count = 1;
+            return RateLimitDecision.Allowed;
+        }
+
+        rateLimitData[key] = new RateLimitData { StartTime = now, Count = 1 };
+        return RateLimitDecision.Allowed;
+    }
+}
+
 /// <summary>
 /// Rate limit attribute for commands.
 /// </summary>
@@ -19,6 +56,7 @@ public class RateLimitAttribute(int uses, int seconds) : PreconditionAttribute
 {
     // A simple dictionary to track the last usage per user and command.
     private static readonly Dictionary<(ulong, string), RateLimitData> _rateLimitData = [];
+    private static readonly object _rateLimitLock = new();
 
     public override Task<PreconditionResult> CheckPermissionsAsync(ICommandContext context, CommandInfo command, IServiceProvider services)
     {
@@ -32,36 +70,23 @@ public class RateLimitAttribute(int uses, int seconds) : PreconditionAttribute
     private Task<PreconditionResult> ApplyRateLimit(ICommandContext context, CommandInfo command)
     {
         (ulong Id, string Name) key = (context.User.Id, command.Name);
-        if (_rateLimitData.TryGetValue(key, out RateLimitData? data))
+
+        RateLimitDecision decision;
+
+        lock (_rateLimitLock)
         {
-            TimeSpan elapsed = DateTime.UtcNow - data.StartTime;
-            if (elapsed < TimeSpan.FromSeconds(seconds))
-            {
-                if (data.Count >= uses)
-                {
-                    TimeSpan timeLeft = TimeSpan.FromSeconds(seconds) - elapsed;
-                    return Task.FromResult(PreconditionResult.FromError(
-                        $"Command is on cooldown. Try again in {timeLeft.TotalSeconds:F0} seconds."));
-                }
-                else
-                {
-                    data.Count++;
-                    return Task.FromResult(PreconditionResult.FromSuccess());
-                }
-            }
-            else
-            {
-                // Reset the period if the cooldown has expired.
-                data.StartTime = DateTime.UtcNow;
-                data.Count = 1;
-                return Task.FromResult(PreconditionResult.FromSuccess());
-            }
+            decision = RateLimitPolicy.Apply(
+                _rateLimitData,
+                key,
+                uses,
+                TimeSpan.FromSeconds(seconds),
+                DateTime.UtcNow);
         }
-        else
-        {
-            // First execution for this user/command.
-            _rateLimitData[key] = new RateLimitData { StartTime = DateTime.UtcNow, Count = 1 };
+
+        if (decision.IsAllowed)
             return Task.FromResult(PreconditionResult.FromSuccess());
-        }
+
+        return Task.FromResult(PreconditionResult.FromError(
+            $"Command is on cooldown. Try again in {decision.RetryAfter.TotalSeconds:F0} seconds."));
     }
 }

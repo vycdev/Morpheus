@@ -193,6 +193,6 @@ public class ActivityHandler
 
     public static int CalculateXp(int level)
     {
-        return (int)(111 * Math.Pow(10, Math.Pow(level, 1.0 / 5.0243)) - 111);
+        return ActivityLevelService.CalculateXp(level);
     }
 }
