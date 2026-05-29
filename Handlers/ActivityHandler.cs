@@ -54,6 +54,7 @@ public class ActivityHandler
         var usersService = scope.ServiceProvider.GetRequiredService<UsersService>();
         var guildService = scope.ServiceProvider.GetRequiredService<GuildService>();
         var dbContext = scope.ServiceProvider.GetRequiredService<DB>();
+        var activityLevelService = scope.ServiceProvider.GetRequiredService<ActivityLevelService>();
 
         User user = await usersService.TryGetCreateUser(message.Author);
         await usersService.TryUpdateUsername(message.Author, user);
@@ -206,52 +207,14 @@ public class ActivityHandler
             GuildMessageCount = messageCount
         };
 
-        dbContext.Add(userActivity);
-
-        // Update user's XP and Level in UserLevels
-        UserLevels? userLevel = dbContext.UserLevels
-                .FirstOrDefault(ul => ul.UserId == user.Id && ul.GuildId == guild.Id);
-
-        bool newUserLevel = false;
         var postSaveActions = new List<Func<Task>>();
 
-        if (userLevel == null)
-            newUserLevel = true;
+        ActivityLevelUpdateResult levelUpdate = await activityLevelService.RecordActivityAsync(userActivity);
 
-        userLevel ??= new UserLevels
+        if (levelUpdate.LevelChanged)
         {
-            UserId = user.Id,
-            GuildId = guild.Id
-        };
-
-        userLevel.TotalXp += xp;
-        int newLevel = CalculateLevel(userLevel.TotalXp);
-
-        // Update per-user message length stats (raw characters)
-        const double userEmaAlpha = 2.0 / (500.0 + 1.0); // N=500
-        int prevUserMsgCount = userLevel.UserMessageCount;
-        double prevUserAvgLen = userLevel.UserAverageMessageLength;
-        double prevUserEmaLen = userLevel.UserAverageMessageLengthEma;
-
-        int newUserMsgCount = prevUserMsgCount + 1;
-        double msgLen = message.Content.Length;
-        double newUserAvgLen = prevUserMsgCount > 0
-            ? ((prevUserAvgLen * prevUserMsgCount) + msgLen) / newUserMsgCount
-            : msgLen;
-        double newUserEmaLen = prevUserEmaLen <= 0.0
-            ? msgLen
-            : (1.0 - userEmaAlpha) * prevUserEmaLen + userEmaAlpha * msgLen;
-
-        userLevel.UserMessageCount = newUserMsgCount;
-        userLevel.UserAverageMessageLength = newUserAvgLen;
-        userLevel.UserAverageMessageLengthEma = newUserEmaLen;
-
-        if (userLevel.Level != newLevel)
-        {
-            userLevel.Level = newLevel;
-
             // Prepare level up message and optionally pre-select a random quote (efficient DB-side selection)
-            int levelToAnnounce = newLevel;
+            int levelToAnnounce = levelUpdate.NewLevel;
             string? selectedQuoteContent = null;
 
             if (guild.LevelUpQuotes)
@@ -351,11 +314,6 @@ public class ActivityHandler
             });
         }
 
-        if (newUserLevel)
-            dbContext.Add(userLevel);
-
-        await dbContext.SaveChangesAsync();
-
         // Execute any post-save actions (send level up messages and quotes)
         foreach (var action in postSaveActions)
         {
@@ -369,7 +327,7 @@ public class ActivityHandler
         // CalculateLevel(100 * 10) = ~1
         // CalculateLevel(100000 * 10) = ~1000
 
-        return (int)Math.Pow(Math.Log10((xp + 111) / 111), 5.0243);
+        return ActivityLevelService.CalculateLevel(xp);
     }
 
     public static int CalculateXp(int level)
