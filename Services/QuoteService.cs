@@ -1,4 +1,3 @@
-using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -185,7 +184,7 @@ public class QuoteService(DB dbContext)
         DateTime? utcNow = null)
     {
         DateTime now = utcNow ?? DateTime.UtcNow;
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
 
         Quote quote = new()
         {
@@ -244,7 +243,7 @@ public class QuoteService(DB dbContext)
         DateTime? utcNow = null)
     {
         DateTime now = utcNow ?? DateTime.UtcNow;
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
 
         Quote? quote = await dbContext.Quotes.FirstOrDefaultAsync(q => q.Id == quoteId);
         if (quote == null)
@@ -305,7 +304,7 @@ public class QuoteService(DB dbContext)
 
     public async Task<bool> AbandonApprovalRequestAsync(int approvalId)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
 
         QuoteApprovalMessage? approval = await dbContext.QuoteApprovalMessages
             .FirstOrDefaultAsync(approval => approval.Id == approvalId);

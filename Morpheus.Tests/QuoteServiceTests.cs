@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Services;
@@ -251,5 +252,278 @@ public class QuoteServiceTests
         Assert.False(notFound.RequiresApprovalMessage);
         Assert.Equal(QuoteRemoveRequestStatus.Removed, removed.Status);
         Assert.Equal(QuoteRemoveRequestStatus.NotFound, notFound.Status);
+    }
+
+    [Fact]
+    public async Task CreateAddRequestAsync_WithApprovalChannel_CreatesPendingQuoteAndApproval()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 123, addRequiredApprovals: 4);
+        QuoteService service = new(testDb.Db);
+
+        QuoteAddRequestResult result = await service.CreateAddRequestAsync(
+            guild.Id,
+            user.Id,
+            "pending quote",
+            isAdmin: false,
+            forceFlag: false,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteAddRequiredApprovals);
+
+        Assert.Equal(QuoteAddRequestStatus.PendingApproval, result.Status);
+        Assert.Equal(4, result.RequiredApprovals);
+        Assert.Equal(123UL, result.ApprovalChannelId);
+
+        Quote quote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.Equal(result.QuoteId, quote.Id);
+        Assert.Equal("pending quote", quote.Content);
+        Assert.False(quote.Approved);
+        Assert.False(quote.Removed);
+
+        QuoteApprovalMessage approval = await testDb.Db.QuoteApprovalMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(result.ApprovalId, approval.Id);
+        Assert.Equal(quote.Id, approval.QuoteId);
+        Assert.Equal(QuoteApprovalType.AddRequest, approval.Type);
+        Assert.Equal(0UL, approval.ApprovalMessageId);
+    }
+
+    [Fact]
+    public async Task CreateAddRequestAsync_AdminWithoutApprovalChannel_ApprovesImmediately()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        QuoteService service = new(testDb.Db);
+
+        QuoteAddRequestResult result = await service.CreateAddRequestAsync(
+            guild.Id,
+            user.Id,
+            "admin quote",
+            isAdmin: true,
+            forceFlag: false,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteAddRequiredApprovals);
+
+        Assert.Equal(QuoteAddRequestStatus.Approved, result.Status);
+
+        Quote quote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.True(quote.Approved);
+        Assert.False(quote.Removed);
+        Assert.Empty(await testDb.Db.QuoteApprovalMessages.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateAddRequestAsync_NonAdminWithoutApprovalChannel_PersistsPendingQuoteOnly()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        QuoteService service = new(testDb.Db);
+
+        QuoteAddRequestResult result = await service.CreateAddRequestAsync(
+            guild.Id,
+            user.Id,
+            "manual approval quote",
+            isAdmin: false,
+            forceFlag: false,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteAddRequiredApprovals);
+
+        Assert.Equal(QuoteAddRequestStatus.PendingWithoutApprovalChannel, result.Status);
+
+        Quote quote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.False(quote.Approved);
+        Assert.False(quote.Removed);
+        Assert.Empty(await testDb.Db.QuoteApprovalMessages.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RecordApprovalMessageIdAsync_PersistsDiscordMessageId()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 123);
+        QuoteService service = new(testDb.Db);
+        QuoteAddRequestResult request = await service.CreateAddRequestAsync(
+            guild.Id,
+            user.Id,
+            "needs message id",
+            isAdmin: false,
+            forceFlag: false,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteAddRequiredApprovals);
+
+        bool recorded = await service.RecordApprovalMessageIdAsync(request.ApprovalId, 999UL);
+
+        Assert.True(recorded);
+        QuoteApprovalMessage approval = await testDb.Db.QuoteApprovalMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(999UL, approval.ApprovalMessageId);
+    }
+
+    [Fact]
+    public async Task AbandonApprovalRequestAsync_ForUnpostedAddRequest_RemovesQuoteAndApproval()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 123);
+        QuoteService service = new(testDb.Db);
+        QuoteAddRequestResult request = await service.CreateAddRequestAsync(
+            guild.Id,
+            user.Id,
+            "abandoned quote",
+            isAdmin: false,
+            forceFlag: false,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteAddRequiredApprovals);
+
+        bool abandoned = await service.AbandonApprovalRequestAsync(request.ApprovalId);
+
+        Assert.True(abandoned);
+        Assert.Empty(await testDb.Db.Quotes.AsNoTracking().ToListAsync());
+        Assert.Empty(await testDb.Db.QuoteApprovalMessages.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateRemoveRequestAsync_WithApprovalChannel_CreatesPendingRemoveApproval()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 456, removeRequiredApprovals: 2);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true);
+        QuoteService service = new(testDb.Db);
+
+        QuoteRemoveRequestResult result = await service.CreateRemoveRequestAsync(
+            guild.Id,
+            quote.Id,
+            isAdmin: false,
+            forceFlag: false,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteRemoveRequiredApprovals);
+
+        Assert.Equal(QuoteRemoveRequestStatus.PendingApproval, result.Status);
+        Assert.Equal(2, result.RequiredApprovals);
+        Assert.Equal(456UL, result.ApprovalChannelId);
+
+        Quote updatedQuote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.False(updatedQuote.Removed);
+
+        QuoteApprovalMessage approval = await testDb.Db.QuoteApprovalMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(quote.Id, approval.QuoteId);
+        Assert.Equal(QuoteApprovalType.RemoveRequest, approval.Type);
+    }
+
+    [Fact]
+    public async Task CreateRemoveRequestAsync_AdminForce_RemovesUnapprovedQuoteImmediately()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 456);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: false);
+        QuoteService service = new(testDb.Db);
+
+        QuoteRemoveRequestResult result = await service.CreateRemoveRequestAsync(
+            guild.Id,
+            quote.Id,
+            isAdmin: true,
+            forceFlag: true,
+            guild.QuotesApprovalChannelId,
+            guild.QuoteRemoveRequiredApprovals);
+
+        Assert.Equal(QuoteRemoveRequestStatus.Removed, result.Status);
+        Quote removedQuote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.True(removedQuote.Removed);
+        Assert.Empty(await testDb.Db.QuoteApprovalMessages.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateRemoveRequestAsync_ReturnsValidationStatuses()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 456);
+        Guild otherGuild = new() { DiscordId = 789, Name = "Other guild" };
+        testDb.Db.Guilds.Add(otherGuild);
+        await testDb.Db.SaveChangesAsync();
+        Quote wrongGuildQuote = await SeedQuoteAsync(testDb.Db, otherGuild, user, approved: true, content: "wrong guild");
+        Quote removedQuote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, removed: true, content: "removed");
+        Quote pendingQuote = await SeedQuoteAsync(testDb.Db, guild, user, approved: false, content: "pending");
+        QuoteService service = new(testDb.Db);
+
+        QuoteRemoveRequestResult notFound = await service.CreateRemoveRequestAsync(guild.Id, 999, false, false, 456, 2);
+        QuoteRemoveRequestResult wrongGuild = await service.CreateRemoveRequestAsync(guild.Id, wrongGuildQuote.Id, false, false, 456, 2);
+        QuoteRemoveRequestResult alreadyRemoved = await service.CreateRemoveRequestAsync(guild.Id, removedQuote.Id, false, false, 456, 2);
+        QuoteRemoveRequestResult notApproved = await service.CreateRemoveRequestAsync(guild.Id, pendingQuote.Id, false, false, 456, 2);
+
+        Assert.Equal(QuoteRemoveRequestStatus.NotFound, notFound.Status);
+        Assert.Equal(QuoteRemoveRequestStatus.WrongGuild, wrongGuild.Status);
+        Assert.Equal(QuoteRemoveRequestStatus.AlreadyRemoved, alreadyRemoved.Status);
+        Assert.Equal(QuoteRemoveRequestStatus.NotApproved, notApproved.Status);
+    }
+
+    private static async Task<SqliteTestDb> CreateSqliteDbAsync()
+    {
+        SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        return new SqliteTestDb(connection, db);
+    }
+
+    private static async Task<(User User, Guild Guild)> SeedUserAndGuildAsync(
+        DB db,
+        ulong approvalChannelId = 0,
+        int addRequiredApprovals = 3,
+        int removeRequiredApprovals = 3)
+    {
+        User user = new()
+        {
+            DiscordId = 123,
+            Username = "tester"
+        };
+        Guild guild = new()
+        {
+            DiscordId = 456,
+            Name = "Test guild",
+            QuotesApprovalChannelId = approvalChannelId,
+            QuoteAddRequiredApprovals = addRequiredApprovals,
+            QuoteRemoveRequiredApprovals = removeRequiredApprovals
+        };
+
+        await db.Users.AddAsync(user);
+        await db.Guilds.AddAsync(guild);
+        await db.SaveChangesAsync();
+
+        return (user, guild);
+    }
+
+    private static async Task<Quote> SeedQuoteAsync(
+        DB db,
+        Guild guild,
+        User user,
+        bool approved,
+        bool removed = false,
+        string content = "quote")
+    {
+        Quote quote = new()
+        {
+            GuildId = guild.Id,
+            UserId = user.Id,
+            Content = content,
+            Approved = approved,
+            Removed = removed
+        };
+
+        await db.Quotes.AddAsync(quote);
+        await db.SaveChangesAsync();
+        return quote;
+    }
+
+    private sealed class SqliteTestDb(SqliteConnection connection, DB db) : IAsyncDisposable
+    {
+        public DB Db { get; } = db;
+
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            await connection.DisposeAsync();
+        }
     }
 }
