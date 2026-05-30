@@ -27,6 +27,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<User>().HasIndex(u => u.DiscordId).IsUnique();
         modelBuilder.Entity<Guild>().HasIndex(g => g.DiscordId).IsUnique();
         modelBuilder.Entity<QuoteApproval>().HasIndex(a => new { a.QuoteApprovalMessageId, a.UserId }).IsUnique();
+        modelBuilder.Entity<QuoteScore>().HasIndex(s => new { s.QuoteId, s.UserId }).IsUnique();
         // Speeds up recent per-user, per-guild activity queries
         modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.UserId, ua.GuildId, ua.InsertDate });
         modelBuilder.Entity<UserLevels>().HasIndex(ul => new { ul.UserId, ul.GuildId }).IsUnique();

@@ -97,31 +97,49 @@ public class QuoteService(DB dbContext)
             return QuoteScoreResult.NotFound("Couldn't find a matching quote.");
 
         DateTime now = utcNow ?? DateTime.UtcNow;
+        await UpsertQuoteScoreAsync(quote.Id, userId, score, now);
+
+        int totalScore = await GetTotalScoreAsync(quote.Id);
+        return QuoteScoreResult.Success(quote.Id, score, totalScore);
+    }
+
+    private async Task UpsertQuoteScoreAsync(int quoteId, int userId, int score, DateTime now)
+    {
         QuoteScore? existing = await dbContext.QuoteScores
-            .FirstOrDefaultAsync(existingScore => existingScore.QuoteId == quote.Id && existingScore.UserId == userId);
+            .FirstOrDefaultAsync(existingScore => existingScore.QuoteId == quoteId && existingScore.UserId == userId);
 
         if (existing == null)
         {
             QuoteScore quoteScore = new()
             {
-                QuoteId = quote.Id,
+                QuoteId = quoteId,
                 UserId = userId,
-                Score = score,
-                InsertDate = now
             };
 
+            ApplyScore(quoteScore, score, now, isNew: true);
             await dbContext.QuoteScores.AddAsync(quoteScore);
-        }
-        else
-        {
-            existing.Score = score;
-            existing.UpdateDate = now;
+            try
+            {
+                await dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                dbContext.Entry(quoteScore).State = EntityState.Detached;
+                QuoteScore? racedExisting = await dbContext.QuoteScores
+                    .FirstOrDefaultAsync(existingScore => existingScore.QuoteId == quoteId && existingScore.UserId == userId);
+
+                if (racedExisting == null)
+                    throw;
+
+                ApplyScore(racedExisting, score, now, isNew: false);
+                await dbContext.SaveChangesAsync();
+            }
+
+            return;
         }
 
+        ApplyScore(existing, score, now, isNew: false);
         await dbContext.SaveChangesAsync();
-
-        int totalScore = await GetTotalScoreAsync(quote.Id);
-        return QuoteScoreResult.Success(quote.Id, score, totalScore);
     }
 
     public async Task<QuotePeriodResult> GetTopQuoteSinceAsync(DateTime since, DateTime until, int? guildId)
@@ -225,6 +243,15 @@ public class QuoteService(DB dbContext)
 
     internal static string FormatSignedScore(int score) =>
         score >= 0 ? $"+{score}" : score.ToString();
+
+    internal static void ApplyScore(QuoteScore quoteScore, int score, DateTime now, bool isNew)
+    {
+        quoteScore.Score = score;
+        if (isNew)
+            quoteScore.InsertDate = now;
+        else
+            quoteScore.UpdateDate = now;
+    }
 
     private static string TruncateContent(string content, int maxLength)
     {

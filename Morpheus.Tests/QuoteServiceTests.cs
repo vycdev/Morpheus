@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
+using Morpheus.Database.Models;
 using Morpheus.Services;
 
 namespace Morpheus.Tests;
@@ -93,5 +96,52 @@ public class QuoteServiceTests
     public void FormatSignedScore_AddsPlusForNonNegativeScores(int score, string expected)
     {
         Assert.Equal(expected, QuoteService.FormatSignedScore(score));
+    }
+
+    [Fact]
+    public void DbModel_ConfiguresOneScorePerQuoteAndUser()
+    {
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseNpgsql("Host=localhost;Database=morpheus_test;Username=test;Password=test")
+            .Options;
+        using DB db = new(options);
+
+        var quoteScore = db.Model.FindEntityType(typeof(QuoteScore))
+            ?? throw new InvalidOperationException("QuoteScore is missing from the EF model.");
+        var index = Assert.Single(quoteScore.GetIndexes(), index =>
+            index.Properties.Select(property => property.Name).SequenceEqual(["QuoteId", "UserId"]));
+
+        Assert.True(index.IsUnique);
+    }
+
+    [Fact]
+    public void ApplyScore_ForNewScore_SetsScoreAndInsertDate()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        QuoteScore quoteScore = new();
+
+        QuoteService.ApplyScore(quoteScore, 4, now, isNew: true);
+
+        Assert.Equal(4, quoteScore.Score);
+        Assert.Equal(now, quoteScore.InsertDate);
+        Assert.Null(quoteScore.UpdateDate);
+    }
+
+    [Fact]
+    public void ApplyScore_ForExistingScore_SetsScoreAndUpdateDate()
+    {
+        DateTime insertDate = new(2026, 5, 29, 12, 0, 0, DateTimeKind.Utc);
+        DateTime updateDate = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        QuoteScore quoteScore = new()
+        {
+            Score = -2,
+            InsertDate = insertDate
+        };
+
+        QuoteService.ApplyScore(quoteScore, 5, updateDate, isNew: false);
+
+        Assert.Equal(5, quoteScore.Score);
+        Assert.Equal(insertDate, quoteScore.InsertDate);
+        Assert.Equal(updateDate, quoteScore.UpdateDate);
     }
 }
