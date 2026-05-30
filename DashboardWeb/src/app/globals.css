@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f7f9;
+  --foreground: #111827;
+  --muted: #667085;
+  --border: #d8dee8;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --accent: #0891b2;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #e11d48;
+}
+
+html[data-theme="dark"],
+html.dark {
+  --background: #0b1120;
+  --foreground: #e5edf7;
+  --muted: #9aa7ba;
+  --border: #253247;
+  --card: #111827;
+  --card-foreground: #e5edf7;
+  --primary: #60a5fa;
+  --primary-foreground: #07111f;
+  --accent: #22d3ee;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #fb7185;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--foreground);
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.06), transparent 320px),
+    var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+html[data-theme="dark"] body,
+html.dark body {
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.08), transparent 340px),
+    var(--background);
+}
+
+html[data-theme="dark"] .bg-white,
+html.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+html[data-theme="dark"] .bg-slate-50,
+html.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-100:hover {
+  background-color: #1f2937 !important;
+}
+
+html[data-theme="dark"] .bg-blue-50,
+html.dark .bg-blue-50 {
+  background-color: rgba(37, 99, 235, 0.16) !important;
+}
+
+html[data-theme="dark"] .bg-emerald-50,
+html.dark .bg-emerald-50 {
+  background-color: rgba(5, 150, 105, 0.16) !important;
+}
+
+html[data-theme="dark"] .bg-cyan-50,
+html.dark .bg-cyan-50 {
+  background-color: rgba(8, 145, 178, 0.16) !important;
+}
+
+html[data-theme="dark"] .bg-amber-50,
+html.dark .bg-amber-50 {
+  background-color: rgba(217, 119, 6, 0.16) !important;
+}
+
+html[data-theme="dark"] .bg-rose-50,
+html.dark .bg-rose-50 {
+  background-color: rgba(225, 29, 72, 0.16) !important;
+}
+
+html[data-theme="dark"] .text-blue-700,
+html.dark .text-blue-700 {
+  color: #93c5fd !important;
+}
+
+html[data-theme="dark"] .text-emerald-700,
+html.dark .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] .text-cyan-700,
+html.dark .text-cyan-700 {
+  color: #67e8f9 !important;
+}
+
+html[data-theme="dark"] .text-amber-700,
+html[data-theme="dark"] .text-amber-800,
+html.dark .text-amber-700,
+html.dark .text-amber-800 {
+  color: #fcd34d !important;
+}
+
+html[data-theme="dark"] .text-rose-700,
+html.dark .text-rose-700 {
+  color: #fda4af !important;
+}
+
+html[data-theme="dark"] .border-blue-200,
+html[data-theme="dark"] .border-emerald-200,
+html[data-theme="dark"] .border-cyan-200,
+html[data-theme="dark"] .border-amber-200,
+html[data-theme="dark"] .border-rose-200,
+html.dark .border-blue-200,
+html.dark .border-emerald-200,
+html.dark .border-cyan-200,
+html.dark .border-amber-200,
+html.dark .border-rose-200 {
+  border-color: var(--border) !important;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  color: #ffffff;
+  background: #2563eb;
+}

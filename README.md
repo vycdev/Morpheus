@@ -69,6 +69,36 @@ Morpheus features a fully integrated economic system where value is directly tie
     - **Slots:** Gamble against the server's "Slots Vault" — a central bank that grows with losses and pays out from its own reserves.
 - **Wealth Transfers:** Securely send money to other users, with a 5% fee (contributed to the UBI pool) to discourage circular loops and encourage a healthy velocity of money.
 
+## Dashboard API
+
+Morpheus exposes a read-only dashboard API under `/api/dashboard` so a separate Next.js/Tailwind/shadcn dashboard can stay decoupled from the bot runtime while reusing the same database and service layer.
+
+By default the API listens on `http://127.0.0.1:5267`. To make it available on your local network, set `DASHBOARD_API_URLS=http://0.0.0.0:5267` and set `DASHBOARD_API_KEY`; authenticated requests must include `X-Dashboard-Key`.
+
+Initial endpoints:
+
+- `GET /api/dashboard/health`
+- `GET /api/dashboard/overview`
+- `GET /api/dashboard/guilds`
+- `GET /api/dashboard/activity?guildId=1&days=30`
+- `GET /api/dashboard/leaderboard?guildId=1&metric=xp&days=30&limit=10`
+- `GET /api/dashboard/quotes?guildId=1&page=1&sort=top`
+- `GET /api/dashboard/quotes/{quoteId}`
+
+## Dashboard Web
+
+The dashboard frontend lives in `DashboardWeb/` as a separate Next.js app. It reads `DASHBOARD_API_URL` and `DASHBOARD_API_KEY` from its own environment, fetches the bot API from the Next server, and does not expose the backend key to the browser.
+
+Local development:
+
+```powershell
+cd DashboardWeb
+npm install
+npm run dev
+```
+
+Then open `http://localhost:3000`. If the bot API is not running, the dashboard shows demo data so layout work can continue offline.
+
 ## Contributing
 
 

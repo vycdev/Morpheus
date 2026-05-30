@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run (build+debug) - Morpheus",
+            "name": "Morpheus Bot + API",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
@@ -13,13 +13,30 @@
             "stopAtEntry": false
         },
         {
-            "name": "Run (dotnet run - no debug)",
+            "name": "Morpheus Bot + API (no debug)",
             "type": "coreclr",
             "request": "launch",
+            "preLaunchTask": "build",
             "program": "${workspaceFolder}/bin/Debug/net10.0/Morpheus.dll",
+            "args": [],
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "stopAtEntry": false
+            "stopAtEntry": false,
+            "noDebug": true
+        },
+        {
+            "name": "Dashboard Web",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev:local",
+            "cwd": "${workspaceFolder}/DashboardWeb"
+        },
+        {
+            "name": "Open Dashboard",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\.vscode\\open-dashboard.ps1\"",
+            "cwd": "${workspaceFolder}"
         },
         {
             "name": "Attach to dotnet run",
@@ -27,6 +44,17 @@
             "request": "attach",
             "processId": "${command:pickProcess}",
             "preLaunchTask": "dotnet run (background)"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Morpheus Dashboard Stack",
+            "configurations": [
+                "Morpheus Bot + API",
+                "Dashboard Web",
+                "Open Dashboard"
+            ],
+            "stopAll": true
         }
     ]
 }
