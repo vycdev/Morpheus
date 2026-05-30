@@ -15,25 +15,36 @@ const defaultApiUrl = "http://127.0.0.1:5267";
 export async function getDashboardData(filters: DashboardFilters): Promise<DashboardData> {
   const safeFilters = {
     guildId: filters.guildId,
+    userId: filters.userId,
+    channelId: filters.channelId,
     days: clamp(filters.days, 1, 90),
+    scope: filters.scope,
+    sortDirection: filters.sortDirection,
+    minActivity: clamp(filters.minActivity, 0, 100000),
   };
 
   try {
-    const [overview, guilds, activity, xpLeaderboard, messageLeaderboard, quotes] = await Promise.all([
+    const [overview, guilds, activity, xpLeaderboard, messageLeaderboard, quotes, insights] = await Promise.all([
       dashboardRequest<DashboardOverviewResponse>("/overview"),
       dashboardRequest<DashboardGuildSummary[]>("/guilds"),
       dashboardRequest<DashboardActivitySeriesResponse>("/activity", {
         guildId: safeFilters.guildId,
+        userId: safeFilters.userId,
+        channelId: safeFilters.channelId,
         days: safeFilters.days,
       }),
       dashboardRequest<DashboardLeaderboardResponse>("/leaderboard", {
         guildId: safeFilters.guildId,
+        userId: safeFilters.userId,
+        channelId: safeFilters.channelId,
         metric: "xp",
         days: safeFilters.days,
         limit: 10,
       }),
       dashboardRequest<DashboardLeaderboardResponse>("/leaderboard", {
         guildId: safeFilters.guildId,
+        userId: safeFilters.userId,
+        channelId: safeFilters.channelId,
         metric: "messages",
         days: safeFilters.days,
         limit: 10,
@@ -44,6 +55,15 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
         sort: "top",
         approvedOnly: true,
       }),
+      dashboardRequest<DashboardData["insights"]>("/insights", {
+        guildId: safeFilters.guildId,
+        userId: safeFilters.userId,
+        channelId: safeFilters.channelId,
+        days: safeFilters.days,
+        scope: safeFilters.scope,
+        sortDirection: safeFilters.sortDirection,
+        minActivity: safeFilters.minActivity,
+      }),
     ]);
 
     return {
@@ -53,6 +73,7 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
       xpLeaderboard,
       messageLeaderboard,
       quotes,
+      insights,
       usingDemoData: false,
     };
   } catch (error) {

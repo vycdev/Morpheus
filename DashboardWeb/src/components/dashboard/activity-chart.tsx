@@ -54,6 +54,7 @@ export function ActivityChart({ points }: ActivityChartProps) {
               stroke="#2563eb"
               strokeWidth={2}
               fill="url(#xp-fill)"
+              isAnimationActive={false}
               activeDot={{ r: 4 }}
             />
           </AreaChart>
@@ -73,7 +74,7 @@ export function ActivityChart({ points }: ActivityChartProps) {
               width={38}
             />
             <Tooltip content={<DashboardTooltip />} />
-            <Bar dataKey="messages" name="Messages" fill="#0891b2" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="messages" name="Messages" fill="#0891b2" isAnimationActive={false} radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -82,6 +82,8 @@ public static class DashboardApiExtensions
 
         api.MapGet("/activity", async (
             int? guildId,
+            int? userId,
+            string? channelId,
             int? days,
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
@@ -89,6 +91,8 @@ public static class DashboardApiExtensions
             DashboardActivitySeriesResponse series = await statsService.GetActivitySeriesAsync(
                 guildId,
                 days ?? 30,
+                userId,
+                channelId,
                 cancellationToken);
 
             return Results.Ok(series);
@@ -96,6 +100,8 @@ public static class DashboardApiExtensions
 
         api.MapGet("/leaderboard", async (
             int? guildId,
+            int? userId,
+            string? channelId,
             string? metric,
             int? days,
             int? limit,
@@ -107,9 +113,35 @@ public static class DashboardApiExtensions
                 metric ?? "xp",
                 days,
                 limit ?? 10,
+                userId,
+                channelId,
                 cancellationToken);
 
             return Results.Ok(leaderboard);
+        });
+
+        api.MapGet("/insights", async (
+            int? guildId,
+            int? userId,
+            string? channelId,
+            int? days,
+            string? scope,
+            string? sortDirection,
+            int? minActivity,
+            DashboardStatsService statsService,
+            CancellationToken cancellationToken) =>
+        {
+            DashboardInsightsResponse insights = await statsService.GetInsightsAsync(
+                guildId,
+                userId,
+                channelId,
+                days ?? 30,
+                scope,
+                sortDirection,
+                minActivity,
+                cancellationToken);
+
+            return Results.Ok(insights);
         });
 
         api.MapGet("/quotes", async (
