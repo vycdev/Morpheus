@@ -225,4 +225,31 @@ public class QuoteServiceTests
         Assert.True(result.IsFinalized);
         Assert.Equal(QuoteApprovalResultStatus.Finalized, result.Status);
     }
+
+    [Fact]
+    public void QuoteAddRequestResult_PendingApprovalRequiresApprovalMessage()
+    {
+        QuoteAddRequestResult result = QuoteAddRequestResult.PendingApproval(
+            quoteId: 10,
+            quoteContent: "hello",
+            approvalId: 20,
+            requiredApprovals: 3,
+            approvalChannelId: 30);
+
+        Assert.True(result.RequiresApprovalMessage);
+        Assert.Equal(QuoteAddRequestStatus.PendingApproval, result.Status);
+        Assert.Equal(20, result.ApprovalId);
+    }
+
+    [Fact]
+    public void QuoteRemoveRequestResult_NonPendingStatusesDoNotRequireApprovalMessage()
+    {
+        QuoteRemoveRequestResult removed = QuoteRemoveRequestResult.Removed(10, "hello");
+        QuoteRemoveRequestResult notFound = QuoteRemoveRequestResult.NotFound();
+
+        Assert.False(removed.RequiresApprovalMessage);
+        Assert.False(notFound.RequiresApprovalMessage);
+        Assert.Equal(QuoteRemoveRequestStatus.Removed, removed.Status);
+        Assert.Equal(QuoteRemoveRequestStatus.NotFound, notFound.Status);
+    }
 }

@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -171,6 +172,163 @@ public class QuoteService(DB dbContext)
                 approval.ApprovalMessageId,
                 guild.QuotesApprovalChannelId)
             : QuoteApprovalResult.Recorded(currentApprovals, requiredApprovals);
+    }
+
+    public async Task<QuoteAddRequestResult> CreateAddRequestAsync(
+        int guildId,
+        int userId,
+        string content,
+        bool isAdmin,
+        bool forceFlag,
+        ulong approvalChannelId,
+        int requiredApprovals,
+        DateTime? utcNow = null)
+    {
+        DateTime now = utcNow ?? DateTime.UtcNow;
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        Quote quote = new()
+        {
+            GuildId = guildId,
+            UserId = userId,
+            Content = content,
+            Approved = false,
+            Removed = false,
+            InsertDate = now
+        };
+
+        await dbContext.Quotes.AddAsync(quote);
+        await dbContext.SaveChangesAsync();
+
+        if ((approvalChannelId == 0 && isAdmin) || (approvalChannelId != 0 && isAdmin && forceFlag))
+        {
+            quote.Approved = true;
+            await dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return QuoteAddRequestResult.Approved(quote.Id, quote.Content ?? string.Empty);
+        }
+
+        if (approvalChannelId == 0)
+        {
+            await transaction.CommitAsync();
+            return QuoteAddRequestResult.PendingWithoutApprovalChannel(quote.Id, quote.Content ?? string.Empty);
+        }
+
+        QuoteApprovalMessage approval = new()
+        {
+            QuoteId = quote.Id,
+            Score = 0,
+            Type = QuoteApprovalType.AddRequest,
+            InsertDate = now
+        };
+
+        await dbContext.QuoteApprovalMessages.AddAsync(approval);
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return QuoteAddRequestResult.PendingApproval(
+            quote.Id,
+            quote.Content ?? string.Empty,
+            approval.Id,
+            requiredApprovals,
+            approvalChannelId);
+    }
+
+    public async Task<QuoteRemoveRequestResult> CreateRemoveRequestAsync(
+        int guildId,
+        int quoteId,
+        bool isAdmin,
+        bool forceFlag,
+        ulong approvalChannelId,
+        int requiredApprovals,
+        DateTime? utcNow = null)
+    {
+        DateTime now = utcNow ?? DateTime.UtcNow;
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        Quote? quote = await dbContext.Quotes.FirstOrDefaultAsync(q => q.Id == quoteId);
+        if (quote == null)
+            return QuoteRemoveRequestResult.NotFound();
+
+        if (quote.GuildId != guildId)
+            return QuoteRemoveRequestResult.WrongGuild();
+
+        if (quote.Removed)
+            return QuoteRemoveRequestResult.AlreadyRemoved();
+
+        if (!quote.Approved && !(isAdmin && forceFlag))
+            return QuoteRemoveRequestResult.NotApproved();
+
+        if ((approvalChannelId == 0 && isAdmin) || (approvalChannelId != 0 && isAdmin && forceFlag))
+        {
+            quote.Removed = true;
+            await dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return QuoteRemoveRequestResult.Removed(quote.Id, quote.Content ?? string.Empty);
+        }
+
+        if (approvalChannelId == 0)
+            return QuoteRemoveRequestResult.PendingWithoutApprovalChannel(quote.Id, quote.Content ?? string.Empty);
+
+        QuoteApprovalMessage approval = new()
+        {
+            QuoteId = quote.Id,
+            Score = 0,
+            Type = QuoteApprovalType.RemoveRequest,
+            InsertDate = now
+        };
+
+        await dbContext.QuoteApprovalMessages.AddAsync(approval);
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return QuoteRemoveRequestResult.PendingApproval(
+            quote.Id,
+            quote.Content ?? string.Empty,
+            approval.Id,
+            requiredApprovals,
+            approvalChannelId);
+    }
+
+    public async Task<bool> RecordApprovalMessageIdAsync(int approvalId, ulong messageId)
+    {
+        QuoteApprovalMessage? approval = await dbContext.QuoteApprovalMessages
+            .FirstOrDefaultAsync(approval => approval.Id == approvalId);
+
+        if (approval == null)
+            return false;
+
+        approval.ApprovalMessageId = messageId;
+        await dbContext.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> AbandonApprovalRequestAsync(int approvalId)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        QuoteApprovalMessage? approval = await dbContext.QuoteApprovalMessages
+            .FirstOrDefaultAsync(approval => approval.Id == approvalId);
+
+        if (approval == null)
+            return false;
+
+        if (approval.Type == QuoteApprovalType.AddRequest)
+        {
+            Quote? quote = await dbContext.Quotes.FirstOrDefaultAsync(quote => quote.Id == approval.QuoteId);
+            if (quote is { Approved: false, Removed: false })
+                dbContext.Quotes.Remove(quote);
+            else
+                dbContext.QuoteApprovalMessages.Remove(approval);
+        }
+        else
+        {
+            dbContext.QuoteApprovalMessages.Remove(approval);
+        }
+
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
     }
 
     private async Task UpsertQuoteScoreAsync(int quoteId, int userId, int score, DateTime now)
@@ -486,4 +644,84 @@ public sealed record QuoteApprovalResult(
 
     public static QuoteApprovalResult GuildNotFound() =>
         new(QuoteApprovalResultStatus.GuildNotFound, 0, 0, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+}
+
+public enum QuoteAddRequestStatus
+{
+    Approved,
+    PendingApproval,
+    PendingWithoutApprovalChannel
+}
+
+public sealed record QuoteAddRequestResult(
+    QuoteAddRequestStatus Status,
+    int QuoteId,
+    string QuoteContent,
+    int ApprovalId,
+    int RequiredApprovals,
+    ulong ApprovalChannelId)
+{
+    public bool RequiresApprovalMessage => Status == QuoteAddRequestStatus.PendingApproval;
+
+    public static QuoteAddRequestResult Approved(int quoteId, string quoteContent) =>
+        new(QuoteAddRequestStatus.Approved, quoteId, quoteContent, 0, 0, 0);
+
+    public static QuoteAddRequestResult PendingApproval(
+        int quoteId,
+        string quoteContent,
+        int approvalId,
+        int requiredApprovals,
+        ulong approvalChannelId) =>
+        new(QuoteAddRequestStatus.PendingApproval, quoteId, quoteContent, approvalId, requiredApprovals, approvalChannelId);
+
+    public static QuoteAddRequestResult PendingWithoutApprovalChannel(int quoteId, string quoteContent) =>
+        new(QuoteAddRequestStatus.PendingWithoutApprovalChannel, quoteId, quoteContent, 0, 0, 0);
+}
+
+public enum QuoteRemoveRequestStatus
+{
+    Removed,
+    PendingApproval,
+    PendingWithoutApprovalChannel,
+    NotFound,
+    WrongGuild,
+    AlreadyRemoved,
+    NotApproved
+}
+
+public sealed record QuoteRemoveRequestResult(
+    QuoteRemoveRequestStatus Status,
+    int QuoteId,
+    string QuoteContent,
+    int ApprovalId,
+    int RequiredApprovals,
+    ulong ApprovalChannelId)
+{
+    public bool RequiresApprovalMessage => Status == QuoteRemoveRequestStatus.PendingApproval;
+
+    public static QuoteRemoveRequestResult Removed(int quoteId, string quoteContent) =>
+        new(QuoteRemoveRequestStatus.Removed, quoteId, quoteContent, 0, 0, 0);
+
+    public static QuoteRemoveRequestResult PendingApproval(
+        int quoteId,
+        string quoteContent,
+        int approvalId,
+        int requiredApprovals,
+        ulong approvalChannelId) =>
+        new(QuoteRemoveRequestStatus.PendingApproval, quoteId, quoteContent, approvalId, requiredApprovals, approvalChannelId);
+
+    public static QuoteRemoveRequestResult PendingWithoutApprovalChannel(int quoteId, string quoteContent) =>
+        new(QuoteRemoveRequestStatus.PendingWithoutApprovalChannel, quoteId, quoteContent, 0, 0, 0);
+
+    public static QuoteRemoveRequestResult NotFound() =>
+        new(QuoteRemoveRequestStatus.NotFound, 0, string.Empty, 0, 0, 0);
+
+    public static QuoteRemoveRequestResult WrongGuild() =>
+        new(QuoteRemoveRequestStatus.WrongGuild, 0, string.Empty, 0, 0, 0);
+
+    public static QuoteRemoveRequestResult AlreadyRemoved() =>
+        new(QuoteRemoveRequestStatus.AlreadyRemoved, 0, string.Empty, 0, 0, 0);
+
+    public static QuoteRemoveRequestResult NotApproved() =>
+        new(QuoteRemoveRequestStatus.NotApproved, 0, string.Empty, 0, 0, 0);
 }

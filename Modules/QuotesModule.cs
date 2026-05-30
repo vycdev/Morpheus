@@ -1,10 +1,8 @@
 using Discord.Commands;
 using Morpheus.Attributes;
-using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Utilities;
-using Microsoft.EntityFrameworkCore;
 using Discord.WebSocket;
 using Morpheus.Services;
 using Morpheus.Handlers;
@@ -14,19 +12,16 @@ namespace Morpheus.Modules;
 
 public class QuotesModule : ModuleBase<SocketCommandContextExtended>
 {
-    private readonly DB db;
     private readonly UsersService usersService;
     private readonly LogsService logsService;
     private readonly QuoteService quoteService;
 
     public QuotesModule(
-        DB dbContext,
         UsersService usersService,
         LogsService logsService,
         InteractionsHandler interactionHandler,
         QuoteService quoteService)
     {
-        db = dbContext;
         this.usersService = usersService;
         this.logsService = logsService;
         this.quoteService = quoteService;
@@ -270,9 +265,7 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [RateLimit(3, 10)]
     public async Task AddQuote([Remainder] string text)
     {
-        // Must be in a guild (RequireDbGuild ensures Context.DbGuild exists)
         var guildDb = Context.DbGuild!;
-        // support admin force flag by leading "force" token (e.g. `addquote force <text>`)
         var forceFlag = false;
         if (!string.IsNullOrWhiteSpace(text) && text.StartsWith("force ", StringComparison.OrdinalIgnoreCase))
         {
@@ -280,7 +273,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             text = text.Substring("force ".Length).TrimStart();
         }
 
-        // Prevent quotes that include attachments, embeds, or links
         if (Context.Message.Attachments != null && Context.Message.Attachments.Count > 0)
         {
             await ReplyAsync("Quotes cannot include attachments or images. Please provide only text.");
@@ -293,115 +285,91 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        // reject obvious links using a more robust check (scheme urls, markdown links, bare domains, IPs)
         if (!string.IsNullOrWhiteSpace(text) && Utils.ContainsUrl(text))
         {
             await ReplyAsync("Quotes cannot contain links or URLs. Please remove any links and try again.");
             return;
         }
 
-        // Ensure user exists in DB
-        var userDb = await usersService.TryGetCreateUser(Context.User);
-
-        // Create quote record (not approved by default)
-        var quote = new Quote
-        {
-            GuildId = guildDb.Id,
-            UserId = userDb.Id,
-            Content = text,
-            Approved = false,
-            Removed = false,
-            InsertDate = DateTime.UtcNow
-        };
-
-        await db.Quotes.AddAsync(quote);
-        await db.SaveChangesAsync(); // need Id
-
-        // If no approval channel is set, admins can bypass and approve immediately
         var isAdmin = Context.User is SocketGuildUser guUser && guUser.GuildPermissions.Administrator;
-
-        // only administrators may use the force flag
         if (forceFlag && !isAdmin)
         {
             await ReplyAsync("You cannot use the force flag unless you are an administrator.");
             return;
         }
 
-        if (guildDb.QuotesApprovalChannelId == 0)
-        {
-            if (isAdmin)
-            {
-                quote.Approved = true;
-                await db.SaveChangesAsync();
-                await ReplyAsync("Quote added and automatically approved (admin bypass).");
-                return;
-            }
+        var userDb = await usersService.TryGetCreateUser(Context.User);
+        QuoteAddRequestResult result = await quoteService.CreateAddRequestAsync(
+            guildDb.Id,
+            userDb.Id,
+            text,
+            isAdmin,
+            forceFlag,
+            guildDb.QuotesApprovalChannelId,
+            guildDb.QuoteAddRequiredApprovals);
 
-            // No approval channel but non-admin => treat as submitted but no approvals will happen
+        if (result.Status == QuoteAddRequestStatus.Approved)
+        {
+            await ReplyAsync(forceFlag
+                ? "Quote added and automatically approved (admin force)."
+                : "Quote added and automatically approved (admin bypass).");
+            return;
+        }
+
+        if (result.Status == QuoteAddRequestStatus.PendingWithoutApprovalChannel)
+        {
             await ReplyAsync("Quote submitted for approval, but this server has no approval channel configured. An administrator can approve it manually.");
             return;
         }
 
-        // Approval channel exists: allow admin force to bypass approvals
-        if (isAdmin && forceFlag)
+        var channel = Context.Client.GetChannel(result.ApprovalChannelId) as IMessageChannel;
+        if (channel == null)
         {
-            quote.Approved = true;
-            await db.SaveChangesAsync();
-            await ReplyAsync("Quote added and automatically approved (admin force).");
-            return;
-        }
-
-        // Approval channel exists: create a QuoteApprovals entry and post a message to the approval channel
-        var approval = new QuoteApprovalMessage
-        {
-            QuoteId = quote.Id,
-            Score = 0,
-            Type = QuoteApprovalType.AddRequest,
-            InsertDate = DateTime.UtcNow
-        };
-
-        await db.QuoteApprovalMessages.AddAsync(approval);
-        await db.SaveChangesAsync();
-
-        // Send a message in the approval channel with an up arrow reaction
-        var channel = Context.Client.GetChannel(guildDb.QuotesApprovalChannelId) as IMessageChannel;
-        if (channel != null)
-        {
-            try
-            {
-                var component = new ComponentBuilder()
-                    .WithButton("Approve", customId: $"quote_approve:{approval.Id}", ButtonStyle.Primary)
-                    .Build();
-
-                var sent = await channel.SendMessageAsync($"📥 **ADD REQUEST — Quote #{quote.Id}**\nSubmitted by: {Context.User.Mention}\n\n```{text}```\nApprovals required: {guildDb.QuoteAddRequiredApprovals}", components: component);
-
-                // store the approval message id so interaction handlers can map message -> approval
-                approval.ApprovalMessageId = sent.Id;
-                await db.SaveChangesAsync();
-            }
-            catch (Discord.Net.HttpException httpEx)
-            {
-                // Detect missing permissions reliably (Discord API error 50013 / "Missing Permissions")
-                var msg = httpEx.Message ?? string.Empty;
-                if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
-                {
-                    logsService.Log($"Missing permission sending approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
-                    await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
-                    return;
-                }
-
-                // otherwise log and continue
-                logsService.Log($"HTTP error sending approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
-            }
-            catch (Exception ex)
-            {
-                logsService.Log($"Failed to send quote approval message for quote {quote.Id}: {ex}", LogSeverity.Warning);
-            }
-        }
-        else
-        {
+            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
             await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
             return;
+        }
+
+        IUserMessage sent;
+        try
+        {
+            var component = new ComponentBuilder()
+                .WithButton("Approve", customId: $"quote_approve:{result.ApprovalId}", ButtonStyle.Primary)
+                .Build();
+
+            sent = await channel.SendMessageAsync($"ADD REQUEST - Quote #{result.QuoteId}\nSubmitted by: {Context.User.Mention}\n\n```{result.QuoteContent}```\nApprovals required: {result.RequiredApprovals}", components: component);
+        }
+        catch (Discord.Net.HttpException httpEx)
+        {
+            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            var msg = httpEx.Message ?? string.Empty;
+            if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
+            {
+                logsService.Log($"Missing permission sending approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
+                await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
+                return;
+            }
+
+            logsService.Log($"HTTP error sending approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
+            await ReplyAsync("Failed to post the quote approval message, so the pending request was cleaned up.");
+            return;
+        }
+        catch (Exception ex)
+        {
+            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            logsService.Log($"Failed to send quote approval message for quote {result.QuoteId}: {ex}", LogSeverity.Warning);
+            await ReplyAsync("Failed to post the quote approval message, so the pending request was cleaned up.");
+            return;
+        }
+
+        try
+        {
+            if (!await quoteService.RecordApprovalMessageIdAsync(result.ApprovalId, sent.Id))
+                logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but approval request {result.ApprovalId} was not found when storing the message id.", LogSeverity.Warning);
+        }
+        catch (Exception ex)
+        {
+            logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but storing the message id failed: {ex}", LogSeverity.Warning);
         }
 
         await ReplyAsync("Quote submitted for approval.");
@@ -417,8 +385,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     public async Task RemoveQuote([Remainder] string input)
     {
         var guildDb = Context.DbGuild!;
-
-        // Parse: removequote [force] <id> [reason]
         var trimmed = input.Trim();
         var forceFlag = false;
         if (trimmed.StartsWith("force ", StringComparison.OrdinalIgnoreCase))
@@ -427,10 +393,8 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             trimmed = trimmed.Substring("force ".Length).TrimStart();
         }
 
-        // Split remaining into id and optional reason
         var spaceIdx = trimmed.IndexOf(' ');
         var idStr = spaceIdx >= 0 ? trimmed.Substring(0, spaceIdx) : trimmed;
-        var reason = spaceIdx >= 0 ? trimmed.Substring(spaceIdx + 1).Trim() : string.Empty;
 
         if (!int.TryParse(idStr, out var id))
         {
@@ -438,113 +402,93 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var quote = await db.Quotes.AsNoTracking().FirstOrDefaultAsync(q => q.Id == id);
-        if (quote == null)
-        {
-            await ReplyAsync("Quote not found.");
-            return;
-        }
-
-        if (quote.GuildId != guildDb.Id)
-        {
-            await ReplyAsync("You cannot remove a quote from another guild.");
-            return;
-        }
-
-        if (quote.Removed)
-        {
-            await ReplyAsync("This quote is already removed.");
-            return;
-        }
-
         var isAdmin = Context.User is SocketGuildUser gu && gu.GuildPermissions.Administrator;
-
-        // only administrators may use the force flag
         if (forceFlag && !isAdmin)
         {
             await ReplyAsync("You cannot use the force flag unless you are an administrator.");
             return;
         }
 
-        // Disallow removal requests for quotes that aren't approved yet unless forced by admin
-        if (!quote.Approved && !(isAdmin && forceFlag) && !forceFlag)
+        QuoteRemoveRequestResult result = await quoteService.CreateRemoveRequestAsync(
+            guildDb.Id,
+            id,
+            isAdmin,
+            forceFlag,
+            guildDb.QuotesApprovalChannelId,
+            guildDb.QuoteRemoveRequiredApprovals);
+
+        switch (result.Status)
         {
-            await ReplyAsync("This quote has not been approved yet and cannot be removed. An administrator may force removal with the force flag.");
+            case QuoteRemoveRequestStatus.NotFound:
+                await ReplyAsync("Quote not found.");
+                return;
+            case QuoteRemoveRequestStatus.WrongGuild:
+                await ReplyAsync("You cannot remove a quote from another guild.");
+                return;
+            case QuoteRemoveRequestStatus.AlreadyRemoved:
+                await ReplyAsync("This quote is already removed.");
+                return;
+            case QuoteRemoveRequestStatus.NotApproved:
+                await ReplyAsync("This quote has not been approved yet and cannot be removed. An administrator may force removal with the force flag.");
+                return;
+            case QuoteRemoveRequestStatus.Removed:
+                await ReplyAsync(forceFlag
+                    ? "Quote removed (admin force)."
+                    : "Quote removed (admin bypass).");
+                return;
+            case QuoteRemoveRequestStatus.PendingWithoutApprovalChannel:
+                await ReplyAsync("Quote removal submitted for approval, but this server has no approval channel configured. An administrator can remove it manually.");
+                return;
+        }
+
+        var channel = Context.Client.GetChannel(result.ApprovalChannelId) as IMessageChannel;
+        if (channel == null)
+        {
+            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
             return;
         }
 
-        // If no approval channel is set, admins can bypass and remove immediately
-        if (guildDb.QuotesApprovalChannelId == 0)
+        IUserMessage sent;
+        try
         {
-            if (isAdmin)
+            var component = new ComponentBuilder()
+                .WithButton("Approve", customId: $"quote_approve:{result.ApprovalId}", ButtonStyle.Primary)
+                .Build();
+
+            sent = await channel.SendMessageAsync($"REMOVE REQUEST - Quote #{result.QuoteId}\nRequested by: {Context.User.Mention}\n\n```{result.QuoteContent}```\nApprovals required: {result.RequiredApprovals}", components: component);
+        }
+        catch (Discord.Net.HttpException httpEx)
+        {
+            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            var msg = httpEx.Message ?? string.Empty;
+            if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
             {
-                quote.Removed = true;
-                db.Quotes.Update(quote);
-                await db.SaveChangesAsync();
-                await ReplyAsync("Quote removed (admin bypass).");
+                logsService.Log($"Missing permission sending removal approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
+                await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
                 return;
             }
 
-            await ReplyAsync("Quote removal submitted for approval, but this server has no approval channel configured. An administrator can remove it manually.");
+            logsService.Log($"HTTP error sending removal approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
+            await ReplyAsync("Failed to post the quote removal approval message, so the pending request was cleaned up.");
+            return;
+        }
+        catch (Exception ex)
+        {
+            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            logsService.Log($"Failed to send quote removal approval message for quote {result.QuoteId}: {ex}", LogSeverity.Warning);
+            await ReplyAsync("Failed to post the quote removal approval message, so the pending request was cleaned up.");
             return;
         }
 
-        // If approval channel exists, allow admin force to bypass approvals
-        if (isAdmin && forceFlag)
+        try
         {
-            quote.Removed = true;
-            db.Quotes.Update(quote);
-            await db.SaveChangesAsync();
-            await ReplyAsync("Quote removed (admin force).");
-            return;
+            if (!await quoteService.RecordApprovalMessageIdAsync(result.ApprovalId, sent.Id))
+                logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but approval request {result.ApprovalId} was not found when storing the message id.", LogSeverity.Warning);
         }
-
-        var approval = new QuoteApprovalMessage
+        catch (Exception ex)
         {
-            QuoteId = quote.Id,
-            Score = 0,
-            Type = QuoteApprovalType.RemoveRequest,
-            InsertDate = DateTime.UtcNow
-        };
-
-        await db.QuoteApprovalMessages.AddAsync(approval);
-        await db.SaveChangesAsync();
-
-        var channel = Context.Client.GetChannel(guildDb.QuotesApprovalChannelId) as IMessageChannel;
-        if (channel != null)
-        {
-            try
-            {
-                var component = new ComponentBuilder()
-                    .WithButton("Approve", customId: $"quote_approve:{approval.Id}", ButtonStyle.Primary)
-                    .Build();
-
-                var sent = await channel.SendMessageAsync($"🗑️ **REMOVE REQUEST — Quote #{quote.Id}**\nRequested by: {Context.User.Mention}\n\n```{quote.Content}```\nApprovals required: {guildDb.QuoteRemoveRequiredApprovals}", components: component);
-
-                approval.ApprovalMessageId = sent.Id;
-                await db.SaveChangesAsync();
-            }
-            catch (Discord.Net.HttpException httpEx)
-            {
-                var msg = httpEx.Message ?? string.Empty;
-                if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
-                {
-                    logsService.Log($"Missing permission sending removal approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
-                    await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
-                    return;
-                }
-
-                logsService.Log($"HTTP error sending removal approval message for quote {quote.Id}: {httpEx}", LogSeverity.Warning);
-            }
-            catch (Exception ex)
-            {
-                logsService.Log($"Failed to send quote removal approval message for quote {quote.Id}: {ex}", LogSeverity.Warning);
-            }
-        }
-        else
-        {
-            await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
-            return;
+            logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but storing the message id failed: {ex}", LogSeverity.Warning);
         }
 
         await ReplyAsync("Quote removal submitted for approval.");
