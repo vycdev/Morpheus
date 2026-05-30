@@ -103,6 +103,76 @@ public class QuoteService(DB dbContext)
         return QuoteScoreResult.Success(quote.Id, score, totalScore);
     }
 
+    public async Task<QuoteApprovalResult> ApproveQuoteRequestAsync(
+        int approvalId,
+        int userId,
+        int approvalExpiryDays,
+        DateTime? utcNow = null)
+    {
+        DateTime now = utcNow ?? DateTime.UtcNow;
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+
+        QuoteApprovalMessage? approval = await dbContext.QuoteApprovalMessages
+            .FromSqlInterpolated($"""SELECT * FROM "QuoteApprovalMessages" WHERE "Id" = {approvalId} FOR UPDATE""")
+            .FirstOrDefaultAsync();
+
+        if (approval == null)
+            return QuoteApprovalResult.NotFound();
+
+        if (IsApprovalExpired(approval.InsertDate, approvalExpiryDays, now))
+            return QuoteApprovalResult.Expired();
+
+        if (approval.Approved)
+            return QuoteApprovalResult.AlreadyFinalized();
+
+        Quote? quote = await dbContext.Quotes.FirstOrDefaultAsync(quote => quote.Id == approval.QuoteId);
+        if (quote == null)
+            return QuoteApprovalResult.QuoteNotFound();
+
+        Guild? guild = await dbContext.Guilds
+            .AsNoTracking()
+            .FirstOrDefaultAsync(guild => guild.Id == quote.GuildId);
+        if (guild == null)
+            return QuoteApprovalResult.GuildNotFound();
+
+        int requiredApprovals = GetRequiredApprovals(approval.Type, guild);
+        int currentApprovals = await dbContext.QuoteApprovals
+            .CountAsync(existingApproval => existingApproval.QuoteApprovalMessageId == approval.Id);
+
+        bool alreadyApproved = await dbContext.QuoteApprovals.AnyAsync(existingApproval =>
+            existingApproval.QuoteApprovalMessageId == approval.Id && existingApproval.UserId == (ulong)userId);
+        if (alreadyApproved)
+            return QuoteApprovalResult.Duplicate(currentApprovals, requiredApprovals);
+
+        QuoteApproval vote = new()
+        {
+            QuoteApprovalMessageId = approval.Id,
+            UserId = (ulong)userId,
+            InsertDate = now
+        };
+
+        await dbContext.QuoteApprovals.AddAsync(vote);
+        currentApprovals++;
+
+        bool finalized = currentApprovals >= requiredApprovals;
+        if (finalized)
+            ApplyApprovalResolution(approval, quote);
+
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return finalized
+            ? QuoteApprovalResult.Finalized(
+                currentApprovals,
+                requiredApprovals,
+                approval.Type,
+                quote.Id,
+                quote.Content ?? string.Empty,
+                approval.ApprovalMessageId,
+                guild.QuotesApprovalChannelId)
+            : QuoteApprovalResult.Recorded(currentApprovals, requiredApprovals);
+    }
+
     private async Task UpsertQuoteScoreAsync(int quoteId, int userId, int score, DateTime now)
     {
         QuoteScore? existing = await dbContext.QuoteScores
@@ -244,6 +314,23 @@ public class QuoteService(DB dbContext)
     internal static string FormatSignedScore(int score) =>
         score >= 0 ? $"+{score}" : score.ToString();
 
+    internal static bool IsApprovalExpired(DateTime insertDate, int approvalExpiryDays, DateTime now) =>
+        insertDate.AddDays(approvalExpiryDays) < now;
+
+    internal static int GetRequiredApprovals(QuoteApprovalType approvalType, Guild guild) =>
+        approvalType == QuoteApprovalType.AddRequest
+            ? guild.QuoteAddRequiredApprovals
+            : guild.QuoteRemoveRequiredApprovals;
+
+    internal static void ApplyApprovalResolution(QuoteApprovalMessage approval, Quote quote)
+    {
+        approval.Approved = true;
+        if (approval.Type == QuoteApprovalType.AddRequest)
+            quote.Approved = true;
+        else
+            quote.Removed = true;
+    }
+
     internal static void ApplyScore(QuoteScore quoteScore, int score, DateTime now, bool isNew)
     {
         quoteScore.Score = score;
@@ -342,4 +429,61 @@ public sealed record QuotePeriodResult(int QuoteId, string Content, int TotalSco
     public static QuotePeriodResult Empty { get; } = new(0, string.Empty, 0);
 
     public bool HasQuote => QuoteId != 0;
+}
+
+public enum QuoteApprovalResultStatus
+{
+    Recorded,
+    Finalized,
+    Duplicate,
+    NotFound,
+    Expired,
+    AlreadyFinalized,
+    QuoteNotFound,
+    GuildNotFound
+}
+
+public sealed record QuoteApprovalResult(
+    QuoteApprovalResultStatus Status,
+    int CurrentApprovals,
+    int RequiredApprovals,
+    QuoteApprovalType Type,
+    int QuoteId,
+    string QuoteContent,
+    ulong ApprovalMessageId,
+    ulong QuotesApprovalChannelId)
+{
+    public bool VoteRecorded => Status is QuoteApprovalResultStatus.Recorded or QuoteApprovalResultStatus.Finalized;
+    public bool IsFinalized => Status == QuoteApprovalResultStatus.Finalized;
+
+    public static QuoteApprovalResult Recorded(int currentApprovals, int requiredApprovals) =>
+        new(QuoteApprovalResultStatus.Recorded, currentApprovals, requiredApprovals, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+
+    public static QuoteApprovalResult Finalized(
+        int currentApprovals,
+        int requiredApprovals,
+        QuoteApprovalType type,
+        int quoteId,
+        string quoteContent,
+        ulong approvalMessageId,
+        ulong quotesApprovalChannelId) =>
+        new(QuoteApprovalResultStatus.Finalized, currentApprovals, requiredApprovals, type, quoteId, quoteContent, approvalMessageId, quotesApprovalChannelId);
+
+    public static QuoteApprovalResult Duplicate(int currentApprovals, int requiredApprovals) =>
+        new(QuoteApprovalResultStatus.Duplicate, currentApprovals, requiredApprovals, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+
+    public static QuoteApprovalResult NotFound() =>
+        new(QuoteApprovalResultStatus.NotFound, 0, 0, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+
+    public static QuoteApprovalResult Expired() =>
+        new(QuoteApprovalResultStatus.Expired, 0, 0, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+
+    public static QuoteApprovalResult AlreadyFinalized() =>
+        new(QuoteApprovalResultStatus.AlreadyFinalized, 0, 0, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+
+    public static QuoteApprovalResult QuoteNotFound() =>
+        new(QuoteApprovalResultStatus.QuoteNotFound, 0, 0, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
+
+    public static QuoteApprovalResult GuildNotFound() =>
+        new(QuoteApprovalResultStatus.GuildNotFound, 0, 0, QuoteApprovalType.AddRequest, 0, string.Empty, 0, 0);
 }

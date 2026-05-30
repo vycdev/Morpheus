@@ -144,4 +144,85 @@ public class QuoteServiceTests
         Assert.Equal(insertDate, quoteScore.InsertDate);
         Assert.Equal(updateDate, quoteScore.UpdateDate);
     }
+
+    [Fact]
+    public void IsApprovalExpired_ExpiresAfterConfiguredWindow()
+    {
+        DateTime insertDate = new(2026, 5, 25, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.False(QuoteService.IsApprovalExpired(insertDate, 5, insertDate.AddDays(5)));
+        Assert.True(QuoteService.IsApprovalExpired(insertDate, 5, insertDate.AddDays(5).AddTicks(1)));
+    }
+
+    [Fact]
+    public void GetRequiredApprovals_UsesApprovalType()
+    {
+        Guild guild = new()
+        {
+            QuoteAddRequiredApprovals = 3,
+            QuoteRemoveRequiredApprovals = 7
+        };
+
+        Assert.Equal(3, QuoteService.GetRequiredApprovals(QuoteApprovalType.AddRequest, guild));
+        Assert.Equal(7, QuoteService.GetRequiredApprovals(QuoteApprovalType.RemoveRequest, guild));
+    }
+
+    [Fact]
+    public void ApplyApprovalResolution_ForAddRequest_ApprovesQuote()
+    {
+        Quote quote = new()
+        {
+            Approved = false,
+            Removed = false
+        };
+        QuoteApprovalMessage approval = new()
+        {
+            Type = QuoteApprovalType.AddRequest,
+            Approved = false
+        };
+
+        QuoteService.ApplyApprovalResolution(approval, quote);
+
+        Assert.True(approval.Approved);
+        Assert.True(quote.Approved);
+        Assert.False(quote.Removed);
+    }
+
+    [Fact]
+    public void ApplyApprovalResolution_ForRemoveRequest_RemovesQuote()
+    {
+        Quote quote = new()
+        {
+            Approved = true,
+            Removed = false
+        };
+        QuoteApprovalMessage approval = new()
+        {
+            Type = QuoteApprovalType.RemoveRequest,
+            Approved = false
+        };
+
+        QuoteService.ApplyApprovalResolution(approval, quote);
+
+        Assert.True(approval.Approved);
+        Assert.True(quote.Approved);
+        Assert.True(quote.Removed);
+    }
+
+    [Fact]
+    public void QuoteApprovalResult_FinalizedMarksVoteRecorded()
+    {
+        QuoteApprovalResult result = QuoteApprovalResult.Finalized(
+            currentApprovals: 5,
+            requiredApprovals: 5,
+            type: QuoteApprovalType.AddRequest,
+            quoteId: 10,
+            quoteContent: "hello",
+            approvalMessageId: 123,
+            quotesApprovalChannelId: 456);
+
+        Assert.True(result.VoteRecorded);
+        Assert.True(result.IsFinalized);
+        Assert.Equal(QuoteApprovalResultStatus.Finalized, result.Status);
+    }
 }

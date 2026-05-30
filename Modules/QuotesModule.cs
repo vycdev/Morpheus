@@ -71,127 +71,76 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var approval = await db.QuoteApprovalMessages.FirstOrDefaultAsync(a => a.Id == approvalId);
-        if (approval == null)
-        {
-            await SafeRespond("Approval request not found.");
-            return;
-        }
-
         // Expiry read from env var QUOTE_APPROVAL_EXPIRY_DAYS (defaults to 5 days)
         int quoteApprovalExpiryDays = Env.Get<int>("QUOTE_APPROVAL_EXPIRY_DAYS", 5);
-
-        if (approval.InsertDate.AddDays(quoteApprovalExpiryDays) < DateTime.UtcNow)
-        {
-            await SafeRespond($"This approval request has expired (valid for {quoteApprovalExpiryDays} days).");
-            return;
-        }
-
-        if (approval.Approved)
-        {
-            await SafeRespond("This request has already been finalized.");
-            return;
-        }
-
-        var quote = await db.Quotes.FirstOrDefaultAsync(q => q.Id == approval.QuoteId);
-        if (quote == null)
-        {
-            await SafeRespond("Related quote not found.");
-            return;
-        }
-
-        var guildDb = await db.Guilds.AsNoTracking().FirstOrDefaultAsync(g => g.Id == quote.GuildId);
-        if (guildDb == null)
-        {
-            await SafeRespond("Guild configuration not found.");
-            return;
-        }
-
         var userDb = await usersService.TryGetCreateUser(comp.User);
+        QuoteApprovalResult result = await quoteService.ApproveQuoteRequestAsync(
+            approvalId,
+            userDb.Id,
+            quoteApprovalExpiryDays);
 
-        // prevent duplicate votes (DB unique index also protects against races)
-        var already = await db.QuoteApprovals.AnyAsync(a => a.QuoteApprovalMessageId == approval.Id && a.UserId == (ulong)userDb.Id);
-        if (already)
+        switch (result.Status)
         {
-            await SafeRespond("You have already approved this request.");
-            return;
+            case QuoteApprovalResultStatus.NotFound:
+                await SafeRespond("Approval request not found.");
+                return;
+            case QuoteApprovalResultStatus.Expired:
+                await SafeRespond($"This approval request has expired (valid for {quoteApprovalExpiryDays} days).");
+                return;
+            case QuoteApprovalResultStatus.AlreadyFinalized:
+                await SafeRespond("This request has already been finalized.");
+                return;
+            case QuoteApprovalResultStatus.QuoteNotFound:
+                await SafeRespond("Related quote not found.");
+                return;
+            case QuoteApprovalResultStatus.GuildNotFound:
+                await SafeRespond("Guild configuration not found.");
+                return;
+            case QuoteApprovalResultStatus.Duplicate:
+                await SafeRespond("You have already approved this request.");
+                return;
         }
 
-        var vote = new QuoteApproval
-        {
-            QuoteApprovalMessageId = approval.Id,
-            UserId = (ulong)userDb.Id,
-            InsertDate = DateTime.UtcNow
-        };
+        await SafeRespond($"Your approval was recorded. Current approvals: {result.CurrentApprovals}/{result.RequiredApprovals}");
+
+        if (!result.IsFinalized)
+            return;
+
+        await UpdateApprovalMessageAsync(comp, result);
+    }
+
+    private async Task UpdateApprovalMessageAsync(SocketMessageComponent component, QuoteApprovalResult result)
+    {
+        if (result.ApprovalMessageId == 0)
+            return;
 
         try
         {
-            await db.QuoteApprovals.AddAsync(vote);
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            // Likely a duplicate due to race; treat as already approved by this user
-            await SafeRespond("You have already approved this request.");
-            return;
-        }
+            IMessageChannel? channel = component.Channel as IMessageChannel;
+            if (channel == null && Context != null)
+                channel = Context.Client.GetChannel(result.QuotesApprovalChannelId) as IMessageChannel;
 
-        var count = await db.QuoteApprovals.CountAsync(a => a.QuoteApprovalMessageId == approval.Id);
-        var required = approval.Type == QuoteApprovalType.AddRequest ? guildDb.QuoteAddRequiredApprovals : guildDb.QuoteRemoveRequiredApprovals;
+            if (channel == null)
+                return;
 
-        await SafeRespond($"Your approval was recorded. Current approvals: {count}/{required}");
+            var fetched = await channel.GetMessageAsync(result.ApprovalMessageId);
+            if (fetched is not IUserMessage message)
+                return;
 
-        if (count < required)
-            return;
-
-        // finalize
-        try
-        {
-            approval.Approved = true;
-            if (approval.Type == QuoteApprovalType.AddRequest)
-                quote.Approved = true;
-            else
-                quote.Removed = true;
-
-            await db.SaveChangesAsync();
-
-            // Edit the original approval message (if still present) to show final status and clear components
-            if (approval.ApprovalMessageId != 0)
+            string statusText = result.Type == QuoteApprovalType.AddRequest
+                ? "**ADD REQUEST APPROVED**"
+                : "**REMOVE REQUEST APPROVED**";
+            string newContent = $"{statusText} - Quote #{result.QuoteId}\n\n```{result.QuoteContent}```";
+            ComponentBuilder builder = new();
+            await message.ModifyAsync(props =>
             {
-                try
-                {
-                    // Prefer the channel from the interaction to avoid relying on Command Context (may be null)
-                    IMessageChannel? channel = comp.Channel as IMessageChannel;
-                    if (channel == null && Context != null)
-                        channel = Context.Client.GetChannel(guildDb.QuotesApprovalChannelId) as IMessageChannel;
-
-                    if (channel != null)
-                    {
-                        var fetched = await channel.GetMessageAsync(approval.ApprovalMessageId);
-                        if (fetched is IUserMessage msg)
-                        {
-                            var statusText = approval.Type == QuoteApprovalType.AddRequest ? "✅ **ADD REQUEST APPROVED**" : "✅ **REMOVE REQUEST APPROVED**";
-                            var safeContent = quote.Content ?? string.Empty;
-                            var newContent = $"{statusText} — Quote #{quote.Id}\n\n```{safeContent}```";
-                            var builder = new ComponentBuilder(); // empty clears components
-                            await msg.ModifyAsync(props =>
-                            {
-                                props.Content = newContent;
-                                props.Components = builder.Build();
-                            });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // logsService may be null in rare cases; guard call
-                    logsService?.Log($"Failed to update approval message {approval.ApprovalMessageId}: {ex}", LogSeverity.Warning);
-                }
-            }
+                props.Content = newContent;
+                props.Components = builder.Build();
+            });
         }
         catch (Exception ex)
         {
-            logsService.Log($"Error while finalizing approval {approval.Id}: {ex}", LogSeverity.Warning);
+            logsService.Log($"Failed to update approval message {result.ApprovalMessageId}: {ex}", LogSeverity.Warning);
         }
     }
 
