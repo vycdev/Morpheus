@@ -322,55 +322,17 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        var channel = Context.Client.GetChannel(result.ApprovalChannelId) as IMessageChannel;
-        if (channel == null)
-        {
-            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
-            await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
+        if (!await TryPostQuoteApprovalRequestAsync(new QuoteApprovalPostRequest(
+            result.ApprovalId,
+            result.ApprovalChannelId,
+            result.QuoteId,
+            result.QuoteContent,
+            result.RequiredApprovals,
+            "ADD REQUEST",
+            "Submitted by",
+            "approval message",
+            "quote approval message")))
             return;
-        }
-
-        IUserMessage sent;
-        try
-        {
-            var component = new ComponentBuilder()
-                .WithButton("Approve", customId: $"quote_approve:{result.ApprovalId}", ButtonStyle.Primary)
-                .Build();
-
-            sent = await channel.SendMessageAsync($"ADD REQUEST - Quote #{result.QuoteId}\nSubmitted by: {Context.User.Mention}\n\n```{result.QuoteContent}```\nApprovals required: {result.RequiredApprovals}", components: component);
-        }
-        catch (Discord.Net.HttpException httpEx)
-        {
-            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
-            var msg = httpEx.Message ?? string.Empty;
-            if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
-            {
-                logsService.Log($"Missing permission sending approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
-                await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
-                return;
-            }
-
-            logsService.Log($"HTTP error sending approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
-            await ReplyAsync("Failed to post the quote approval message, so the pending request was cleaned up.");
-            return;
-        }
-        catch (Exception ex)
-        {
-            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
-            logsService.Log($"Failed to send quote approval message for quote {result.QuoteId}: {ex}", LogSeverity.Warning);
-            await ReplyAsync("Failed to post the quote approval message, so the pending request was cleaned up.");
-            return;
-        }
-
-        try
-        {
-            if (!await quoteService.RecordApprovalMessageIdAsync(result.ApprovalId, sent.Id))
-                logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but approval request {result.ApprovalId} was not found when storing the message id.", LogSeverity.Warning);
-        }
-        catch (Exception ex)
-        {
-            logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but storing the message id failed: {ex}", LogSeverity.Warning);
-        }
 
         await ReplyAsync("Quote submitted for approval.");
     }
@@ -441,58 +403,87 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
                 return;
         }
 
-        var channel = Context.Client.GetChannel(result.ApprovalChannelId) as IMessageChannel;
+        if (!await TryPostQuoteApprovalRequestAsync(new QuoteApprovalPostRequest(
+            result.ApprovalId,
+            result.ApprovalChannelId,
+            result.QuoteId,
+            result.QuoteContent,
+            result.RequiredApprovals,
+            "REMOVE REQUEST",
+            "Requested by",
+            "removal approval message",
+            "quote removal approval message")))
+            return;
+
+        await ReplyAsync("Quote removal submitted for approval.");
+    }
+
+    private async Task<bool> TryPostQuoteApprovalRequestAsync(QuoteApprovalPostRequest request)
+    {
+        var channel = Context.Client.GetChannel(request.ApprovalChannelId) as IMessageChannel;
         if (channel == null)
         {
-            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            await quoteService.AbandonApprovalRequestAsync(request.ApprovalId);
             await ReplyAsync("I cannot access the configured approval channel. Please ensure the channel exists and I have permission to view it.");
-            return;
+            return false;
         }
 
         IUserMessage sent;
         try
         {
             var component = new ComponentBuilder()
-                .WithButton("Approve", customId: $"quote_approve:{result.ApprovalId}", ButtonStyle.Primary)
+                .WithButton("Approve", customId: $"quote_approve:{request.ApprovalId}", ButtonStyle.Primary)
                 .Build();
 
-            sent = await channel.SendMessageAsync($"REMOVE REQUEST - Quote #{result.QuoteId}\nRequested by: {Context.User.Mention}\n\n```{result.QuoteContent}```\nApprovals required: {result.RequiredApprovals}", components: component);
+            string message = $"{request.Heading} - Quote #{request.QuoteId}\n{request.RequesterLabel}: {Context.User.Mention}\n\n```{request.QuoteContent}```\nApprovals required: {request.RequiredApprovals}";
+            sent = await channel.SendMessageAsync(message, components: component);
         }
         catch (Discord.Net.HttpException httpEx)
         {
-            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
+            await quoteService.AbandonApprovalRequestAsync(request.ApprovalId);
             var msg = httpEx.Message ?? string.Empty;
             if (msg.Contains("Missing Permissions") || msg.Contains("50013"))
             {
-                logsService.Log($"Missing permission sending removal approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
+                logsService.Log($"Missing permission sending {request.LogAction} for quote {request.QuoteId}: {httpEx}", LogSeverity.Warning);
                 await ReplyAsync("I don't have permission to post approval messages in the configured approval channel. Please grant me Send Messages (and Embed Links) permission for that channel.");
-                return;
+                return false;
             }
 
-            logsService.Log($"HTTP error sending removal approval message for quote {result.QuoteId}: {httpEx}", LogSeverity.Warning);
-            await ReplyAsync("Failed to post the quote removal approval message, so the pending request was cleaned up.");
-            return;
+            logsService.Log($"HTTP error sending {request.LogAction} for quote {request.QuoteId}: {httpEx}", LogSeverity.Warning);
+            await ReplyAsync($"Failed to post the {request.FailureAction}, so the pending request was cleaned up.");
+            return false;
         }
         catch (Exception ex)
         {
-            await quoteService.AbandonApprovalRequestAsync(result.ApprovalId);
-            logsService.Log($"Failed to send quote removal approval message for quote {result.QuoteId}: {ex}", LogSeverity.Warning);
-            await ReplyAsync("Failed to post the quote removal approval message, so the pending request was cleaned up.");
-            return;
+            await quoteService.AbandonApprovalRequestAsync(request.ApprovalId);
+            logsService.Log($"Failed to send {request.FailureAction} for quote {request.QuoteId}: {ex}", LogSeverity.Warning);
+            await ReplyAsync($"Failed to post the {request.FailureAction}, so the pending request was cleaned up.");
+            return false;
         }
 
         try
         {
-            if (!await quoteService.RecordApprovalMessageIdAsync(result.ApprovalId, sent.Id))
-                logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but approval request {result.ApprovalId} was not found when storing the message id.", LogSeverity.Warning);
+            if (!await quoteService.RecordApprovalMessageIdAsync(request.ApprovalId, sent.Id))
+                logsService.Log($"Approval message {sent.Id} was posted for quote {request.QuoteId}, but approval request {request.ApprovalId} was not found when storing the message id.", LogSeverity.Warning);
         }
         catch (Exception ex)
         {
-            logsService.Log($"Approval message {sent.Id} was posted for quote {result.QuoteId}, but storing the message id failed: {ex}", LogSeverity.Warning);
+            logsService.Log($"Approval message {sent.Id} was posted for quote {request.QuoteId}, but storing the message id failed: {ex}", LogSeverity.Warning);
         }
 
-        await ReplyAsync("Quote removal submitted for approval.");
+        return true;
     }
+
+    private sealed record QuoteApprovalPostRequest(
+        int ApprovalId,
+        ulong ApprovalChannelId,
+        int QuoteId,
+        string QuoteContent,
+        int RequiredApprovals,
+        string Heading,
+        string RequesterLabel,
+        string LogAction,
+        string FailureAction);
 
     private async Task ScoreReferencedQuoteAsync(
         int score,
