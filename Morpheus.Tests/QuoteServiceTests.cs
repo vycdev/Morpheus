@@ -453,6 +453,202 @@ public class QuoteServiceTests
         Assert.Equal(QuoteRemoveRequestStatus.NotApproved, notApproved.Status);
     }
 
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_AddRequestAtThreshold_ApprovesQuoteAndReturnsFinalized()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 321, addRequiredApprovals: 2);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: false, content: "final add");
+        QuoteApprovalMessage approval = await SeedApprovalMessageAsync(
+            testDb.Db,
+            quote,
+            QuoteApprovalType.AddRequest,
+            approvalMessageId: 987UL,
+            insertDate: now.AddHours(-1));
+        await SeedQuoteApprovalAsync(testDb.Db, approval, userId: 999UL);
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approval.Id,
+            user.Id,
+            approvalExpiryDays: 5,
+            utcNow: now);
+
+        Assert.Equal(QuoteApprovalResultStatus.Finalized, result.Status);
+        Assert.Equal(2, result.CurrentApprovals);
+        Assert.Equal(2, result.RequiredApprovals);
+        Assert.Equal(QuoteApprovalType.AddRequest, result.Type);
+        Assert.Equal(quote.Id, result.QuoteId);
+        Assert.Equal("final add", result.QuoteContent);
+        Assert.Equal(987UL, result.ApprovalMessageId);
+        Assert.Equal(321UL, result.QuotesApprovalChannelId);
+
+        Quote updatedQuote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.True(updatedQuote.Approved);
+        Assert.False(updatedQuote.Removed);
+
+        QuoteApprovalMessage updatedApproval = await testDb.Db.QuoteApprovalMessages.AsNoTracking().SingleAsync();
+        Assert.True(updatedApproval.Approved);
+        Assert.Equal(2, await testDb.Db.QuoteApprovals.AsNoTracking().CountAsync());
+    }
+
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_RemoveRequestAtThreshold_RemovesQuote()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 654, removeRequiredApprovals: 2);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "final remove");
+        QuoteApprovalMessage approval = await SeedApprovalMessageAsync(
+            testDb.Db,
+            quote,
+            QuoteApprovalType.RemoveRequest,
+            approvalMessageId: 789UL,
+            insertDate: now.AddHours(-1));
+        await SeedQuoteApprovalAsync(testDb.Db, approval, userId: 999UL);
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approval.Id,
+            user.Id,
+            approvalExpiryDays: 5,
+            utcNow: now);
+
+        Assert.Equal(QuoteApprovalResultStatus.Finalized, result.Status);
+        Assert.Equal(QuoteApprovalType.RemoveRequest, result.Type);
+        Assert.Equal(2, result.CurrentApprovals);
+        Assert.Equal(2, result.RequiredApprovals);
+
+        Quote updatedQuote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.True(updatedQuote.Approved);
+        Assert.True(updatedQuote.Removed);
+
+        QuoteApprovalMessage updatedApproval = await testDb.Db.QuoteApprovalMessages.AsNoTracking().SingleAsync();
+        Assert.True(updatedApproval.Approved);
+    }
+
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_BelowThreshold_RecordsVoteWithoutFinalizing()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 321, addRequiredApprovals: 3);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: false);
+        QuoteApprovalMessage approval = await SeedApprovalMessageAsync(
+            testDb.Db,
+            quote,
+            QuoteApprovalType.AddRequest,
+            insertDate: now.AddHours(-1));
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approval.Id,
+            user.Id,
+            approvalExpiryDays: 5,
+            utcNow: now);
+
+        Assert.Equal(QuoteApprovalResultStatus.Recorded, result.Status);
+        Assert.Equal(1, result.CurrentApprovals);
+        Assert.Equal(3, result.RequiredApprovals);
+
+        Quote updatedQuote = await testDb.Db.Quotes.AsNoTracking().SingleAsync();
+        Assert.False(updatedQuote.Approved);
+        QuoteApprovalMessage updatedApproval = await testDb.Db.QuoteApprovalMessages.AsNoTracking().SingleAsync();
+        Assert.False(updatedApproval.Approved);
+    }
+
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_DuplicateVote_ReturnsDuplicateWithoutAddingVote()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 321, addRequiredApprovals: 3);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: false);
+        QuoteApprovalMessage approval = await SeedApprovalMessageAsync(
+            testDb.Db,
+            quote,
+            QuoteApprovalType.AddRequest,
+            insertDate: now.AddHours(-1));
+        await SeedQuoteApprovalAsync(testDb.Db, approval, userId: (ulong)user.Id);
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approval.Id,
+            user.Id,
+            approvalExpiryDays: 5,
+            utcNow: now);
+
+        Assert.Equal(QuoteApprovalResultStatus.Duplicate, result.Status);
+        Assert.Equal(1, result.CurrentApprovals);
+        Assert.Equal(3, result.RequiredApprovals);
+        Assert.Equal(1, await testDb.Db.QuoteApprovals.AsNoTracking().CountAsync());
+    }
+
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_ExpiredRequest_ReturnsExpiredWithoutAddingVote()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 321);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: false);
+        QuoteApprovalMessage approval = await SeedApprovalMessageAsync(
+            testDb.Db,
+            quote,
+            QuoteApprovalType.AddRequest,
+            insertDate: now.AddDays(-6));
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approval.Id,
+            user.Id,
+            approvalExpiryDays: 5,
+            utcNow: now);
+
+        Assert.Equal(QuoteApprovalResultStatus.Expired, result.Status);
+        Assert.Empty(await testDb.Db.QuoteApprovals.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_AlreadyFinalizedRequest_ReturnsAlreadyFinalized()
+    {
+        DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 321);
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true);
+        QuoteApprovalMessage approval = await SeedApprovalMessageAsync(
+            testDb.Db,
+            quote,
+            QuoteApprovalType.AddRequest,
+            insertDate: now.AddHours(-1),
+            approved: true);
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approval.Id,
+            user.Id,
+            approvalExpiryDays: 5,
+            utcNow: now);
+
+        Assert.Equal(QuoteApprovalResultStatus.AlreadyFinalized, result.Status);
+        Assert.Empty(await testDb.Db.QuoteApprovals.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ApproveQuoteRequestAsync_MissingRequest_ReturnsNotFound()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, _) = await SeedUserAndGuildAsync(testDb.Db, approvalChannelId: 321);
+        QuoteService service = new(testDb.Db);
+
+        QuoteApprovalResult result = await service.ApproveQuoteRequestAsync(
+            approvalId: 999,
+            userId: user.Id,
+            approvalExpiryDays: 5);
+
+        Assert.Equal(QuoteApprovalResultStatus.NotFound, result.Status);
+    }
+
     private static async Task<SqliteTestDb> CreateSqliteDbAsync()
     {
         SqliteConnection connection = new("Data Source=:memory:");
@@ -514,6 +710,45 @@ public class QuoteServiceTests
         await db.Quotes.AddAsync(quote);
         await db.SaveChangesAsync();
         return quote;
+    }
+
+    private static async Task<QuoteApprovalMessage> SeedApprovalMessageAsync(
+        DB db,
+        Quote quote,
+        QuoteApprovalType type,
+        ulong approvalMessageId = 0,
+        DateTime? insertDate = null,
+        bool approved = false)
+    {
+        QuoteApprovalMessage approval = new()
+        {
+            QuoteId = quote.Id,
+            ApprovalMessageId = approvalMessageId,
+            Type = type,
+            InsertDate = insertDate ?? DateTime.UtcNow,
+            Approved = approved
+        };
+
+        await db.QuoteApprovalMessages.AddAsync(approval);
+        await db.SaveChangesAsync();
+        return approval;
+    }
+
+    private static async Task<QuoteApproval> SeedQuoteApprovalAsync(
+        DB db,
+        QuoteApprovalMessage approval,
+        ulong userId)
+    {
+        QuoteApproval vote = new()
+        {
+            QuoteApprovalMessageId = approval.Id,
+            UserId = userId,
+            InsertDate = DateTime.UtcNow
+        };
+
+        await db.QuoteApprovals.AddAsync(vote);
+        await db.SaveChangesAsync();
+        return vote;
     }
 
     private sealed class SqliteTestDb(SqliteConnection connection, DB db) : IAsyncDisposable

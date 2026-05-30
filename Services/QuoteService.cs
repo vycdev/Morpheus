@@ -7,6 +7,7 @@ namespace Morpheus.Services;
 public class QuoteService(DB dbContext)
 {
     internal const int PageSize = 10;
+    private const string NpgsqlProviderName = "Npgsql.EntityFrameworkCore.PostgreSQL";
     private const int MaxListContentLength = 300;
 
     public async Task<QuotePage> GetQuotePageAsync(int page, string sort, bool approvedOnly, int? guildId)
@@ -112,9 +113,7 @@ public class QuoteService(DB dbContext)
         DateTime now = utcNow ?? DateTime.UtcNow;
         await using var transaction = await dbContext.Database.BeginTransactionAsync();
 
-        QuoteApprovalMessage? approval = await dbContext.QuoteApprovalMessages
-            .FromSqlInterpolated($"""SELECT * FROM "QuoteApprovalMessages" WHERE "Id" = {approvalId} FOR UPDATE""")
-            .FirstOrDefaultAsync();
+        QuoteApprovalMessage? approval = await LoadApprovalMessageForUpdateAsync(approvalId);
 
         if (approval == null)
             return QuoteApprovalResult.NotFound();
@@ -171,6 +170,19 @@ public class QuoteService(DB dbContext)
                 approval.ApprovalMessageId,
                 guild.QuotesApprovalChannelId)
             : QuoteApprovalResult.Recorded(currentApprovals, requiredApprovals);
+    }
+
+    private async Task<QuoteApprovalMessage?> LoadApprovalMessageForUpdateAsync(int approvalId)
+    {
+        if (dbContext.Database.ProviderName == NpgsqlProviderName)
+        {
+            return await dbContext.QuoteApprovalMessages
+                .FromSqlInterpolated($"""SELECT * FROM "QuoteApprovalMessages" WHERE "Id" = {approvalId} FOR UPDATE""")
+                .FirstOrDefaultAsync();
+        }
+
+        return await dbContext.QuoteApprovalMessages
+            .FirstOrDefaultAsync(approval => approval.Id == approvalId);
     }
 
     public async Task<QuoteAddRequestResult> CreateAddRequestAsync(
