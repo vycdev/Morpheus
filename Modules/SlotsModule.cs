@@ -19,37 +19,19 @@ namespace Morpheus.Modules;
 [Summary("Slot machine gambling — spin the reels and test your luck.")]
 public class SlotsModule : ModuleBase<SocketCommandContextExtended>
 {
-    private const decimal TaxRate = 0.05m; // 5% tax on profit
-    private const decimal MinBet = 1.00m;
-    private const decimal MaxBet = 10000.00m;
-
-    // Jackpot Odds (1 in X)
-    private const int GrandOdds = 1_000_000;
-    private const int MajorOdds = 200_000;
-    private const int MiniOdds = 50_000;
-
-    // Win Weights (Total = 1,000,000)
-    private static readonly (string name, int weight, decimal multiplier, bool isJackpot)[] Outcomes =
-    [
-        ("Grand Jackpot 💎", 1, 500m, true),        // 1 in 1,000,000
-        ("Major Jackpot 👑", 5, 100m, true),        // 1 in 200,000
-        ("Mini Jackpot 🏆", 20, 50m, true),         // 1 in 50,000
-        ("Mega Win 🔔", 100, 10m, false),           // 1 in 10,000
-        ("Big Win 🍓", 500, 5m, false),             // 1 in 2,000
-        ("Medium Win 🍋", 2500, 3m, false),         // 1 in 400
-        ("Small Win 🍊", 12000, 2m, false),         // 1 in 83
-        ("Tiny Win 🍇", 80000, 1.5m, false),        // 1 in 12
-        ("Push 🍒", 142857, 1m, false),             // 1 in 7
-        ("Loss 💩", 762017, 0m, false)              // ~76% Loss
-    ];
-
     private readonly DB dbContext;
     private readonly EconomyService economyService;
+    private readonly SlotsService slotsService;
 
-    public SlotsModule(DB dbContext, InteractionsHandler interactionHandler, EconomyService economyService)
+    public SlotsModule(
+        DB dbContext,
+        InteractionsHandler interactionHandler,
+        EconomyService economyService,
+        SlotsService slotsService)
     {
         this.dbContext = dbContext;
         this.economyService = economyService;
+        this.slotsService = slotsService;
         interactionHandler.RegisterInteraction("slots_spin", HandleSpinInteraction);
     }
 
@@ -119,111 +101,29 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         if (user == null) return null;
 
         // Validate bet
-        if (bet < MinBet || bet > MaxBet) return null;
+        if (bet < SlotsService.MinBet || bet > SlotsService.MaxBet) return null;
         if (user.Balance < bet) return null;
 
         // Deduct bet from user (goes to balance temporarily, will be moved to Vault)
         user.Balance -= bet;
 
-        // 1. Determine Outcome
-        int roll = Random.Shared.Next(1_000_000);
-        int cumulative = 0;
-        var outcome = Outcomes[^1]; // Default to loss
+        SlotsSpinResult spin = slotsService.Spin(bet, vaultAmount, Random.Shared.Next(SlotsService.RollRange));
 
-        foreach (var o in Outcomes)
-        {
-            cumulative += o.weight;
-            if (roll < cumulative)
-            {
-                outcome = o;
-                break;
-            }
-        }
+        if (spin.VaultDelta != 0)
+            await economyService.UpdateVault(spin.VaultDelta);
 
-        // 2. Calculate Winnings (Dynamic)
-        decimal grossWinnings = 0m;
-        string resultDescription = outcome.name;
+        if (spin.Tax > 0)
+            await economyService.AddToPool(spin.Tax);
 
-        // Check if Jackpot is disabled (Vault < MaxBet * Multiplier)
-        // Grand (500x) requires 500 * MaxBet in vault to be fully active? 
-        // Or just requires enough to pay THIS bet? 
-        // User said: "if 10k x 500 > vault value, then grand jackpot is disabled"
-        // This implies checking against MAX possible liability.
-        bool jackpotDisabled = false;
-
-        if (outcome.isJackpot)
-        {
-            decimal liabilityCheck = MaxBet * outcome.multiplier;
-            if (liabilityCheck > vaultAmount)
-            {
-                // Jackpot disabled, downgrade to 5x win? Or loss?
-                // Let's treat it as a "Near Miss" loss or a modest win.
-                // Downgrade to Mega Win (10x)
-                outcome = Outcomes[3]; // Mega Win
-                resultDescription = $"~~{resultDescription}~~ (Vault too low!) -> Mega Win 🔔";
-                jackpotDisabled = true;
-            }
-        }
-
-        if (!jackpotDisabled && outcome.isJackpot)
-        {
-            // Jackpot Logic: Multiplier + % of Vault
-            // Scale based on Bet/MaxBet
-            decimal scale = bet / MaxBet;
-
-            decimal baseWin = bet * outcome.multiplier;
-            decimal percentage = outcome.name.Contains("Grand") ? 0.25m :
-                                 outcome.name.Contains("Major") ? 0.15m : 0.05m;
-
-            decimal capPercentage = outcome.name.Contains("Grand") ? 0.50m :
-                                    outcome.name.Contains("Major") ? 0.25m : 0.10m;
-
-            decimal bonusWin = vaultAmount * percentage * scale;
-
-            // Cap applies to the TOTAL payout relative to the Vault size.
-            // It protects the vault from being drained by a single massive win.
-            // It does NOT scale with bet size (it's a global safety limit).
-            decimal capAmount = vaultAmount * capPercentage;
-
-            grossWinnings = baseWin + bonusWin;
-            if (grossWinnings > capAmount)
-            {
-                grossWinnings = capAmount;
-                resultDescription += " (Capped)";
-            }
-        }
-        else
-        {
-            // Standard Multiplier
-            grossWinnings = bet * outcome.multiplier;
-        }
-
-        // 3. Process Money
-        // Add bet to Vault
-        await economyService.UpdateVault(bet);
-
-        // Deduct Winnings from Vault
-        await economyService.UpdateVault(-grossWinnings);
-
-        // Tax (5% of Profit)
-        decimal profit = grossWinnings - bet;
-        decimal tax = 0m;
-        if (profit > 0)
-        {
-            tax = profit * TaxRate;
-            await economyService.AddToPool(tax); // Send tax to UBI
-        }
-
-        decimal netWinnings = grossWinnings - tax;
-        user.Balance += netWinnings;
+        user.Balance += spin.NetWinnings;
 
         // Record transaction
         StockTransaction transaction = new()
         {
             UserId = user.Id,
-            Type = grossWinnings > 0 ? TransactionType.SlotsWin : TransactionType.SlotsLoss,
-            Amount = netWinnings,
-            Fee = tax,
+            Type = spin.GrossWinnings > 0 ? TransactionType.SlotsWin : TransactionType.SlotsLoss,
+            Amount = spin.NetWinnings,
+            Fee = spin.Tax,
             InsertDate = DateTime.UtcNow
         };
         await dbContext.StockTransactions.AddAsync(transaction);
@@ -231,58 +131,42 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         await dbTransaction.CommitAsync();
 
         // 4. Build Visuals
-        var (r1, r2, r3) = GenerateReels(outcome.name);
+        var (r1, r2, r3) = GenerateReels(spin.Outcome.Name);
         string slotDisplay = BuildSlotMachine(r1, r2, r3);
         
-        Color embedColor = outcome.isJackpot ? new Color(255, 215, 0) // Gold
-                         : grossWinnings > bet ? Color.Green
-                         : grossWinnings == bet ? Color.Blue
+        Color embedColor = spin.Outcome.IsJackpot ? new Color(255, 215, 0) // Gold
+                         : spin.GrossWinnings > bet ? Color.Green
+                         : spin.GrossWinnings == bet ? Color.Blue
                          : Color.Red;
 
-        string title = outcome.isJackpot ? "🎰 JACKPOT!!!" : "🎰 Slots";
+        string title = spin.Outcome.IsJackpot ? "🎰 JACKPOT!!!" : "🎰 Slots";
 
         // Calculate potential jackpots for THIS bet using CURRENT vault (post-spin)
         // This entices the user for the next spin or shows what they were playing for.
         // Vault has just been updated, so get fresh amount.
         decimal freshVault = await economyService.GetVaultAmount();
-        decimal currentBetScale = bet / MaxBet;
-        
-        // Helper to calculate theoretical jackpot
-        decimal GetJackpotVal(decimal pct, decimal capPct, decimal baseMult)
-        {
-            decimal val = (bet * baseMult) + (freshVault * pct * currentBetScale);
-            // Cap applies to the TOTAL payout relative to the Vault size.
-            decimal cap = freshVault * capPct;
-            if (val > cap) val = cap;
-            // Also check liability disable
-            if (MaxBet * baseMult > freshVault) return 0; // Disabled
-            return val;
-        }
-
-        decimal grandPot = GetJackpotVal(0.25m, 0.50m, 500m);
-        decimal majorPot = GetJackpotVal(0.15m, 0.25m, 100m);
-        decimal miniPot = GetJackpotVal(0.05m, 0.10m, 50m);
+        SlotsJackpotPreview jackpotPreview = slotsService.CalculateJackpotPreview(bet, freshVault);
 
         StringBuilder desc = new();
         desc.AppendLine(slotDisplay);
         
         // Show potential jackpots cleanly
         string pots = "";
-        if (grandPot > 0) pots += $"💎 ${grandPot:N0}  ";
-        if (majorPot > 0) pots += $"👑 ${majorPot:N0}  ";
-        if (miniPot > 0) pots += $"🏆 ${miniPot:N0}";
+        if (jackpotPreview.GrandPot > 0) pots += $"💎 ${jackpotPreview.GrandPot:N0}  ";
+        if (jackpotPreview.MajorPot > 0) pots += $"👑 ${jackpotPreview.MajorPot:N0}  ";
+        if (jackpotPreview.MiniPot > 0) pots += $"🏆 ${jackpotPreview.MiniPot:N0}";
         
         if (!string.IsNullOrWhiteSpace(pots))
             desc.AppendLine($"*{pots.Trim()}*");
 
-        desc.AppendLine($"**{resultDescription}**");
+        desc.AppendLine($"**{spin.ResultDescription}**");
         desc.AppendLine();
 
-        if (grossWinnings > 0)
+        if (spin.GrossWinnings > 0)
         {
-            desc.AppendLine($"Payout: **${grossWinnings:F2}**");
-            if (tax > 0) desc.AppendLine($"Tax (5% Profit): -**${tax:F2}**");
-            desc.AppendLine($"Net: **${netWinnings:F2}**");
+            desc.AppendLine($"Payout: **${spin.GrossWinnings:F2}**");
+            if (spin.Tax > 0) desc.AppendLine($"Tax (5% Profit): -**${spin.Tax:F2}**");
+            desc.AppendLine($"Net: **${spin.NetWinnings:F2}**");
         }
         else
         {
@@ -305,8 +189,8 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         // Build buttons: Spin Again (same bet), Double, Half
         decimal doubleBet = bet * 2;
         decimal halfBet = Math.Floor(bet / 2 * 100) / 100;
-        bool canDouble = doubleBet <= MaxBet;
-        bool canHalf = halfBet >= MinBet;
+        bool canDouble = doubleBet <= SlotsService.MaxBet;
+        bool canHalf = halfBet >= SlotsService.MinBet;
 
         ComponentBuilder components = new ComponentBuilder()
             .WithButton($"Spin Again (${bet:F2})", customId: $"slots_again:{userId}:{bet:F2}", style: ButtonStyle.Primary, emote: new Emoji("🔁"))
@@ -326,14 +210,14 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         User? user = Context.DbUser;
         if (user == null) { await ReplyAsync("User not found."); return; }
 
-        if (bet < MinBet)
+        if (bet < SlotsService.MinBet)
         {
-            await ReplyAsync($"Minimum bet is **${MinBet:F2}**.");
+            await ReplyAsync($"Minimum bet is **${SlotsService.MinBet:F2}**.");
             return;
         }
-        if (bet > MaxBet)
+        if (bet > SlotsService.MaxBet)
         {
-            await ReplyAsync($"Maximum bet is **${MaxBet:F2}**.");
+            await ReplyAsync($"Maximum bet is **${SlotsService.MaxBet:F2}**.");
             return;
         }
         if (user.Balance < bet)
@@ -442,7 +326,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         sb.AppendLine();
 
         sb.AppendLine("**Rules:**");
-        sb.AppendLine($"  Min bet: **${MinBet:F2}** | Max bet: **${MaxBet:F2}**");
+        sb.AppendLine($"  Min bet: **${SlotsService.MinBet:F2}** | Max bet: **${SlotsService.MaxBet:F2}**");
         sb.AppendLine("  5% tax is deducted from PROFIT only (goes to UBI).");
         sb.AppendLine("  Loss rate is approx 75%. Play responsibly!");
 

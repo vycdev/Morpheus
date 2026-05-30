@@ -37,6 +37,7 @@ public static class BotStartupExtensions
         services.AddScoped<ChannelService>();
         services.AddScoped<EconomyService>();
         services.AddScoped<StocksService>();
+        services.AddSingleton<SlotsService>();
 
         return services;
     }
