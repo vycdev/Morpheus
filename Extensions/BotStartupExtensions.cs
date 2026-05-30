@@ -32,6 +32,7 @@ public static class BotStartupExtensions
         services.AddSingleton<LogsService>();
         services.AddHostedService<LogsWriterService>();
         services.AddScoped<ActivityService>();
+        services.AddScoped<ActivityLeaderboardService>();
         services.AddScoped<ActivityScoringService>();
         services.AddScoped<ActivityLevelService>();
         services.AddScoped<ChannelService>();
