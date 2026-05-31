@@ -578,7 +578,8 @@ public sealed record DashboardQuoteCandidate(
 
 public sealed record DashboardQuoteVoteItem(
     int Rank,
-    string UserId,
+    int UserId,
+    string DiscordId,
     string Username,
     int Votes,
     int PositiveVotes,

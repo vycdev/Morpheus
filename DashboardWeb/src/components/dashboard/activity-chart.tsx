@@ -20,7 +20,7 @@ type ActivityChartProps = {
 
 export function ActivityChart({ points }: ActivityChartProps) {
   const data = points.map((point) => ({
-    date: new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(point.dateUtc)),
+    date: new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(point.dateUtc)),
     xp: point.xp,
     messages: point.messages,
     activeUsers: point.activeUsers,

@@ -116,6 +116,9 @@ public static class DashboardApiExtensions
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
         {
+            if (HasInvalidDiscordId(channelId))
+                return Results.BadRequest(new { error = "channelId must be a positive numeric Discord id." });
+
             DashboardActivitySeriesResponse series = await statsService.GetActivitySeriesAsync(
                 guildId,
                 days ?? 30,
@@ -140,6 +143,9 @@ public static class DashboardApiExtensions
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
         {
+            if (HasInvalidDiscordId(channelId))
+                return Results.BadRequest(new { error = "channelId must be a positive numeric Discord id." });
+
             DashboardLeaderboardResponse leaderboard = await statsService.GetActivityLeaderboardAsync(
                 guildId,
                 metric ?? "xp",
@@ -168,6 +174,9 @@ public static class DashboardApiExtensions
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
         {
+            if (HasInvalidDiscordId(channelId))
+                return Results.BadRequest(new { error = "channelId must be a positive numeric Discord id." });
+
             DashboardInsightsResponse insights = await statsService.GetInsightsAsync(
                 guildId,
                 userId,
@@ -241,6 +250,10 @@ public static class DashboardApiExtensions
 
         return app;
     }
+
+    private static bool HasInvalidDiscordId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        (!ulong.TryParse(value.Trim(), out ulong parsed) || parsed == 0UL);
 
     private static async ValueTask<object?> RequireDashboardApiKey(
         EndpointFilterInvocationContext context,

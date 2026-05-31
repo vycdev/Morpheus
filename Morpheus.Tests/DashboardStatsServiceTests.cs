@@ -205,6 +205,11 @@ public class DashboardStatsServiceTests
         Assert.Single(overview.Feeds.RecentEconomyEvents);
         Assert.Single(overview.Feeds.RecentBotHealthEvents);
 
+        DashboardGlobalOverviewResponse explicitAll = await service.GetGlobalOverviewAsync(7, "all");
+        Assert.Equal(7, explicitAll.Visuals.Activity.Count);
+        Assert.Single(explicitAll.Visuals.TransactionTypes);
+        Assert.Single(explicitAll.Feeds.RecentEconomyEvents);
+
         DashboardGlobalOverviewResponse summary = await service.GetGlobalOverviewAsync(7, "summary");
         Assert.Single(summary.Highlights.MostActiveUsers);
         Assert.Single(summary.Highlights.MostActiveServersSelectedWindow);
@@ -566,7 +571,9 @@ public class DashboardStatsServiceTests
         Assert.Contains(quotes.ExpiredApprovalQueue, request => request.Id == expiredApproval.Id);
         Assert.Contains(quotes.RemovedQuoteList, quote => quote.Id == removedQuote.Id);
         Assert.Contains(quotes.TopVoters, vote => vote.Username == voter.Username);
+        Assert.Contains(quotes.TopVoters, vote => vote.UserId == voter.Id && vote.DiscordId == voter.DiscordId.ToString());
         Assert.Contains(quotes.ApprovalVoters, vote => vote.Username == reviewer.Username);
+        Assert.Contains(quotes.ApprovalVoters, vote => vote.UserId == reviewer.Id && vote.DiscordId == reviewer.DiscordId.ToString());
         Assert.Contains(quotes.ServerSummaries, summary => summary.GuildId == guild.Id && summary.Total == 5);
         Assert.Contains(quotes.ServerSummaries, summary => summary.GuildId == weakGuild.Id && summary.Total == 0 && summary.ApprovalRequests == 1);
         Assert.Contains(quotes.SetupSummaries, setup => setup.GuildId == weakGuild.Id && setup.Health == "Missing");
@@ -1062,6 +1069,55 @@ public class DashboardStatsServiceTests
         DashboardLeaderboardItem item = Assert.Single(leaderboard.Items);
         Assert.Equal(firstUser.Id, item.UserId);
         Assert.Equal(1, item.Value);
+    }
+
+    [Fact]
+    public async Task GetActivityLeaderboardAsync_ClampsNonPositiveDaysInsteadOfReturningAllTime()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (Guild guild, User recentUser) = await SeedBaseAsync(testDb.Db);
+        User oldUser = new()
+        {
+            DiscordId = 444,
+            Username = "old-activity"
+        };
+        testDb.Db.Users.Add(oldUser);
+        await testDb.Db.SaveChangesAsync();
+
+        DateTime today = DateTime.UtcNow.Date;
+        testDb.Db.UserActivity.AddRange(
+            new UserActivity
+            {
+                GuildId = guild.Id,
+                UserId = oldUser.Id,
+                DiscordChannelId = 555,
+                DiscordMessageId = 1,
+                XpGained = 100,
+                InsertDate = today.AddDays(-3)
+            },
+            new UserActivity
+            {
+                GuildId = guild.Id,
+                UserId = recentUser.Id,
+                DiscordChannelId = 555,
+                DiscordMessageId = 2,
+                XpGained = 10,
+                InsertDate = today.AddHours(1)
+            });
+        await testDb.Db.SaveChangesAsync();
+
+        DashboardStatsService service = CreateService(testDb.Db);
+
+        DashboardLeaderboardResponse leaderboard = await service.GetActivityLeaderboardAsync(
+            guild.Id,
+            "messages",
+            days: 0,
+            limit: 10,
+            endDateUtc: today);
+
+        DashboardLeaderboardItem item = Assert.Single(leaderboard.Items);
+        Assert.Equal(1, leaderboard.Days);
+        Assert.Equal(recentUser.Id, item.UserId);
     }
 
     [Fact]
@@ -1653,6 +1709,50 @@ public class DashboardStatsServiceTests
     }
 
     [Fact]
+    public async Task GetInsightsAsync_GlobalEconomyTreatsUserTransfersAsInternalFlow()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (_, User sender) = await SeedBaseAsync(testDb.Db);
+        User receiver = new()
+        {
+            DiscordId = 777,
+            Username = "receiver"
+        };
+        testDb.Db.Users.Add(receiver);
+        await testDb.Db.SaveChangesAsync();
+
+        testDb.Db.StockTransactions.Add(new StockTransaction
+        {
+            UserId = sender.Id,
+            TargetUserId = receiver.Id,
+            Type = TransactionType.Transfer,
+            Amount = 75m,
+            InsertDate = DateTime.UtcNow
+        });
+        await testDb.Db.SaveChangesAsync();
+
+        DashboardStatsService service = CreateService(testDb.Db);
+
+        DashboardInsightsResponse insights = await service.GetInsightsAsync(
+            guildId: null,
+            userId: null,
+            channelId: null,
+            days: 7,
+            scope: "global",
+            sortDirection: "desc",
+            minActivity: 1,
+            view: "economy");
+
+        Assert.Equal(75m, insights.Economy.TransactionVolume);
+        Assert.Equal(75m, insights.Economy.Inflows);
+        Assert.Equal(75m, insights.Economy.Outflows);
+        Assert.Equal(0m, insights.Economy.DailyFlow.Sum(point => point.Net));
+        DashboardMoneyFlow flow = Assert.Single(insights.Economy.MoneyFlows);
+        Assert.Equal("Member wallets", flow.Source);
+        Assert.Equal("Member wallets", flow.Target);
+    }
+
+    [Fact]
     public async Task GetInsightsAsync_UserSummaryReturnsCompleteUserProfile()
     {
         await using SqliteTestDb testDb = await CreateSqliteDbAsync();
@@ -1667,20 +1767,36 @@ public class DashboardStatsServiceTests
             DiscordId = 555,
             Name = "general"
         };
+        Guild otherGuild = new()
+        {
+            DiscordId = 888,
+            Name = "Other guild"
+        };
         testDb.Db.Users.Add(voter);
         testDb.Db.Channels.Add(channel);
+        testDb.Db.Guilds.Add(otherGuild);
         await testDb.Db.SaveChangesAsync();
 
         DateTime startDate = DateTime.UtcNow.Date.AddDays(-4);
-        testDb.Db.UserLevels.Add(new UserLevels
-        {
-            GuildId = guild.Id,
-            UserId = user.Id,
-            TotalXp = 400,
-            UserMessageCount = 3,
-            UserAverageMessageLength = 50,
-            UserAverageMessageLengthEma = 55
-        });
+        testDb.Db.UserLevels.AddRange(
+            new UserLevels
+            {
+                GuildId = guild.Id,
+                UserId = user.Id,
+                TotalXp = 400,
+                UserMessageCount = 3,
+                UserAverageMessageLength = 50,
+                UserAverageMessageLengthEma = 55
+            },
+            new UserLevels
+            {
+                GuildId = otherGuild.Id,
+                UserId = user.Id,
+                TotalXp = 900,
+                UserMessageCount = 9,
+                UserAverageMessageLength = 90,
+                UserAverageMessageLengthEma = 95
+            });
         testDb.Db.UserActivity.AddRange(
             new UserActivity
             {
@@ -1800,6 +1916,7 @@ public class DashboardStatsServiceTests
         Assert.Equal(6, profile.QuotePerformance.ScoreReceived);
         Assert.Equal(1, profile.QuotePerformance.VotesGiven);
         Assert.Equal(60m, profile.EconomyPerformance.PortfolioValue);
+        Assert.Equal(-45m, profile.EconomyPerformance.RealizedGains);
         Assert.Equal(15m, profile.EconomyPerformance.UnrealizedGains);
         Assert.Equal(1, profile.EconomyPerformance.Trades);
         Assert.Single(profile.StockHoldings);

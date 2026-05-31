@@ -186,7 +186,7 @@ export default async function DashboardPage({
   const { days, startDate, endDate } = dateWindow;
   const requestedGuildId = parseOptionalNumber(getParam(params.guildId));
   const requestedUserId = parseOptionalNumber(getParam(params.userId));
-  const requestedChannelId = parseOptionalString(getParam(params.channelId));
+  const requestedChannelId = parseOptionalDiscordId(getParam(params.channelId));
   const requestedScope = parseScope(getParam(params.scope), requestedGuildId, requestedUserId, requestedChannelId);
   const requestedView = parseDashboardView(getParam(params.view));
   const sortDirection = parseSortDirection(getParam(params.sortDirection));
@@ -1201,7 +1201,7 @@ function UserDashboardSummary({
             <Quote className="h-5 w-5 text-muted" aria-hidden />
           </CardHeader>
           <CardContent>
-            <QuotesList quotes={profile.quotePerformance.recentQuotes} />
+            <QuotesList days={days} endDate={endDate} quotes={profile.quotePerformance.recentQuotes} startDate={startDate} />
           </CardContent>
         </Card>
       </section>
@@ -1694,7 +1694,7 @@ function ServerDashboardSummary({
           <CardContent className="grid gap-5">
             <DonutChart data={insights.quotes.statuses} labelKey="status" />
             <QuoteAuthors authors={insights.quotes.authors} />
-            <QuotesList emptyLabel="No pending quotes found" quotes={insights.quotes.recentPending} />
+            <QuotesList days={days} emptyLabel="No pending quotes found" endDate={endDate} quotes={insights.quotes.recentPending} startDate={startDate} />
           </CardContent>
         </Card>
 
@@ -3206,7 +3206,7 @@ function PopularQuotesList({
       {quotes.slice(0, 8).map((quote) => (
         <Link
           className="rounded-lg border border-border bg-white p-3 transition-colors hover:bg-slate-50"
-          href={`/quotes/${quote.id}`}
+          href={quoteDetailHref(quote.id, days, startDate, endDate)}
           key={quote.id}
         >
           <div className="flex items-start justify-between gap-3">
@@ -3345,7 +3345,7 @@ function RecentQuoteList({
         quotes.slice(0, 4).map((quote) => (
           <Link
             className="grid min-h-[66px] content-center rounded-lg border border-border bg-white p-3 transition-colors hover:bg-slate-50"
-            href={`/quotes/${quote.id}`}
+            href={quoteDetailHref(quote.id, days, startDate, endDate)}
             key={quote.id}
           >
             <div className="line-clamp-2 text-sm font-medium text-foreground">{quote.content}</div>
@@ -3888,7 +3888,7 @@ function QuoteManagementList({
         <article className="rounded-lg border border-border bg-white p-3" key={quote.id}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <Link className="font-semibold text-foreground hover:text-primary" href={`/quotes/${quote.id}`}>
+              <Link className="font-semibold text-foreground hover:text-primary" href={quoteDetailHref(quote.id, days, startDate, endDate)}>
                 #{quote.id}
               </Link>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -3949,7 +3949,7 @@ function QuoteApprovalQueue({
         <article className="rounded-lg border border-border bg-white p-3" key={request.id}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <Link className="font-semibold text-foreground hover:text-primary" href={`/quote-approvals/${request.id}`}>
+              <Link className="font-semibold text-foreground hover:text-primary" href={approvalDetailHref(request.id, days, startDate, endDate)}>
                 Request #{request.id}
               </Link>
               <div className="mt-1 text-xs text-muted">{request.type} request - {request.guildName}</div>
@@ -3970,7 +3970,7 @@ function QuoteApprovalQueue({
               <span>-</span>
               <span>{request.expired ? "expired" : "expires"} {formatRelativeDate(request.expiresAtUtc)}</span>
               <span>-</span>
-              <Link className="hover:text-primary" href={`/quotes/${request.quoteId}`}>quote detail</Link>
+              <Link className="hover:text-primary" href={quoteDetailHref(request.quoteId, days, startDate, endDate)}>quote detail</Link>
               <span>-</span>
               <Link className="hover:text-primary" href={dashboardHref({ scope: "server", guildId: request.guildId, days, startDate, endDate, view: "quotes" })}>server</Link>
             </div>
@@ -4003,7 +4003,7 @@ function QuoteRankedList({
       {quotes.slice(0, 6).map((quote) => (
         <article className="rounded-lg border border-border bg-white p-3" key={quote.id}>
           <div className="flex items-start justify-between gap-3">
-            <Link className="text-sm font-semibold text-foreground hover:text-primary" href={`/quotes/${quote.id}`}>
+            <Link className="text-sm font-semibold text-foreground hover:text-primary" href={quoteDetailHref(quote.id, days, startDate, endDate)}>
               #{quote.rank} Quote {quote.id}
             </Link>
             <Badge variant={quote.score >= 0 ? "success" : "danger"}>{quote.score >= 0 ? "+" : ""}{formatInteger(quote.score)}</Badge>
@@ -4048,7 +4048,7 @@ function QuoteCandidateGrid({
             <div className="text-sm text-muted">No candidates</div>
           ) : (
             group.items.slice(0, 3).map((quote) => (
-              <Link className="rounded-md bg-white p-2 text-sm hover:text-primary" href={`/quotes/${quote.id}`} key={`${group.title}-${quote.id}`}>
+              <Link className="rounded-md bg-white p-2 text-sm hover:text-primary" href={quoteDetailHref(quote.id, days, startDate, endDate)} key={`${group.title}-${quote.id}`}>
                 <span className="font-semibold">#{quote.rank}</span> {quote.content}
                 <span className="mt-1 block text-xs text-muted">
                   {quote.author} - {quote.score >= 0 ? "+" : ""}{formatInteger(quote.score)} - {formatInteger(quote.votes)} votes
@@ -4158,11 +4158,17 @@ function QuoteAuthors({ authors }: { authors: DashboardQuoteAuthorSummary[] }) {
 }
 
 function QuotesList({
+  days,
   emptyLabel = "No quotes found",
+  endDate,
   quotes,
+  startDate,
 }: {
+  days?: number;
   emptyLabel?: string;
+  endDate?: string;
   quotes: DashboardQuoteItem[];
+  startDate?: string;
 }) {
   if (quotes.length === 0) {
     return <EmptyRow label={emptyLabel} />;
@@ -4171,7 +4177,11 @@ function QuotesList({
   return (
     <div className="grid gap-3">
       {quotes.slice(0, 6).map((quote) => (
-        <Link className="rounded-lg border border-border bg-white p-3 transition-colors hover:border-primary hover:bg-slate-50" href={`/quotes/${quote.id}`} key={quote.id}>
+        <Link
+          className="rounded-lg border border-border bg-white p-3 transition-colors hover:border-primary hover:bg-slate-50"
+          href={days && startDate && endDate ? quoteDetailHref(quote.id, days, startDate, endDate) : `/quotes/${quote.id}`}
+          key={quote.id}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="text-sm font-semibold text-foreground">#{quote.id}</div>
             <Badge variant={quote.removed ? "danger" : quote.approved ? "success" : "warning"}>
@@ -5657,6 +5667,25 @@ function stockDrillHref(stock: DashboardRecentStock, days: number, startDate: st
   return undefined;
 }
 
+function quoteDetailHref(quoteId: number, days: number, startDate: string, endDate: string) {
+  return `/quotes/${quoteId}?${buildQuery({ days, startDate, endDate })}`;
+}
+
+function approvalDetailHref(approvalId: number, days: number, startDate: string, endDate: string) {
+  return `/quote-approvals/${approvalId}?${buildQuery({ days, startDate, endDate })}`;
+}
+
+function buildQuery(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") {
+      query.set(key, String(value));
+    }
+  }
+
+  return query.toString();
+}
+
 function stockEntityHref(stock: Pick<DashboardStockTableItem, "entityType" | "entityId">) {
   if (stock.entityType === "User") {
     return `/users/${stock.entityId}?scope=user&view=stocks`;
@@ -5758,16 +5787,18 @@ function parseNumber(value: string | undefined, fallback: number) {
 }
 
 function parseOptionalNumber(value: string | undefined) {
-  if (!value) {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^[1-9]\d*$/.test(trimmed)) {
     return undefined;
   }
 
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
-function parseOptionalString(value: string | undefined) {
-  return value && value.trim().length > 0 ? value.trim() : undefined;
+function parseOptionalDiscordId(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && /^[1-9]\d*$/.test(trimmed) ? trimmed : undefined;
 }
 
 function parseScope(value: string | undefined, guildId?: number, userId?: number, channelId?: string): DashboardScope {

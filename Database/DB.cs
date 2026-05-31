@@ -30,6 +30,9 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<QuoteScore>().HasIndex(s => new { s.QuoteId, s.UserId }).IsUnique();
         // Speeds up recent per-user, per-guild activity queries
         modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.UserId, ua.GuildId, ua.InsertDate });
+        modelBuilder.Entity<UserActivity>().HasIndex(ua => ua.InsertDate);
+        modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.GuildId, ua.InsertDate });
+        modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.DiscordChannelId, ua.InsertDate });
         modelBuilder.Entity<UserLevels>().HasIndex(ul => new { ul.UserId, ul.GuildId }).IsUnique();
 
         // Indexes for temporary bans processing

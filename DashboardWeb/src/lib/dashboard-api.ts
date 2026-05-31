@@ -51,19 +51,22 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
           safeFilters.view === "stocks" ||
           safeFilters.view === "operations" ||
           safeFilters.view === "settings"));
-    const shouldFetchGlobalOverview = safeFilters.scope === "global";
+    const globalOverviewView = safeFilters.scope === "global" && safeFilters.view !== "summary"
+      ? "all"
+      : "summary";
     const shouldFetchOverview =
       shouldFetchDrilldown && (safeFilters.view === "summary" || safeFilters.view === "activity");
     const shouldFetchFullGuilds = shouldFetchDrilldown && safeFilters.view === "settings";
+    const globalOverviewRequest = dashboardRequest<DashboardGlobalOverviewResponse>("/global-overview", {
+      days: safeFilters.days,
+      startDate: safeFilters.startDate,
+      endDate: safeFilters.endDate,
+      view: globalOverviewView,
+    });
     const [globalOverview, overview, guilds] = await Promise.all([
-      shouldFetchGlobalOverview
-        ? dashboardRequest<DashboardGlobalOverviewResponse>("/global-overview", {
-            days: safeFilters.days,
-            startDate: safeFilters.startDate,
-            endDate: safeFilters.endDate,
-            view: safeFilters.view,
-          })
-        : Promise.resolve(createEmptyGlobalOverview(safeFilters.days)),
+      safeFilters.scope === "global"
+        ? globalOverviewRequest
+        : globalOverviewRequest.catch(() => createEmptyGlobalOverview(safeFilters.days)),
       shouldFetchOverview
         ? dashboardRequest<DashboardOverviewResponse>("/overview")
         : Promise.resolve<DashboardOverviewResponse | null>(null),

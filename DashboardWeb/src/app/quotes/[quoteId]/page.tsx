@@ -280,13 +280,12 @@ function buildQuery(params: Record<string, string | number | undefined>) {
   return query.toString();
 }
 
-function userProfileHref(userId: string, days: string, startDate?: string, endDate?: string) {
-  const parsedUserId = Number.parseInt(userId, 10);
-  if (!Number.isSafeInteger(parsedUserId) || String(parsedUserId) !== userId) {
+function userProfileHref(userId: number, days: string, startDate?: string, endDate?: string) {
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
     return null;
   }
 
-  return `/users/${parsedUserId}?${buildQuery({ scope: "user", userId: parsedUserId, view: "quotes", days, startDate, endDate })}`;
+  return `/users/${userId}?${buildQuery({ scope: "user", userId, view: "quotes", days, startDate, endDate })}`;
 }
 
 function getParam(value: string | string[] | undefined) {

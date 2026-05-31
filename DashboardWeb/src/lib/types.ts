@@ -665,7 +665,8 @@ export type DashboardQuoteCandidate = {
 
 export type DashboardQuoteVoteItem = {
   rank: number;
-  userId: string;
+  userId: number;
+  discordId: string;
   username: string;
   votes: number;
   positiveVotes: number;

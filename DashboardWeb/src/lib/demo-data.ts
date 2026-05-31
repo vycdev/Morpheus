@@ -420,12 +420,12 @@ export function createDemoDashboardData(filters: DashboardFilters, error?: strin
       insertedAtUtc: quote.insertedAtUtc,
     })),
     topVoters: [
-      { rank: 1, userId: "900000000001", username: "ana", votes: 42, positiveVotes: 35, negativeVotes: 7, score: 28, lastVotedAtUtc: now.toISOString() },
-      { rank: 2, userId: "900000000000", username: "vyc", votes: 37, positiveVotes: 29, negativeVotes: 8, score: 21, lastVotedAtUtc: now.toISOString() },
+      { rank: 1, userId: 2, discordId: "900000000001", username: "ana", votes: 42, positiveVotes: 35, negativeVotes: 7, score: 28, lastVotedAtUtc: now.toISOString() },
+      { rank: 2, userId: 1, discordId: "900000000000", username: "vyc", votes: 37, positiveVotes: 29, negativeVotes: 8, score: 21, lastVotedAtUtc: now.toISOString() },
     ],
     approvalVoters: [
-      { rank: 1, userId: "1", username: "vyc", votes: 18, positiveVotes: 18, negativeVotes: 0, score: 18, lastVotedAtUtc: now.toISOString() },
-      { rank: 2, userId: "2", username: "ana", votes: 14, positiveVotes: 14, negativeVotes: 0, score: 14, lastVotedAtUtc: now.toISOString() },
+      { rank: 1, userId: 1, discordId: "900000000000", username: "vyc", votes: 18, positiveVotes: 18, negativeVotes: 0, score: 18, lastVotedAtUtc: now.toISOString() },
+      { rank: 2, userId: 2, discordId: "900000000001", username: "ana", votes: 14, positiveVotes: 14, negativeVotes: 0, score: 14, lastVotedAtUtc: now.toISOString() },
     ],
     quoteList: [
       ...quotes.map((quote) => ({

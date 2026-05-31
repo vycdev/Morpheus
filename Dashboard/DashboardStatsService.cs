@@ -341,7 +341,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         if (string.IsNullOrWhiteSpace(view))
             return "all";
 
-        return view is "activity" or "servers" or "users" or "quotes" or "economy" or "stocks" or "operations"
+        return view is "all" or "activity" or "servers" or "users" or "quotes" or "economy" or "stocks" or "operations"
             ? view
             : "summary";
     }
@@ -428,7 +428,13 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         int safeDays = dateRange.Days;
         DateTime startDate = dateRange.StartDateUtc;
         DateTime endExclusiveDate = dateRange.EndExclusiveUtc;
-        ulong? channelDiscordId = ParseDiscordId(channelId);
+        if (!TryParseDiscordId(channelId, out ulong? channelDiscordId))
+        {
+            return new DashboardActivitySeriesResponse(
+                guildId,
+                safeDays,
+                BuildEmptyActivityPoints(startDate, safeDays));
+        }
 
         IQueryable<UserActivity> query = BuildActivityQuery(startDate, guildId, userId, channelDiscordId, endExclusiveDate);
 
@@ -479,11 +485,14 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
     {
         string normalizedMetric = NormalizeMetric(metric);
         int safeLimit = ClampLimit(limit);
-        DashboardDateRange? dateRange = days is > 0 || startDateUtc.HasValue || endDateUtc.HasValue
+        DashboardDateRange? dateRange = days.HasValue || startDateUtc.HasValue || endDateUtc.HasValue
             ? ResolveDateRange(days ?? options.MaxActivityDays, startDateUtc, endDateUtc)
             : null;
         int? safeDays = dateRange?.Days;
-        ulong? channelDiscordId = ParseDiscordId(channelId);
+        if (!TryParseDiscordId(channelId, out ulong? channelDiscordId))
+        {
+            return new DashboardLeaderboardResponse(guildId, normalizedMetric, safeDays, safeLimit, []);
+        }
 
         List<DashboardLeaderboardRow> rows = dateRange is not null
             ? await GetActivityLeaderboardRowsAsync(
@@ -4296,6 +4305,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                     List<QuoteScoreInsightRow> rows = [.. group];
                     return new DashboardQuoteVoteItem(
                         0,
+                        first.UserId,
                         first.DiscordId,
                         first.Username,
                         rows.Count,
@@ -4324,12 +4334,15 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 .Where(id => id > 0)
                 .Distinct()
         ];
-        Dictionary<int, string> usernames = userIds.Count == 0
+        Dictionary<int, (string DiscordId, string Username)> users = userIds.Count == 0
             ? []
             : await dbContext.Users
                 .AsNoTracking()
                 .Where(user => userIds.Contains(user.Id))
-                .ToDictionaryAsync(user => user.Id, user => user.Username, cancellationToken);
+                .ToDictionaryAsync(
+                    user => user.Id,
+                    user => (user.DiscordId.ToString(), user.Username),
+                    cancellationToken);
 
         return
         [
@@ -4339,10 +4352,13 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 {
                     List<QuoteApprovalVoteInsightRow> rows = [.. group];
                     int intUserId = group.Key <= int.MaxValue ? (int)group.Key : 0;
-                    string username = usernames.GetValueOrDefault(intUserId, intUserId > 0 ? $"User #{intUserId}" : group.Key.ToString());
+                    (string discordId, string username) = users.GetValueOrDefault(
+                        intUserId,
+                        (string.Empty, intUserId > 0 ? $"User #{intUserId}" : group.Key.ToString()));
                     return new DashboardQuoteVoteItem(
                         0,
-                        group.Key.ToString(),
+                        intUserId,
+                        discordId,
                         username,
                         rows.Count,
                         rows.Count,
@@ -4442,7 +4458,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 transaction.Shares,
                 transaction.PriceAtTransaction))
             .ToListAsync(cancellationToken);
-        HashSet<int>? scopedUserIdSet = userId.HasValue || guildId.HasValue
+        HashSet<int>? scopedUserIdSet = scopedUserIds.Count > 0
             ? [.. scopedUserIds]
             : null;
         IReadOnlyList<ScopedTransactionInsightRow> scopedTransactions =
@@ -5002,8 +5018,35 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         int days,
         CancellationToken cancellationToken)
     {
-        List<StockInsightRow> stocks = await dbContext.Stocks
-            .AsNoTracking()
+        HashSet<int> scopedUserSet = [.. scopedUserIds];
+        HashSet<int> scopedChannelEntityIds = await GetScopedChannelEntityIdsAsync(
+            guildId,
+            channelDiscordId,
+            activityQuery,
+            cancellationToken);
+
+        IQueryable<Stock> stockQuery = dbContext.Stocks.AsNoTracking();
+        if (channelDiscordId.HasValue)
+        {
+            stockQuery = stockQuery.Where(stock =>
+                stock.EntityType == StockEntityType.Channel &&
+                scopedChannelEntityIds.Contains(stock.EntityId));
+        }
+        else if (userId.HasValue)
+        {
+            stockQuery = stockQuery.Where(stock =>
+                stock.EntityType == StockEntityType.User &&
+                stock.EntityId == userId.Value);
+        }
+        else if (guildId.HasValue)
+        {
+            stockQuery = stockQuery.Where(stock =>
+                stock.EntityType == StockEntityType.Guild && stock.EntityId == guildId.Value ||
+                stock.EntityType == StockEntityType.User && scopedUserSet.Contains(stock.EntityId) ||
+                stock.EntityType == StockEntityType.Channel && scopedChannelEntityIds.Contains(stock.EntityId));
+        }
+
+        List<StockInsightRow> stockRows = await stockQuery
             .Select(stock => new StockInsightRow(
                 stock.Id,
                 stock.EntityType,
@@ -5014,36 +5057,6 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 stock.InsertDate,
                 stock.LastUpdatedDate))
             .ToListAsync(cancellationToken);
-
-        HashSet<int> scopedUserSet = [.. scopedUserIds];
-        HashSet<int> scopedChannelEntityIds = await GetScopedChannelEntityIdsAsync(
-            guildId,
-            channelDiscordId,
-            activityQuery,
-            cancellationToken);
-
-        IEnumerable<StockInsightRow> scopedStocks = stocks;
-        if (channelDiscordId.HasValue)
-        {
-            scopedStocks = scopedStocks.Where(stock =>
-                stock.EntityType == StockEntityType.Channel &&
-                scopedChannelEntityIds.Contains(stock.EntityId));
-        }
-        else if (userId.HasValue)
-        {
-            scopedStocks = scopedStocks.Where(stock =>
-                stock.EntityType == StockEntityType.User &&
-                stock.EntityId == userId.Value);
-        }
-        else if (guildId.HasValue)
-        {
-            scopedStocks = scopedStocks.Where(stock =>
-                stock.EntityType == StockEntityType.Guild && stock.EntityId == guildId.Value ||
-                stock.EntityType == StockEntityType.User && scopedUserSet.Contains(stock.EntityId) ||
-                stock.EntityType == StockEntityType.Channel && scopedChannelEntityIds.Contains(stock.EntityId));
-        }
-
-        List<StockInsightRow> stockRows = [.. scopedStocks];
         List<int> stockIds = [.. stockRows.Select(stock => stock.StockId)];
         List<StockHoldingInsightRow> holdings = await GetStockHoldingRowsAsync(stockIds, cancellationToken);
         Dictionary<int, decimal> holdingValues = holdings
@@ -6712,7 +6725,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 user.LevelUpQuotes),
             totals,
             activity,
-            serverLevels,
+            scopedServerLevels,
             BuildBestActivityDays(dailyActivity),
             BuildWorstActivityDays(dailyActivity),
             streaks,
@@ -7273,8 +7286,8 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             .Where(transaction => transaction.Perspective == TransactionPerspective.Actor)
             .Where(transaction => transaction.Transaction.Type is TransactionType.StockBuy or TransactionType.StockSell)
             .Sum(transaction => transaction.Transaction.Type == TransactionType.StockSell
-                ? Math.Abs(transaction.Transaction.Amount) - transaction.Transaction.Fee
-                : -Math.Abs(transaction.Transaction.Amount) - transaction.Transaction.Fee);
+                ? Math.Abs(transaction.Transaction.Amount)
+                : -Math.Abs(transaction.Transaction.Amount));
         DashboardUserDonationStats donations = BuildUserDonationStats(transactionItems);
         DashboardUserOutcomeStats robbery = BuildUserOutcomeStats(
             scopedTransactions,
@@ -9084,7 +9097,10 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         int? userId,
         string? channelId)
     {
-        ulong? channelDiscordId = ParseDiscordId(channelId);
+        bool validChannelId = TryParseDiscordId(channelId, out ulong? channelDiscordId);
+        if (!validChannelId)
+            return new DashboardScopeFilters(guildId, null, 0UL, "channel");
+
         string normalizedScope = NormalizeScope(scope, guildId, userId, channelDiscordId);
 
         return normalizedScope switch
@@ -9097,8 +9113,35 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         };
     }
 
+    private static IReadOnlyList<DashboardActivityPoint> BuildEmptyActivityPoints(DateTime startDate, int days)
+    {
+        List<DashboardActivityPoint> points = [];
+        for (int offset = 0; offset < days; offset++)
+        {
+            DateTime date = startDate.AddDays(offset);
+            points.Add(new DashboardActivityPoint(DateTime.SpecifyKind(date, DateTimeKind.Utc), 0, 0, 0, 0.0));
+        }
+
+        return points;
+    }
+
     private static ulong? ParseDiscordId(string? value) =>
-        ulong.TryParse(value, out ulong parsed) && parsed > 0UL ? parsed : null;
+        TryParseDiscordId(value, out ulong? parsed) ? parsed : null;
+
+    private static bool TryParseDiscordId(string? value, out ulong? parsed)
+    {
+        parsed = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        if (ulong.TryParse(value.Trim(), out ulong id) && id > 0UL)
+        {
+            parsed = id;
+            return true;
+        }
+
+        return false;
+    }
 
     private static string ShortDiscordId(ulong id)
     {
