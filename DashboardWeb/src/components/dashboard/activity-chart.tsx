@@ -28,8 +28,11 @@ export function ActivityChart({ points }: ActivityChartProps) {
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-      <div className="relative h-[310px] min-h-[310px] w-full min-w-[240px] overflow-hidden rounded-lg border border-border bg-white p-3">
-        <ResponsiveContainer width="100%" height="100%" minWidth={240} minHeight={260}>
+      <div
+        className="relative h-[310px] min-h-[310px] w-full min-w-0 overflow-hidden rounded-lg border border-border bg-white p-3"
+        style={{ height: 310, minHeight: 310, minWidth: 0 }}
+      >
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={260}>
           <AreaChart data={data} margin={{ left: 6, right: 8, top: 14, bottom: 4 }}>
             <defs>
               <linearGradient id="xp-fill" x1="0" x2="0" y1="0" y2="1">
@@ -61,8 +64,11 @@ export function ActivityChart({ points }: ActivityChartProps) {
         </ResponsiveContainer>
       </div>
 
-      <div className="relative h-[310px] min-h-[310px] w-full min-w-[240px] overflow-hidden rounded-lg border border-border bg-white p-3">
-        <ResponsiveContainer width="100%" height="100%" minWidth={240} minHeight={260}>
+      <div
+        className="relative h-[310px] min-h-[310px] w-full min-w-0 overflow-hidden rounded-lg border border-border bg-white p-3"
+        style={{ height: 310, minHeight: 310, minWidth: 0 }}
+      >
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={260}>
           <BarChart data={data} margin={{ left: 4, right: 8, top: 14, bottom: 4 }}>
             <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="date" tick={{ fill: "#667085", fontSize: 12 }} tickLine={false} axisLine={false} />

@@ -9,6 +9,178 @@ export type DashboardOverviewResponse = {
   logs: DashboardLogStats;
 };
 
+export type DashboardGlobalOverviewResponse = {
+  generatedAtUtc: string;
+  days: number;
+  totals: DashboardGlobalTotals;
+  highlights: DashboardGlobalHighlights;
+  visuals: DashboardGlobalVisuals;
+  feeds: DashboardGlobalFeeds;
+};
+
+export type DashboardGlobalTotals = {
+  totalServers: number;
+  totalKnownUsers: number;
+  totalTrackedMessages: number;
+  totalXpGenerated: number;
+  latestDayMessages: number;
+  latestDayXpGenerated: number;
+  totalQuotes: number;
+  totalApprovedQuotes: number;
+  pendingQuotes: number;
+  pendingQuoteApprovals: number;
+  totalEconomyBalance: number;
+  totalEstimatedNetWorth: number;
+  ubiPoolSize: number;
+  slotsVaultSize: number;
+  totalTransactions: number;
+  totalButtonPresses: number;
+  activeReminders: number;
+  recentWarningsOrErrors: number;
+};
+
+export type DashboardGlobalHighlights = {
+  mostActiveServersToday: DashboardGlobalServerActivity[];
+  mostActiveServersThisWeek: DashboardGlobalServerActivity[];
+  mostActiveServersThisMonth: DashboardGlobalServerActivity[];
+  mostActiveServersAllTime: DashboardGlobalServerActivity[];
+  mostActiveServersSelectedWindow: DashboardGlobalServerActivity[];
+  biggestXpGainers: DashboardGlobalUserActivity[];
+  richestUsersByBalance: DashboardGlobalWealthUser[];
+  richestUsersByNetWorth: DashboardGlobalWealthUser[];
+  biggestStockGainers: DashboardStockMover[];
+  biggestStockLosers: DashboardStockMover[];
+  mostPopularQuotes: DashboardPopularQuote[];
+  mostActiveChannels: DashboardGlobalChannelActivity[];
+  mostActiveUsers: DashboardGlobalUserActivity[];
+  recentlyCreatedUsers: DashboardRecentEntity[];
+  recentlyCreatedServers: DashboardRecentEntity[];
+  recentlyCreatedQuotes: DashboardRecentQuote[];
+  recentlyCreatedStocks: DashboardRecentStock[];
+};
+
+export type DashboardGlobalVisuals = {
+  activity: DashboardActivityDerivedPoint[];
+  stackedServerActivity: DashboardStackedServerActivityPoint[];
+  calendarActivity: DashboardCalendarActivityCell[];
+  hourByWeekdayActivity: DashboardHeatmapCell[];
+  transactionTypes: DashboardCategoryValue[];
+};
+
+export type DashboardGlobalFeeds = {
+  recentEconomyEvents: DashboardEconomyEventItem[];
+  recentBotHealthEvents: DashboardLogItem[];
+};
+
+export type DashboardGlobalServerActivity = {
+  rank: number;
+  guildId: number;
+  discordId: string;
+  name: string;
+  messages: number;
+  xp: number;
+  activeUsers: number;
+  lastActivityAtUtc: string | null;
+};
+
+export type DashboardGlobalUserActivity = {
+  rank: number;
+  userId: number;
+  discordId: string;
+  username: string;
+  messages: number;
+  xp: number;
+  level: number;
+  lastActivityAtUtc: string | null;
+};
+
+export type DashboardGlobalWealthUser = {
+  rank: number;
+  userId: number;
+  discordId: string;
+  username: string;
+  balance: number;
+  stockPortfolioValue: number;
+  netWorth: number;
+};
+
+export type DashboardPopularQuote = {
+  rank: number;
+  id: number;
+  guildId: number;
+  userId: number;
+  author: string;
+  content: string;
+  insertedAtUtc: string;
+  score: number;
+};
+
+export type DashboardGlobalChannelActivity = {
+  rank: number;
+  discordId: string;
+  name: string;
+  messages: number;
+  xp: number;
+  activeUsers: number;
+  lastActivityAtUtc: string | null;
+};
+
+export type DashboardRecentEntity = {
+  id: number;
+  discordId: string;
+  name: string;
+  insertedAtUtc: string;
+};
+
+export type DashboardRecentQuote = {
+  id: number;
+  guildId: number;
+  userId: number;
+  author: string;
+  content: string;
+  approved: boolean;
+  removed: boolean;
+  insertedAtUtc: string;
+};
+
+export type DashboardRecentStock = {
+  stockId: number;
+  entityType: string;
+  entityId: number;
+  name: string;
+  price: number;
+  dailyChangePercent: number;
+  insertedAtUtc: string;
+};
+
+export type DashboardStackedServerActivityPoint = {
+  dateUtc: string;
+  guildId: number;
+  guildName: string;
+  messages: number;
+};
+
+export type DashboardCalendarActivityCell = {
+  dateUtc: string;
+  messages: number;
+  xp: number;
+  activeUsers: number;
+};
+
+export type DashboardEconomyEventItem = {
+  id: number;
+  type: string;
+  amount: number;
+  fee: number;
+  userId: number;
+  user: string;
+  targetUserId: number | null;
+  targetUser: string | null;
+  stockId: number | null;
+  stockName: string | null;
+  insertedAtUtc: string;
+};
+
 export type DashboardSystemStats = {
   guilds: number;
   users: number;
@@ -105,15 +277,21 @@ export type DashboardQuoteItem = {
 };
 
 export type DashboardData = {
+  globalOverview: DashboardGlobalOverviewResponse;
   overview: DashboardOverviewResponse;
   guilds: DashboardGuildSummary[];
+  drilldown: DashboardDrilldownData | null;
+  usingDemoData: boolean;
+  error?: string;
+  drilldownError?: string;
+};
+
+export type DashboardDrilldownData = {
   activity: DashboardActivitySeriesResponse;
   xpLeaderboard: DashboardLeaderboardResponse;
   messageLeaderboard: DashboardLeaderboardResponse;
   quotes: DashboardQuotePageResponse;
   insights: DashboardInsightsResponse;
-  usingDemoData: boolean;
-  error?: string;
 };
 
 export type DashboardFilters = {
@@ -121,7 +299,10 @@ export type DashboardFilters = {
   userId?: number;
   channelId?: string;
   days: number;
+  startDate?: string;
+  endDate?: string;
   scope: "global" | "server" | "user" | "channel";
+  view?: "summary" | "activity" | "servers" | "users" | "quotes" | "economy" | "stocks" | "operations" | "settings";
   sortDirection: "asc" | "desc";
   minActivity: number;
 };

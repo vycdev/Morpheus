@@ -72,6 +72,24 @@ public static class DashboardApiExtensions
             return Results.Ok(overview);
         });
 
+        api.MapGet("/global-overview", async (
+            int? days,
+            DateTime? startDate,
+            DateTime? endDate,
+            string? view,
+            DashboardStatsService statsService,
+            CancellationToken cancellationToken) =>
+        {
+            DashboardGlobalOverviewResponse overview = await statsService.GetGlobalOverviewAsync(
+                days ?? 30,
+                view,
+                startDate,
+                endDate,
+                cancellationToken);
+
+            return Results.Ok(overview);
+        });
+
         api.MapGet("/guilds", async (
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
@@ -80,11 +98,21 @@ public static class DashboardApiExtensions
             return Results.Ok(guilds);
         });
 
+        api.MapGet("/guild-options", async (
+            DashboardStatsService statsService,
+            CancellationToken cancellationToken) =>
+        {
+            IReadOnlyList<DashboardGuildSummary> guilds = await statsService.GetGuildOptionsAsync(cancellationToken);
+            return Results.Ok(guilds);
+        });
+
         api.MapGet("/activity", async (
             int? guildId,
             int? userId,
             string? channelId,
             int? days,
+            DateTime? startDate,
+            DateTime? endDate,
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
         {
@@ -93,6 +121,8 @@ public static class DashboardApiExtensions
                 days ?? 30,
                 userId,
                 channelId,
+                startDate,
+                endDate,
                 cancellationToken);
 
             return Results.Ok(series);
@@ -104,6 +134,8 @@ public static class DashboardApiExtensions
             string? channelId,
             string? metric,
             int? days,
+            DateTime? startDate,
+            DateTime? endDate,
             int? limit,
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
@@ -115,6 +147,8 @@ public static class DashboardApiExtensions
                 limit ?? 10,
                 userId,
                 channelId,
+                startDate,
+                endDate,
                 cancellationToken);
 
             return Results.Ok(leaderboard);
@@ -126,8 +160,11 @@ public static class DashboardApiExtensions
             string? channelId,
             int? days,
             string? scope,
+            string? view,
             string? sortDirection,
             int? minActivity,
+            DateTime? startDate,
+            DateTime? endDate,
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
         {
@@ -139,6 +176,9 @@ public static class DashboardApiExtensions
                 scope,
                 sortDirection,
                 minActivity,
+                view,
+                startDate,
+                endDate,
                 cancellationToken);
 
             return Results.Ok(insights);
@@ -203,14 +243,26 @@ public static class DashboardApiExtensions
     {
         DashboardApiOptions options = context.HttpContext.RequestServices.GetRequiredService<DashboardApiOptions>();
         if (string.IsNullOrWhiteSpace(options.ApiKey))
-            return await next(context);
+            return await InvokeNextAsync();
 
         if (context.HttpContext.Request.Headers.TryGetValue("X-Dashboard-Key", out var apiKey) &&
             string.Equals(apiKey.ToString(), options.ApiKey, StringComparison.Ordinal))
         {
-            return await next(context);
+            return await InvokeNextAsync();
         }
 
         return Results.Unauthorized();
+
+        async ValueTask<object?> InvokeNextAsync()
+        {
+            try
+            {
+                return await next(context);
+            }
+            catch (OperationCanceledException) when (context.HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                return Results.StatusCode(499);
+            }
+        }
     }
 }

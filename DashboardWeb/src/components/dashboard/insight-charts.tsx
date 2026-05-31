@@ -4,12 +4,14 @@ import { ArrowRight } from "lucide-react";
 import type React from "react";
 import {
   Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   ComposedChart,
   Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -20,16 +22,203 @@ import {
 import type {
   DashboardActivityDerivedPoint,
   DashboardButtonGamePoint,
+  DashboardCalendarActivityCell,
   DashboardCategoryValue,
   DashboardEconomyFlowPoint,
   DashboardHeatmapCell,
   DashboardLogPoint,
   DashboardMoneyFlow,
   DashboardQuoteStatusSlice,
+  DashboardStackedServerActivityPoint,
 } from "@/lib/types";
 import { formatCompactNumber, formatCurrency } from "@/lib/utils";
 
 const chartColors = ["#2563eb", "#0891b2", "#059669", "#d97706", "#e11d48", "#7c3aed"];
+
+export function GlobalActivityLineChart({ points }: { points: DashboardActivityDerivedPoint[] }) {
+  const hasActivity = points.some((point) => point.messages > 0 || point.activeUsers > 0);
+  const data = points.map((point) => ({
+    date: formatShortDate(point.dateUtc),
+    Messages: point.messages,
+    "Active users": point.activeUsers,
+  }));
+
+  return (
+    <ChartFrame empty={!hasActivity} emptyLabel="No global activity in this window">
+      <ResponsiveContainer width="100%" height="100%" minHeight={280}>
+        <LineChart data={data} margin={{ left: 4, right: 8, top: 14, bottom: 0 }}>
+          <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: "#667085", fontSize: 12 }} tickLine={false} axisLine={false} />
+          <YAxis
+            tick={{ fill: "#667085", fontSize: 12 }}
+            tickFormatter={(value) => formatCompactNumber(Number(value))}
+            tickLine={false}
+            axisLine={false}
+            width={42}
+          />
+          <Tooltip content={<TooltipContent />} />
+          <Line dataKey="Messages" dot={false} isAnimationActive={false} stroke="#2563eb" strokeWidth={2.4} type="monotone" />
+          <Line dataKey="Active users" dot={false} isAnimationActive={false} stroke="#059669" strokeWidth={2.2} type="monotone" />
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartFrame>
+  );
+}
+
+export function CumulativeXpChart({ points }: { points: DashboardActivityDerivedPoint[] }) {
+  const hasXp = points.some((point) => point.cumulativeXp > 0);
+  const data = points.map((point) => ({
+    date: formatShortDate(point.dateUtc),
+    "Cumulative XP": point.cumulativeXp,
+  }));
+
+  return (
+    <ChartFrame empty={!hasXp} emptyLabel="No XP in this window">
+      <ResponsiveContainer width="100%" height="100%" minHeight={260}>
+        <AreaChart data={data} margin={{ left: 4, right: 8, top: 14, bottom: 0 }}>
+          <defs>
+            <linearGradient id="global-cumulative-xp-fill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="5%" stopColor="#059669" stopOpacity={0.24} />
+              <stop offset="95%" stopColor="#059669" stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: "#667085", fontSize: 12 }} tickLine={false} axisLine={false} />
+          <YAxis
+            tick={{ fill: "#667085", fontSize: 12 }}
+            tickFormatter={(value) => formatCompactNumber(Number(value))}
+            tickLine={false}
+            axisLine={false}
+            width={46}
+          />
+          <Tooltip content={<TooltipContent />} />
+          <Area
+            dataKey="Cumulative XP"
+            fill="url(#global-cumulative-xp-fill)"
+            isAnimationActive={false}
+            stroke="#059669"
+            strokeWidth={2.3}
+            type="monotone"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </ChartFrame>
+  );
+}
+
+export function MessagesOverTimeChart({ points }: { points: DashboardActivityDerivedPoint[] }) {
+  const hasMessages = points.some((point) => point.messages > 0);
+  const data = points.map((point) => ({
+    date: formatShortDate(point.dateUtc),
+    Messages: point.messages,
+  }));
+
+  return (
+    <ChartFrame empty={!hasMessages} emptyLabel="No messages in this window">
+      <ResponsiveContainer width="100%" height="100%" minHeight={260}>
+        <BarChart data={data} margin={{ left: 4, right: 8, top: 14, bottom: 0 }}>
+          <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: "#667085", fontSize: 12 }} tickLine={false} axisLine={false} />
+          <YAxis
+            tick={{ fill: "#667085", fontSize: 12 }}
+            tickFormatter={(value) => formatCompactNumber(Number(value))}
+            tickLine={false}
+            axisLine={false}
+            width={42}
+          />
+          <Tooltip content={<TooltipContent />} />
+          <Bar dataKey="Messages" fill="#0891b2" isAnimationActive={false} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartFrame>
+  );
+}
+
+export function StackedServerActivityChart({ points }: { points: DashboardStackedServerActivityPoint[] }) {
+  const hasActivity = points.some((point) => point.messages > 0);
+  const serverRows = Array.from(
+    new Map(points.map((point) => [point.guildId, point.guildName])).entries(),
+  ).slice(0, chartColors.length);
+  const rowsByDate = new Map<string, Record<string, string | number>>();
+
+  for (const point of points) {
+    const dateKey = point.dateUtc.slice(0, 10);
+    const row = rowsByDate.get(dateKey) ?? { dateKey, date: formatShortDate(point.dateUtc) };
+    row[`server-${point.guildId}`] = point.messages;
+    rowsByDate.set(dateKey, row);
+  }
+
+  const data = Array.from(rowsByDate.values());
+
+  return (
+    <ChartFrame empty={!hasActivity} emptyLabel="No server activity in this window">
+      <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+        <BarChart data={data} margin={{ left: 4, right: 8, top: 14, bottom: 0 }}>
+          <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="date" tick={{ fill: "#667085", fontSize: 12 }} tickLine={false} axisLine={false} />
+          <YAxis
+            tick={{ fill: "#667085", fontSize: 12 }}
+            tickFormatter={(value) => formatCompactNumber(Number(value))}
+            tickLine={false}
+            axisLine={false}
+            width={42}
+          />
+          <Tooltip content={<TooltipContent />} />
+          {serverRows.map(([guildId, guildName], index) => (
+            <Bar
+              dataKey={`server-${guildId}`}
+              fill={chartColors[index % chartColors.length]}
+              isAnimationActive={false}
+              key={guildId}
+              name={guildName}
+              stackId="activity"
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartFrame>
+  );
+}
+
+export function CalendarActivityHeatmap({ cells }: { cells: DashboardCalendarActivityCell[] }) {
+  if (cells.length === 0) {
+    return <EmptyState label="No calendar activity in this window" />;
+  }
+
+  const sortedCells = [...cells].sort((a, b) => new Date(a.dateUtc).getTime() - new Date(b.dateUtc).getTime());
+  const max = Math.max(1, ...sortedCells.map((cell) => cell.messages));
+  const firstDay = new Date(sortedCells[0].dateUtc).getUTCDay();
+  const blanks = Array.from({ length: firstDay }, (_, index) => index);
+  const columns = Math.ceil((blanks.length + sortedCells.length) / 7);
+  const cellSize = columns <= 6 ? "clamp(1.4rem, 6vw, 2.5rem)" : "clamp(0.8rem, 2vw, 1.1rem)";
+
+  return (
+    <div className="grid min-h-[240px] content-between gap-3">
+      <div className="max-w-full overflow-x-auto pb-1">
+        <div className="grid w-max grid-flow-col grid-rows-7 gap-1.5" style={{ gridAutoColumns: cellSize }}>
+          {blanks.map((blank) => (
+            <span className="aspect-square w-full rounded-[4px]" key={`blank-${blank}`} />
+          ))}
+          {sortedCells.map((cell) => {
+            const opacity = cell.messages === 0 ? 0.08 : 0.2 + (cell.messages / max) * 0.72;
+            return (
+              <span
+                className="aspect-square w-full rounded-[4px] border border-border"
+                key={cell.dateUtc}
+                style={{ backgroundColor: `rgba(37, 99, 235, ${opacity})` }}
+                title={`${formatShortDate(cell.dateUtc)}: ${cell.messages} messages, ${formatCompactNumber(cell.xp)} XP`}
+              />
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-xs text-muted">
+        <span>{formatShortDate(sortedCells[0].dateUtc)}</span>
+        <span>{formatShortDate(sortedCells[sortedCells.length - 1].dateUtc)}</span>
+      </div>
+    </div>
+  );
+}
 
 export function ActivityInsightChart({ points }: { points: DashboardActivityDerivedPoint[] }) {
   const hasActivity = points.some((point) => point.messages > 0 || point.xp > 0 || point.activeUsers > 0);
@@ -203,8 +392,8 @@ export function DonutChart({
   }
 
   return (
-    <div className="grid min-h-[220px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-      <ResponsiveContainer width="100%" height={220} minWidth={170}>
+    <div className="grid min-h-[220px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3" style={{ minHeight: 220, minWidth: 0 }}>
+      <ResponsiveContainer width="100%" height={220} minWidth={0}>
         <PieChart>
           <Tooltip content={<TooltipContent />} />
           <Pie
@@ -388,7 +577,10 @@ function ChartFrame({
   emptyLabel: string;
 }) {
   return (
-    <div className="relative h-[320px] min-h-[260px] w-full min-w-[240px] overflow-hidden rounded-lg border border-border bg-white p-3">
+    <div
+      className="relative h-[320px] min-h-[260px] w-full min-w-0 overflow-hidden rounded-lg border border-border bg-white p-3"
+      style={{ height: 320, minHeight: 260, minWidth: 0 }}
+    >
       {empty ? <EmptyState label={emptyLabel} /> : children}
     </div>
   );

@@ -1,10 +1,26 @@
-import { RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { DashboardDateRangePicker } from "@/components/dashboard/date-range-picker";
+import { DashboardNavLink } from "@/components/dashboard/nav-link";
+import { SearchableSelect, type SearchableSelectOption } from "@/components/dashboard/searchable-select";
+import { DashboardSubmitButton } from "@/components/dashboard/submit-button";
+import { DashboardUpdateForm } from "@/components/dashboard/update-form";
 import type {
   DashboardChannelOption,
   DashboardGuildSummary,
   DashboardUserOption,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+type DashboardScope = "global" | "server" | "user" | "channel";
+type DashboardView =
+  | "summary"
+  | "activity"
+  | "servers"
+  | "users"
+  | "quotes"
+  | "economy"
+  | "stocks"
+  | "operations"
+  | "settings";
 
 type DashboardFiltersProps = {
   guilds: DashboardGuildSummary[];
@@ -14,9 +30,12 @@ type DashboardFiltersProps = {
   selectedUserId?: number;
   selectedChannelId?: string;
   days: number;
-  scope: string;
+  startDate: string;
+  endDate: string;
+  scope: DashboardScope;
   sortDirection: string;
   minActivity: number;
+  view: DashboardView;
 };
 
 export function DashboardFilters({
@@ -27,115 +46,193 @@ export function DashboardFilters({
   selectedUserId,
   selectedChannelId,
   days,
+  startDate,
+  endDate,
   scope,
   sortDirection,
   minActivity,
+  view,
 }: DashboardFiltersProps) {
+  const isGlobal = scope === "global";
+  const hasSelectedUserOption = selectedUserId ? users.some((user) => user.userId === selectedUserId) : true;
+  const hasSelectedChannelOption = selectedChannelId
+    ? channels.some((channel) => channel.discordId === selectedChannelId)
+    : true;
+  const guildOptions: SearchableSelectOption[] = guilds.map((guild) => ({
+    value: String(guild.id),
+    label: guild.name,
+    description: guild.discordId,
+  }));
+  const userOptions: SearchableSelectOption[] = [
+    ...(selectedUserId && !hasSelectedUserOption
+      ? [{ value: String(selectedUserId), label: `User #${selectedUserId}` }]
+      : []),
+    ...users.map((user) => ({
+      value: String(user.userId),
+      label: user.username,
+      description: user.discordId,
+    })),
+  ];
+  const channelOptions: SearchableSelectOption[] = [
+    ...(selectedChannelId && !hasSelectedChannelOption
+      ? [{ value: selectedChannelId, label: `Channel ${selectedChannelId}` }]
+      : []),
+    ...channels.map((channel) => ({
+      value: channel.discordId,
+      label: channel.name,
+      description: channel.discordId,
+    })),
+  ];
+
+  const scopeTabs: Array<{ label: string; scope: DashboardScope; href: string }> = [
+    { label: "Global", scope: "global", href: dashboardHref({ scope: "global", days, startDate, endDate }) },
+    { label: "Server", scope: "server", href: dashboardHref({ scope: "server", guildId: selectedGuildId, days, startDate, endDate }) },
+    { label: "User", scope: "user", href: dashboardHref({ scope: "user", userId: selectedUserId, guildId: selectedGuildId, days, startDate, endDate }) },
+    { label: "Channel", scope: "channel", href: dashboardHref({ scope: "channel", channelId: selectedChannelId, guildId: selectedGuildId, days, startDate, endDate }) },
+  ];
+
   return (
-    <form className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:grid-cols-7" method="get">
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">Scope</span>
-        <select
-          className="h-10 min-w-32 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={scope}
-          name="scope"
-        >
-          <option value="global">Global</option>
-          <option value="server">Server</option>
-          <option value="user">User</option>
-          <option value="channel">Channel</option>
-        </select>
-      </label>
+    <div className="flex flex-col gap-3">
+      <nav aria-label="Dashboard scope" className="inline-flex w-fit max-w-full flex-wrap items-center gap-2 self-start">
+        {scopeTabs.map((tab) => {
+          const active = tab.scope === scope;
+          const className = cn(
+            "inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors",
+            active
+              ? "bg-primary text-primary-foreground"
+              : "border border-border bg-white text-muted hover:border-primary hover:text-foreground",
+          );
 
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">Server</span>
-        <select
-          className="h-10 min-w-48 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={selectedGuildId?.toString() ?? ""}
-          name="guildId"
-        >
-          <option value="">All guilds</option>
-          {guilds.map((guild) => (
-            <option key={guild.id} value={guild.id}>
-              {guild.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          return (
+            <DashboardNavLink
+              aria-current={active ? "page" : undefined}
+              className={className}
+              href={tab.href}
+              key={tab.scope}
+            >
+              {tab.label}
+            </DashboardNavLink>
+          );
+        })}
+      </nav>
 
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">User</span>
-        <select
-          className="h-10 min-w-40 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={selectedUserId?.toString() ?? ""}
-          name="userId"
-        >
-          <option value="">All users</option>
-          {users.map((user) => (
-            <option key={user.userId} value={user.userId}>
-              {user.username}
-            </option>
-          ))}
-        </select>
-      </label>
+      <DashboardUpdateForm className="flex flex-wrap items-end gap-3">
+        <input name="scope" type="hidden" defaultValue={scope} />
+        <input name="view" type="hidden" defaultValue={view} />
 
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">Channel</span>
-        <select
-          className="h-10 min-w-40 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={selectedChannelId ?? ""}
-          name="channelId"
-        >
-          <option value="">All channels</option>
-          {channels.map((channel) => (
-            <option key={channel.discordId} value={channel.discordId}>
-              {channel.name}
-            </option>
-          ))}
-        </select>
-      </label>
+        {!isGlobal && (
+          <SearchableSelect
+            emptyOptionLabel={scope === "server" ? "Choose server" : "All servers"}
+            label="Server"
+            name="guildId"
+            options={guildOptions}
+            pageSize={8}
+            placeholder="Choose server"
+            value={selectedGuildId?.toString() ?? ""}
+          />
+        )}
 
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">Window</span>
-        <select
-          className="h-10 min-w-36 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={String(days)}
-          name="days"
-        >
-          <option value="7">7 days</option>
-          <option value="30">30 days</option>
-          <option value="60">60 days</option>
-          <option value="90">90 days</option>
-        </select>
-      </label>
+        {scope === "user" && (
+          <SearchableSelect
+            disabled={users.length === 0 && !selectedUserId}
+            emptyOptionLabel="Choose user"
+            label="User"
+            name="userId"
+            options={userOptions}
+            pageSize={8}
+            placeholder="Choose user"
+            value={selectedUserId?.toString() ?? ""}
+          />
+        )}
 
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">Sort</span>
-        <select
-          className="h-10 min-w-32 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={sortDirection}
-          name="sortDirection"
-        >
-          <option value="desc">High first</option>
-          <option value="asc">Low first</option>
-        </select>
-      </label>
+        {scope === "channel" && (
+          <SearchableSelect
+            disabled={channels.length === 0 && !selectedChannelId}
+            emptyOptionLabel="Choose channel"
+            label="Channel"
+            name="channelId"
+            options={channelOptions}
+            pageSize={8}
+            placeholder="Choose channel"
+            value={selectedChannelId ?? ""}
+          />
+        )}
 
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium text-muted">Minimum</span>
-        <input
-          className="h-10 min-w-28 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
-          defaultValue={minActivity}
-          min={0}
-          name="minActivity"
-          type="number"
-        />
-      </label>
+        <DashboardDateRangePicker days={days} endDate={endDate} startDate={startDate} />
 
-      <Button className="self-end" type="submit">
-        <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        Apply
-      </Button>
-    </form>
+        {!isGlobal && (
+          <>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-muted">Rank order</span>
+              <select
+                className="h-10 min-w-36 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
+                defaultValue={sortDirection}
+                name="sortDirection"
+              >
+                <option value="desc">High first</option>
+                <option value="asc">Low first</option>
+              </select>
+            </label>
+
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-muted">Minimum messages</span>
+              <input
+                className="h-10 min-w-32 rounded-lg border border-border bg-white px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
+                aria-label="Minimum messages required for leaderboard rows"
+                defaultValue={minActivity}
+                min={0}
+                name="minActivity"
+                title="Hide rows with fewer messages than this value."
+                type="number"
+              />
+            </label>
+          </>
+        )}
+
+        <DashboardSubmitButton />
+      </DashboardUpdateForm>
+    </div>
   );
+}
+
+function dashboardHref({
+  scope,
+  guildId,
+  userId,
+  channelId,
+  days,
+  startDate,
+  endDate,
+}: {
+  scope: DashboardScope;
+  guildId?: number;
+  userId?: number;
+  channelId?: string;
+  days: number;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const params = new URLSearchParams({ scope, days: String(days) });
+
+  if (startDate) {
+    params.set("startDate", startDate);
+  }
+
+  if (endDate) {
+    params.set("endDate", endDate);
+  }
+
+  if (guildId) {
+    params.set("guildId", String(guildId));
+  }
+
+  if (userId) {
+    params.set("userId", String(userId));
+  }
+
+  if (channelId) {
+    params.set("channelId", channelId);
+  }
+
+  return `/?${params.toString()}`;
 }

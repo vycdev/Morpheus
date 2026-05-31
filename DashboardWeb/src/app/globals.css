@@ -171,3 +171,17 @@ select {
 .scrollbar-clean::-webkit-scrollbar {
   display: none;
 }
+
+@keyframes dashboard-loading-bar {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(120%);
+  }
+
+  100% {
+    transform: translateX(330%);
+  }
+}

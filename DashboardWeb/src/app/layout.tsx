@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { DashboardLoadingOverlay } from "@/components/dashboard/loading-overlay";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Morpheus Dashboard",
   description: "Operational dashboard for the Morpheus Discord bot",
+  icons: {
+    icon: "/morpheus.png",
+  },
 };
 
 export default function RootLayout({
@@ -31,6 +36,9 @@ export default function RootLayout({
           }}
         />
         {children}
+        <Suspense fallback={null}>
+          <DashboardLoadingOverlay />
+        </Suspense>
       </body>
     </html>
   );

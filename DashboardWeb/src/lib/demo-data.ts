@@ -58,8 +58,16 @@ export function createDemoDashboardData(filters: DashboardFilters, error?: strin
   const heatmap = buildHeatmap();
   const economyFlow = buildEconomyFlow(days, now);
   const buttonDaily = buildButtonDaily(days, now);
+  const stackedServerActivity = buildStackedServerActivity(days, now, guilds);
+  const calendarActivity = derivedPoints.map((point) => ({
+    dateUtc: point.dateUtc,
+    messages: point.messages,
+    xp: point.xp,
+    activeUsers: point.activeUsers,
+  }));
   const totalMessages = points.reduce((sum, point) => sum + point.messages, 0);
   const totalXp = points.reduce((sum, point) => sum + point.xp, 0);
+  const latestPoint = points.at(-1);
 
   const xpItems = [
     ["vyc", 38240, 9],
@@ -145,9 +153,236 @@ export function createDemoDashboardData(filters: DashboardFilters, error?: strin
     },
   ];
 
-  return {
+  const data = {
     usingDemoData: true,
     error,
+    globalOverview: {
+      generatedAtUtc: now.toISOString(),
+      days,
+      totals: {
+        totalServers: guilds.length,
+        totalKnownUsers: 61,
+        totalTrackedMessages: 267450,
+        totalXpGenerated: 1306300,
+        latestDayMessages: latestPoint?.messages ?? 0,
+        latestDayXpGenerated: latestPoint?.xp ?? 0,
+        totalQuotes: 461,
+        totalApprovedQuotes: 436,
+        pendingQuotes: 7,
+        pendingQuoteApprovals: 5,
+        totalEconomyBalance: 184320,
+        totalEstimatedNetWorth: 281100,
+        ubiPoolSize: 18420,
+        slotsVaultSize: 126700,
+        totalTransactions: 8124,
+        totalButtonPresses: 19340,
+        activeReminders: 14,
+        recentWarningsOrErrors: 19,
+      },
+      highlights: {
+        mostActiveServersToday: guilds.map((guild, index) => ({
+          rank: index + 1,
+          guildId: guild.id,
+          discordId: guild.discordId,
+          name: guild.name,
+          messages: 820 - index * 210,
+          xp: 6400 - index * 1450,
+          activeUsers: 28 - index * 8,
+          lastActivityAtUtc: now.toISOString(),
+        })),
+        mostActiveServersThisWeek: guilds.map((guild, index) => ({
+          rank: index + 1,
+          guildId: guild.id,
+          discordId: guild.discordId,
+          name: guild.name,
+          messages: 6820 - index * 2210,
+          xp: 51400 - index * 15450,
+          activeUsers: 39 - index * 12,
+          lastActivityAtUtc: now.toISOString(),
+        })),
+        mostActiveServersThisMonth: guilds.map((guild, index) => ({
+          rank: index + 1,
+          guildId: guild.id,
+          discordId: guild.discordId,
+          name: guild.name,
+          messages: 23840 - index * 10220,
+          xp: 184200 - index * 68300,
+          activeUsers: 48 - index * 18,
+          lastActivityAtUtc: now.toISOString(),
+        })),
+        mostActiveServersAllTime: guilds.map((guild, index) => ({
+          rank: index + 1,
+          guildId: guild.id,
+          discordId: guild.discordId,
+          name: guild.name,
+          messages: guild.messages,
+          xp: guild.xp,
+          activeUsers: guild.trackedUsers,
+          lastActivityAtUtc: now.toISOString(),
+        })),
+        mostActiveServersSelectedWindow: guilds.map((guild, index) => ({
+          rank: index + 1,
+          guildId: guild.id,
+          discordId: guild.discordId,
+          name: guild.name,
+          messages: Math.round((23840 - index * 10220) * Math.max(0.2, days / 30)),
+          xp: Math.round((184200 - index * 68300) * Math.max(0.2, days / 30)),
+          activeUsers: 48 - index * 18,
+          lastActivityAtUtc: now.toISOString(),
+        })),
+        biggestXpGainers: xpItems.map((item, index) => ({
+          rank: index + 1,
+          userId: item.userId,
+          discordId: item.discordId,
+          username: item.username,
+          messages: 2200 - index * 240,
+          xp: item.value,
+          level: item.level ?? 0,
+          lastActivityAtUtc: item.lastActivityAtUtc,
+        })),
+        richestUsersByBalance: xpItems.map((item, index) => ({
+          rank: index + 1,
+          userId: item.userId,
+          discordId: item.discordId,
+          username: item.username,
+          balance: 22400 - index * 1700,
+          stockPortfolioValue: 15100 - index * 930,
+          netWorth: 37500 - index * 2630,
+        })),
+        richestUsersByNetWorth: xpItems.map((item, index) => ({
+          rank: index + 1,
+          userId: item.userId,
+          discordId: item.discordId,
+          username: item.username,
+          balance: 20500 - index * 1300,
+          stockPortfolioValue: 18200 - index * 810,
+          netWorth: 38700 - index * 2110,
+        })),
+        biggestStockGainers: [
+          { stockId: 12, entityType: "User", name: "ana", price: 184.42, dailyChangePercent: 9.8, holdingValue: 12400 },
+          { stockId: 33, entityType: "Channel", name: "market", price: 142.14, dailyChangePercent: 7.1, holdingValue: 8100 },
+          { stockId: 6, entityType: "Server", name: "Morpheus Lab", price: 121.9, dailyChangePercent: 5.6, holdingValue: 17400 },
+        ],
+        biggestStockLosers: [
+          { stockId: 44, entityType: "User", name: "alex", price: 88.3, dailyChangePercent: -6.2, holdingValue: 2300 },
+          { stockId: 51, entityType: "Channel", name: "quotes", price: 94.72, dailyChangePercent: -3.8, holdingValue: 5100 },
+        ],
+        mostPopularQuotes: quotes.map((quote, index) => ({
+          rank: index + 1,
+          id: quote.id,
+          guildId: quote.guildId,
+          userId: quote.userId,
+          author: quote.author,
+          content: quote.content,
+          insertedAtUtc: quote.insertedAtUtc,
+          score: quote.score,
+        })),
+        mostActiveChannels: channelRows.map(([name, discordId, messages, xp, activeUsers], index) => ({
+          rank: index + 1,
+          discordId,
+          name,
+          messages,
+          xp,
+          activeUsers,
+          lastActivityAtUtc: now.toISOString(),
+        })),
+        mostActiveUsers: messageItems.map((item, index) => ({
+          rank: index + 1,
+          userId: item.userId,
+          discordId: item.discordId,
+          username: item.username,
+          messages: item.value,
+          xp: 18400 - index * 1200,
+          level: 6 + index,
+          lastActivityAtUtc: item.lastActivityAtUtc,
+        })),
+        recentlyCreatedUsers: xpItems.slice(0, 4).map((item, index) => ({
+          id: item.userId,
+          discordId: item.discordId,
+          name: item.username,
+          insertedAtUtc: new Date(now.getTime() - index * 1000 * 60 * 60 * 12).toISOString(),
+        })),
+        recentlyCreatedServers: guilds.map((guild) => ({
+          id: guild.id,
+          discordId: guild.discordId,
+          name: guild.name,
+          insertedAtUtc: guild.insertedAtUtc,
+        })),
+        recentlyCreatedQuotes: quotes.map((quote) => ({
+          id: quote.id,
+          guildId: quote.guildId,
+          userId: quote.userId,
+          author: quote.author,
+          content: quote.content,
+          approved: quote.approved,
+          removed: quote.removed,
+          insertedAtUtc: quote.insertedAtUtc,
+        })),
+        recentlyCreatedStocks: [
+          { stockId: 86, entityType: "User", entityId: 5, name: "alex", price: 88.3, dailyChangePercent: -6.2, insertedAtUtc: now.toISOString() },
+          { stockId: 85, entityType: "Channel", entityId: 4, name: "market", price: 142.14, dailyChangePercent: 7.1, insertedAtUtc: new Date(now.getTime() - 1000 * 60 * 50).toISOString() },
+        ],
+      },
+      visuals: {
+        activity: derivedPoints,
+        stackedServerActivity,
+        calendarActivity,
+        hourByWeekdayActivity: heatmap,
+        transactionTypes: [
+          { label: "Stock buy", value: 28400 },
+          { label: "Stock sell", value: 18100 },
+          { label: "Transfer", value: 12750 },
+          { label: "Slots win", value: 9200 },
+          { label: "Donation", value: 5800 },
+        ],
+      },
+      feeds: {
+        recentEconomyEvents: [
+          {
+            id: 8124,
+            type: "Stock buy",
+            amount: 1240,
+            fee: 12,
+            userId: 1,
+            user: "vyc",
+            targetUserId: null,
+            targetUser: null,
+            stockId: 33,
+            stockName: "market",
+            insertedAtUtc: now.toISOString(),
+          },
+          {
+            id: 8123,
+            type: "Donation",
+            amount: 500,
+            fee: 0,
+            userId: 2,
+            user: "ana",
+            targetUserId: null,
+            targetUser: null,
+            stockId: null,
+            stockName: null,
+            insertedAtUtc: new Date(now.getTime() - 1000 * 60 * 36).toISOString(),
+          },
+        ],
+        recentBotHealthEvents: [
+          {
+            id: 920,
+            severity: "Warning",
+            message: "Approval message update retried for quote 441",
+            version: "1.7.0",
+            insertedAtUtc: new Date(now.getTime() - 1000 * 60 * 32).toISOString(),
+          },
+          {
+            id: 919,
+            severity: "Error",
+            message: "Transient Discord gateway timeout recovered",
+            version: "1.7.0",
+            insertedAtUtc: new Date(now.getTime() - 1000 * 60 * 85).toISOString(),
+          },
+        ],
+      },
+    },
     guilds,
     overview: {
       generatedAtUtc: now.toISOString(),
@@ -189,14 +424,14 @@ export function createDemoDashboardData(filters: DashboardFilters, error?: strin
     },
     xpLeaderboard: {
       guildId: selectedGuildId,
-      metric: "xp",
+      metric: "xp" as const,
       days,
       limit: 10,
       items: xpItems,
     },
     messageLeaderboard: {
       guildId: selectedGuildId,
-      metric: "messages",
+      metric: "messages" as const,
       days,
       limit: 10,
       items: messageItems,
@@ -440,6 +675,17 @@ export function createDemoDashboardData(filters: DashboardFilters, error?: strin
       },
     },
   };
+
+  return {
+    ...data,
+    drilldown: {
+      activity: data.activity,
+      xpLeaderboard: data.xpLeaderboard,
+      messageLeaderboard: data.messageLeaderboard,
+      quotes: data.quotes,
+      insights: data.insights,
+    },
+  };
 }
 
 function buildDerivedActivity(points: DashboardActivityPoint[]): DashboardActivityDerivedPoint[] {
@@ -486,6 +732,21 @@ function buildHeatmap(): DashboardHeatmapCell[] {
   }
 
   return cells;
+}
+
+function buildStackedServerActivity(days: number, now: Date, guilds: DashboardGuildSummary[]) {
+  return Array.from({ length: days }, (_, dayIndex) => {
+    const date = new Date(now);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (days - dayIndex - 1));
+
+    return guilds.map((guild, guildIndex) => ({
+      dateUtc: date.toISOString(),
+      guildId: guild.id,
+      guildName: guild.name,
+      messages: Math.round(80 + (Math.sin((dayIndex + guildIndex) / 2.8) + 1.2) * (55 - guildIndex * 12)),
+    }));
+  }).flat();
 }
 
 function buildEconomyFlow(days: number, now: Date): DashboardEconomyFlowPoint[] {

@@ -10,6 +10,162 @@ public sealed record DashboardOverviewResponse(
     DashboardEconomyStats Economy,
     DashboardLogStats Logs);
 
+public sealed record DashboardGlobalOverviewResponse(
+    DateTime GeneratedAtUtc,
+    int Days,
+    DashboardGlobalTotals Totals,
+    DashboardGlobalHighlights Highlights,
+    DashboardGlobalVisuals Visuals,
+    DashboardGlobalFeeds Feeds);
+
+public sealed record DashboardGlobalTotals(
+    int TotalServers,
+    int TotalKnownUsers,
+    long TotalTrackedMessages,
+    long TotalXpGenerated,
+    long LatestDayMessages,
+    long LatestDayXpGenerated,
+    int TotalQuotes,
+    int TotalApprovedQuotes,
+    int PendingQuotes,
+    int PendingQuoteApprovals,
+    decimal TotalEconomyBalance,
+    decimal TotalEstimatedNetWorth,
+    decimal UbiPoolSize,
+    decimal SlotsVaultSize,
+    long TotalTransactions,
+    long TotalButtonPresses,
+    int ActiveReminders,
+    int RecentWarningsOrErrors);
+
+public sealed record DashboardGlobalHighlights(
+    IReadOnlyList<DashboardGlobalServerActivity> MostActiveServersToday,
+    IReadOnlyList<DashboardGlobalServerActivity> MostActiveServersThisWeek,
+    IReadOnlyList<DashboardGlobalServerActivity> MostActiveServersThisMonth,
+    IReadOnlyList<DashboardGlobalServerActivity> MostActiveServersAllTime,
+    IReadOnlyList<DashboardGlobalServerActivity> MostActiveServersSelectedWindow,
+    IReadOnlyList<DashboardGlobalUserActivity> BiggestXpGainers,
+    IReadOnlyList<DashboardGlobalWealthUser> RichestUsersByBalance,
+    IReadOnlyList<DashboardGlobalWealthUser> RichestUsersByNetWorth,
+    IReadOnlyList<DashboardStockMover> BiggestStockGainers,
+    IReadOnlyList<DashboardStockMover> BiggestStockLosers,
+    IReadOnlyList<DashboardPopularQuote> MostPopularQuotes,
+    IReadOnlyList<DashboardGlobalChannelActivity> MostActiveChannels,
+    IReadOnlyList<DashboardGlobalUserActivity> MostActiveUsers,
+    IReadOnlyList<DashboardRecentEntity> RecentlyCreatedUsers,
+    IReadOnlyList<DashboardRecentEntity> RecentlyCreatedServers,
+    IReadOnlyList<DashboardRecentQuote> RecentlyCreatedQuotes,
+    IReadOnlyList<DashboardRecentStock> RecentlyCreatedStocks);
+
+public sealed record DashboardGlobalVisuals(
+    IReadOnlyList<DashboardActivityDerivedPoint> Activity,
+    IReadOnlyList<DashboardStackedServerActivityPoint> StackedServerActivity,
+    IReadOnlyList<DashboardCalendarActivityCell> CalendarActivity,
+    IReadOnlyList<DashboardHeatmapCell> HourByWeekdayActivity,
+    IReadOnlyList<DashboardCategoryValue> TransactionTypes);
+
+public sealed record DashboardGlobalFeeds(
+    IReadOnlyList<DashboardEconomyEventItem> RecentEconomyEvents,
+    IReadOnlyList<DashboardLogItem> RecentBotHealthEvents);
+
+public sealed record DashboardGlobalServerActivity(
+    int Rank,
+    int GuildId,
+    string DiscordId,
+    string Name,
+    long Messages,
+    long Xp,
+    int ActiveUsers,
+    DateTime? LastActivityAtUtc);
+
+public sealed record DashboardGlobalUserActivity(
+    int Rank,
+    int UserId,
+    string DiscordId,
+    string Username,
+    long Messages,
+    long Xp,
+    int Level,
+    DateTime? LastActivityAtUtc);
+
+public sealed record DashboardGlobalWealthUser(
+    int Rank,
+    int UserId,
+    string DiscordId,
+    string Username,
+    decimal Balance,
+    decimal StockPortfolioValue,
+    decimal NetWorth);
+
+public sealed record DashboardPopularQuote(
+    int Rank,
+    int Id,
+    int GuildId,
+    int UserId,
+    string Author,
+    string Content,
+    DateTime InsertedAtUtc,
+    int Score);
+
+public sealed record DashboardGlobalChannelActivity(
+    int Rank,
+    string DiscordId,
+    string Name,
+    long Messages,
+    long Xp,
+    int ActiveUsers,
+    DateTime? LastActivityAtUtc);
+
+public sealed record DashboardRecentEntity(
+    int Id,
+    string DiscordId,
+    string Name,
+    DateTime InsertedAtUtc);
+
+public sealed record DashboardRecentQuote(
+    int Id,
+    int GuildId,
+    int UserId,
+    string Author,
+    string Content,
+    bool Approved,
+    bool Removed,
+    DateTime InsertedAtUtc);
+
+public sealed record DashboardRecentStock(
+    int StockId,
+    string EntityType,
+    int EntityId,
+    string Name,
+    decimal Price,
+    decimal DailyChangePercent,
+    DateTime InsertedAtUtc);
+
+public sealed record DashboardStackedServerActivityPoint(
+    DateTime DateUtc,
+    int GuildId,
+    string GuildName,
+    int Messages);
+
+public sealed record DashboardCalendarActivityCell(
+    DateTime DateUtc,
+    int Messages,
+    long Xp,
+    int ActiveUsers);
+
+public sealed record DashboardEconomyEventItem(
+    long Id,
+    string Type,
+    decimal Amount,
+    decimal Fee,
+    int UserId,
+    string User,
+    int? TargetUserId,
+    string? TargetUser,
+    int? StockId,
+    string? StockName,
+    DateTime InsertedAtUtc);
+
 public sealed record DashboardSystemStats(
     int Guilds,
     int Users,
