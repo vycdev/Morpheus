@@ -417,7 +417,6 @@ export default async function DashboardPage({
             <ActivityHeatmap cells={global.visuals.hourByWeekdayActivity} />
           </CardContent>
         </Card>
-
       </section>
       )}
 
@@ -430,7 +429,7 @@ export default async function DashboardPage({
         />
       )}
 
-      {!drilldownActive && dashboardView === "economy" && (
+      {!drilldownActive && dashboardView === "economy" && !insights && (
       <section className="grid grid-cols-1 gap-4">
         <Card id="economy">
           <CardHeader>
@@ -515,7 +514,7 @@ export default async function DashboardPage({
       </section>
       )}
 
-      {!drilldownActive && dashboardView === "users" && (
+      {!drilldownActive && dashboardView === "economy" && !insights && (
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
@@ -594,8 +593,8 @@ export default async function DashboardPage({
         )
       )}
 
-      {!drilldownActive && dashboardView === "users" && (
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+      {!drilldownActive && dashboardView === "activity" && (
+      <section className="grid grid-cols-1 gap-4">
         <Card>
           <CardHeader>
             <div>
@@ -608,7 +607,11 @@ export default async function DashboardPage({
             <GlobalChannelList channels={global.highlights.mostActiveChannels} days={days} endDate={endDate} startDate={startDate} />
           </CardContent>
         </Card>
+      </section>
+      )}
 
+      {!drilldownActive && dashboardView === "summary" && (
+      <section className="grid grid-cols-1 gap-4">
         <Card>
           <CardHeader>
             <div>
@@ -1810,6 +1813,34 @@ function ActivityAnalyticsSection({
         <Card>
           <CardHeader>
             <div>
+              <CardTitle>Normal vs Rolling</CardTitle>
+              <CardDescription>Daily messages, rolling average, and cumulative activity.</CardDescription>
+            </div>
+            <Gauge className="h-5 w-5 text-muted" aria-hidden />
+          </CardHeader>
+          <CardContent>
+            <ActivityInsightChart points={activity.points} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Daily XP vs Cumulative XP</CardTitle>
+              <CardDescription>Daily XP bars and cumulative XP curve.</CardDescription>
+            </div>
+            <TrendingUp className="h-5 w-5 text-muted" aria-hidden />
+          </CardHeader>
+          <CardContent>
+            <CumulativeXpChart points={activity.points} />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <div>
               <CardTitle>Comparison Explorer</CardTitle>
               <CardDescription>Users, channels, servers, and adjacent time windows on the same activity axis.</CardDescription>
             </div>
@@ -1830,19 +1861,6 @@ function ActivityAnalyticsSection({
           </CardHeader>
           <CardContent>
             <ActivityComparisonChart metric="xp" series={analytics.comparisonSeries} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Normal vs Rolling</CardTitle>
-              <CardDescription>Daily messages, rolling average, and cumulative activity.</CardDescription>
-            </div>
-            <Gauge className="h-5 w-5 text-muted" aria-hidden />
-          </CardHeader>
-          <CardContent>
-            <ActivityInsightChart points={activity.points} />
           </CardContent>
         </Card>
 
@@ -2041,19 +2059,6 @@ function ActivityAnalyticsSection({
           </CardHeader>
           <CardContent>
             <ActivityScatterChart points={analytics.averageLengthVsXp} xMetric="averageMessageLength" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Daily XP vs Cumulative XP</CardTitle>
-              <CardDescription>Daily XP bars and cumulative XP curve.</CardDescription>
-            </div>
-            <TrendingUp className="h-5 w-5 text-muted" aria-hidden />
-          </CardHeader>
-          <CardContent>
-            <CumulativeXpChart points={activity.points} />
           </CardContent>
         </Card>
       </section>
