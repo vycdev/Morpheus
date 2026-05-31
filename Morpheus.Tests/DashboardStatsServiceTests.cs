@@ -1753,6 +1753,142 @@ public class DashboardStatsServiceTests
     }
 
     [Fact]
+    public async Task GetInsightsAsync_ChannelEconomyUsesChannelParticipants()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (Guild guild, User activeUser) = await SeedBaseAsync(testDb.Db);
+        User outsider = new()
+        {
+            DiscordId = 777,
+            Username = "outsider"
+        };
+        User otherOutsider = new()
+        {
+            DiscordId = 888,
+            Username = "other-outsider"
+        };
+        Channel channel = new()
+        {
+            DiscordId = 555,
+            Name = "economy-channel"
+        };
+        testDb.Db.Users.AddRange(outsider, otherOutsider);
+        testDb.Db.Channels.Add(channel);
+        await testDb.Db.SaveChangesAsync();
+
+        DateTime today = DateTime.UtcNow.Date;
+        testDb.Db.UserActivity.Add(new UserActivity
+        {
+            GuildId = guild.Id,
+            UserId = activeUser.Id,
+            DiscordChannelId = channel.DiscordId,
+            DiscordMessageId = 1,
+            XpGained = 10,
+            InsertDate = today.AddHours(1)
+        });
+        testDb.Db.StockTransactions.AddRange(
+            new StockTransaction
+            {
+                UserId = activeUser.Id,
+                TargetUserId = outsider.Id,
+                Type = TransactionType.Transfer,
+                Amount = 40m,
+                InsertDate = today.AddHours(2)
+            },
+            new StockTransaction
+            {
+                UserId = outsider.Id,
+                TargetUserId = otherOutsider.Id,
+                Type = TransactionType.Transfer,
+                Amount = 90m,
+                InsertDate = today.AddHours(3)
+            });
+        await testDb.Db.SaveChangesAsync();
+
+        DashboardStatsService service = CreateService(testDb.Db);
+
+        DashboardInsightsResponse insights = await service.GetInsightsAsync(
+            guildId: null,
+            userId: null,
+            channelId: channel.DiscordId.ToString(),
+            days: 7,
+            scope: "channel",
+            sortDirection: "desc",
+            minActivity: 1,
+            view: "economy");
+
+        Assert.Equal(40m, insights.Economy.TransactionVolume);
+        Assert.Equal(1, insights.Economy.TransactionCount);
+        Assert.Equal(1, insights.Economy.ActiveTraders);
+        Assert.Equal(40m, insights.Economy.UserToUserTransferVolume);
+    }
+
+    [Fact]
+    public async Task GetInsightsAsync_ServerEconomyUsesServerParticipants()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (Guild guild, User activeUser) = await SeedBaseAsync(testDb.Db);
+        User outsider = new()
+        {
+            DiscordId = 777,
+            Username = "outsider"
+        };
+        User otherOutsider = new()
+        {
+            DiscordId = 888,
+            Username = "other-outsider"
+        };
+        testDb.Db.Users.AddRange(outsider, otherOutsider);
+        await testDb.Db.SaveChangesAsync();
+
+        DateTime today = DateTime.UtcNow.Date;
+        testDb.Db.UserActivity.Add(new UserActivity
+        {
+            GuildId = guild.Id,
+            UserId = activeUser.Id,
+            DiscordChannelId = 555,
+            DiscordMessageId = 1,
+            XpGained = 10,
+            InsertDate = today.AddHours(1)
+        });
+        testDb.Db.StockTransactions.AddRange(
+            new StockTransaction
+            {
+                UserId = activeUser.Id,
+                TargetUserId = outsider.Id,
+                Type = TransactionType.Transfer,
+                Amount = 40m,
+                InsertDate = today.AddHours(2)
+            },
+            new StockTransaction
+            {
+                UserId = outsider.Id,
+                TargetUserId = otherOutsider.Id,
+                Type = TransactionType.Transfer,
+                Amount = 90m,
+                InsertDate = today.AddHours(3)
+            });
+        await testDb.Db.SaveChangesAsync();
+
+        DashboardStatsService service = CreateService(testDb.Db);
+
+        DashboardInsightsResponse insights = await service.GetInsightsAsync(
+            guildId: guild.Id,
+            userId: null,
+            channelId: null,
+            days: 7,
+            scope: "server",
+            sortDirection: "desc",
+            minActivity: 1,
+            view: "economy");
+
+        Assert.Equal(40m, insights.Economy.TransactionVolume);
+        Assert.Equal(1, insights.Economy.TransactionCount);
+        Assert.Equal(1, insights.Economy.ActiveTraders);
+        Assert.Equal(40m, insights.Economy.UserToUserTransferVolume);
+    }
+
+    [Fact]
     public async Task GetInsightsAsync_UserSummaryReturnsCompleteUserProfile()
     {
         await using SqliteTestDb testDb = await CreateSqliteDbAsync();

@@ -586,7 +586,7 @@ export default async function DashboardPage({
 
       {!drilldownActive && dashboardView === "stocks" && (
         insights ? (
-          <StockAnalyticsSection insights={insights.stocks} />
+          <StockAnalyticsSection days={days} endDate={endDate} insights={insights.stocks} startDate={startDate} />
         ) : (
           <section id="stocks" className="grid grid-cols-1 gap-4">
             <Card>
@@ -677,7 +677,7 @@ export default async function DashboardPage({
 
       {!drilldownActive && dashboardView === "economy" && (
         insights ? (
-          <EconomyAnalyticsSection insights={insights.economy} />
+          <EconomyAnalyticsSection days={days} endDate={endDate} insights={insights.economy} startDate={startDate} />
         ) : (
           <section id="logs" className="grid grid-cols-1 gap-4">
             <Card>
@@ -875,11 +875,11 @@ export default async function DashboardPage({
       )}
 
       {dashboardView === "economy" && (
-        <EconomyAnalyticsSection insights={insights.economy} />
+        <EconomyAnalyticsSection days={days} endDate={endDate} insights={insights.economy} startDate={startDate} />
       )}
 
       {dashboardView === "stocks" && (
-        <StockAnalyticsSection insights={insights.stocks} />
+        <StockAnalyticsSection days={days} endDate={endDate} insights={insights.stocks} startDate={startDate} />
       )}
 
       {dashboardView === "operations" && (
@@ -1693,7 +1693,7 @@ function ServerDashboardSummary({
           </CardHeader>
           <CardContent className="grid gap-5">
             <DonutChart data={insights.quotes.statuses} labelKey="status" />
-            <QuoteAuthors authors={insights.quotes.authors} />
+            <QuoteAuthors authors={insights.quotes.authors} days={days} endDate={endDate} startDate={startDate} />
             <QuotesList days={days} emptyLabel="No pending quotes found" endDate={endDate} quotes={insights.quotes.recentPending} startDate={startDate} />
           </CardContent>
         </Card>
@@ -3619,7 +3619,7 @@ function QuoteAnalyticsSection({
           <CardContent className="grid gap-5">
             <DonutChart data={insights.statuses} labelKey="status" />
             <CategoryBars data={scoreHistogram} />
-            <QuoteAuthors authors={insights.authors} />
+            <QuoteAuthors authors={insights.authors} days={days} endDate={endDate} startDate={startDate} />
           </CardContent>
         </Card>
 
@@ -4135,7 +4135,17 @@ function QuoteSetupList({
   );
 }
 
-function QuoteAuthors({ authors }: { authors: DashboardQuoteAuthorSummary[] }) {
+function QuoteAuthors({
+  authors,
+  days,
+  endDate,
+  startDate,
+}: {
+  authors: DashboardQuoteAuthorSummary[];
+  days: number;
+  endDate: string;
+  startDate: string;
+}) {
   if (authors.length === 0) {
     return <EmptyRow label="No quote authors found" />;
   }
@@ -4145,7 +4155,7 @@ function QuoteAuthors({ authors }: { authors: DashboardQuoteAuthorSummary[] }) {
       {authors.map((author) => (
         <Link
           className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 transition-colors hover:border-primary hover:bg-slate-50"
-          href={`/users/${author.userId}?scope=user&view=quotes`}
+          href={dashboardHref({ scope: "user", userId: author.userId, days, startDate, endDate, view: "quotes" })}
           key={author.userId}
         >
           <span className="truncate text-sm font-semibold text-foreground">{author.username}</span>
@@ -4238,7 +4248,17 @@ function GuildsTable({ guilds }: { guilds: DashboardGuildSummary[] }) {
   );
 }
 
-function EconomyAnalyticsSection({ insights }: { insights: DashboardEconomyInsights }) {
+function EconomyAnalyticsSection({
+  days,
+  endDate,
+  insights,
+  startDate,
+}: {
+  days: number;
+  endDate: string;
+  insights: DashboardEconomyInsights;
+  startDate: string;
+}) {
   return (
     <>
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -4333,7 +4353,7 @@ function EconomyAnalyticsSection({ insights }: { insights: DashboardEconomyInsig
           </CardHeader>
           <CardContent className="grid gap-4">
             <DonutChart data={insights.robberyOutcomes} labelKey="label" />
-            <EconomyActorList actors={insights.biggestRobberies} emptyLabel="No robberies found" title="Biggest robberies" />
+            <EconomyActorList actors={insights.biggestRobberies} days={days} emptyLabel="No robberies found" endDate={endDate} startDate={startDate} title="Biggest robberies" />
           </CardContent>
         </Card>
 
@@ -4420,7 +4440,7 @@ function EconomyAnalyticsSection({ insights }: { insights: DashboardEconomyInsig
             </div>
           </CardHeader>
           <CardContent>
-            <EconomyActorList actors={insights.topDonors} emptyLabel="No donations found" title="Donors" />
+            <EconomyActorList actors={insights.topDonors} days={days} emptyLabel="No donations found" endDate={endDate} startDate={startDate} title="Donors" />
           </CardContent>
         </Card>
         <Card>
@@ -4431,7 +4451,7 @@ function EconomyAnalyticsSection({ insights }: { insights: DashboardEconomyInsig
             </div>
           </CardHeader>
           <CardContent>
-            <EconomyActorList actors={insights.mostRobbedUsers} emptyLabel="No robbed users found" title="Targets" />
+            <EconomyActorList actors={insights.mostRobbedUsers} days={days} emptyLabel="No robbed users found" endDate={endDate} startDate={startDate} title="Targets" />
           </CardContent>
         </Card>
         <Card>
@@ -4442,8 +4462,8 @@ function EconomyAnalyticsSection({ insights }: { insights: DashboardEconomyInsig
             </div>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <EconomyActorList actors={insights.biggestSlotsWins} emptyLabel="No slots wins found" title="Wins" />
-            <EconomyActorList actors={insights.biggestSlotsLosses} emptyLabel="No slots losses found" title="Losses" />
+            <EconomyActorList actors={insights.biggestSlotsWins} days={days} emptyLabel="No slots wins found" endDate={endDate} startDate={startDate} title="Wins" />
+            <EconomyActorList actors={insights.biggestSlotsLosses} days={days} emptyLabel="No slots losses found" endDate={endDate} startDate={startDate} title="Losses" />
           </CardContent>
         </Card>
       </section>
@@ -4451,7 +4471,17 @@ function EconomyAnalyticsSection({ insights }: { insights: DashboardEconomyInsig
   );
 }
 
-function StockAnalyticsSection({ insights }: { insights: DashboardStockMarketInsights }) {
+function StockAnalyticsSection({
+  days,
+  endDate,
+  insights,
+  startDate,
+}: {
+  days: number;
+  endDate: string;
+  insights: DashboardStockMarketInsights;
+  startDate: string;
+}) {
   return (
     <>
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -4571,7 +4601,7 @@ function StockAnalyticsSection({ insights }: { insights: DashboardStockMarketIns
             </div>
           </CardHeader>
           <CardContent>
-            <StockTable items={insights.mostValuableStocks} />
+            <StockTable days={days} endDate={endDate} items={insights.mostValuableStocks} startDate={startDate} />
           </CardContent>
         </Card>
         <Card>
@@ -4582,7 +4612,7 @@ function StockAnalyticsSection({ insights }: { insights: DashboardStockMarketIns
             </div>
           </CardHeader>
           <CardContent>
-            <StockTable items={insights.mostHeldStocks} />
+            <StockTable days={days} endDate={endDate} items={insights.mostHeldStocks} startDate={startDate} />
           </CardContent>
         </Card>
         <Card>
@@ -4593,7 +4623,7 @@ function StockAnalyticsSection({ insights }: { insights: DashboardStockMarketIns
             </div>
           </CardHeader>
           <CardContent>
-            <StockTable items={insights.mostTradedStocks} showTrades />
+            <StockTable days={days} endDate={endDate} items={insights.mostTradedStocks} showTrades startDate={startDate} />
           </CardContent>
         </Card>
       </section>
@@ -4627,7 +4657,21 @@ function StockAnalyticsSection({ insights }: { insights: DashboardStockMarketIns
   );
 }
 
-function EconomyActorList({ actors, emptyLabel, title }: { actors: DashboardEconomyActor[]; emptyLabel: string; title: string }) {
+function EconomyActorList({
+  actors,
+  days,
+  emptyLabel,
+  endDate,
+  startDate,
+  title,
+}: {
+  actors: DashboardEconomyActor[];
+  days: number;
+  emptyLabel: string;
+  endDate: string;
+  startDate: string;
+  title: string;
+}) {
   if (actors.length === 0) {
     return <EmptyRow label={emptyLabel} />;
   }
@@ -4638,7 +4682,7 @@ function EconomyActorList({ actors, emptyLabel, title }: { actors: DashboardEcon
       {actors.slice(0, 6).map((actor) => (
         <Link
           className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 transition-colors hover:border-primary hover:bg-slate-50"
-          href={`/users/${actor.userId}?scope=user&view=economy`}
+          href={dashboardHref({ scope: "user", userId: actor.userId, days, startDate, endDate, view: "economy" })}
           key={`${title}-${actor.rank}-${actor.userId}`}
         >
           <span className="text-xs font-semibold text-muted">#{actor.rank}</span>
@@ -4653,37 +4697,53 @@ function EconomyActorList({ actors, emptyLabel, title }: { actors: DashboardEcon
   );
 }
 
-function StockTable({ items, showTrades = false }: { items: DashboardStockTableItem[]; showTrades?: boolean }) {
+function StockTable({
+  days,
+  endDate,
+  items,
+  showTrades = false,
+  startDate,
+}: {
+  days: number;
+  endDate: string;
+  items: DashboardStockTableItem[];
+  showTrades?: boolean;
+  startDate: string;
+}) {
   if (items.length === 0) {
     return <EmptyRow label="No stocks found" />;
   }
 
   return (
     <div className="grid gap-2">
-      {items.slice(0, 8).map((stock) => (
-        <div className="rounded-lg border border-border bg-white p-3" key={`${stock.stockId}-${stock.rank}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              {stockEntityHref(stock) ? (
-                <Link className="truncate text-sm font-semibold text-foreground hover:text-primary" href={stockEntityHref(stock)!}>
-                  #{stock.rank} {stock.name}
-                </Link>
-              ) : (
-                <div className="truncate text-sm font-semibold text-foreground">#{stock.rank} {stock.name}</div>
-              )}
-              <div className="text-xs text-muted">{stock.entityType} stock - {formatInteger(stock.holders)} holders</div>
+      {items.slice(0, 8).map((stock) => {
+        const href = stockEntityHref(stock, days, startDate, endDate);
+
+        return (
+          <div className="rounded-lg border border-border bg-white p-3" key={`${stock.stockId}-${stock.rank}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                {href ? (
+                  <Link className="truncate text-sm font-semibold text-foreground hover:text-primary" href={href}>
+                    #{stock.rank} {stock.name}
+                  </Link>
+                ) : (
+                  <div className="truncate text-sm font-semibold text-foreground">#{stock.rank} {stock.name}</div>
+                )}
+                <div className="text-xs text-muted">{stock.entityType} stock - {formatInteger(stock.holders)} holders</div>
+              </div>
+              <Badge variant={stock.dailyChangePercent >= 0 ? "success" : "danger"}>
+                {stock.dailyChangePercent >= 0 ? "+" : ""}{stock.dailyChangePercent.toFixed(2)}%
+              </Badge>
             </div>
-            <Badge variant={stock.dailyChangePercent >= 0 ? "success" : "danger"}>
-              {stock.dailyChangePercent >= 0 ? "+" : ""}{stock.dailyChangePercent.toFixed(2)}%
-            </Badge>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
+              <span>{formatCurrency(stock.price)}</span>
+              <span>{formatCurrency(stock.holdingValue)}</span>
+              <span>{showTrades ? `${formatCurrency(stock.tradeVolume)} traded` : `${formatCompactNumber(stock.sharesHeld)} shares`}</span>
+            </div>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted">
-            <span>{formatCurrency(stock.price)}</span>
-            <span>{formatCurrency(stock.holdingValue)}</span>
-            <span>{showTrades ? `${formatCurrency(stock.tradeVolume)} traded` : `${formatCompactNumber(stock.sharesHeld)} shares`}</span>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -5686,13 +5746,18 @@ function buildQuery(params: Record<string, string | number | undefined>) {
   return query.toString();
 }
 
-function stockEntityHref(stock: Pick<DashboardStockTableItem, "entityType" | "entityId">) {
+function stockEntityHref(
+  stock: Pick<DashboardStockTableItem, "entityType" | "entityId">,
+  days: number,
+  startDate: string,
+  endDate: string,
+) {
   if (stock.entityType === "User") {
-    return `/users/${stock.entityId}?scope=user&view=stocks`;
+    return dashboardHref({ scope: "user", userId: stock.entityId, days, startDate, endDate, view: "stocks" });
   }
 
   if (stock.entityType === "Server" || stock.entityType === "Guild") {
-    return `/servers/${stock.entityId}?scope=server&view=stocks`;
+    return dashboardHref({ scope: "server", guildId: stock.entityId, days, startDate, endDate, view: "stocks" });
   }
 
   return undefined;

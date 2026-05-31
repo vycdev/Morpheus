@@ -25,8 +25,8 @@ export default async function QuoteDetailPage({
 }) {
   const resolvedParams = await Promise.resolve(params);
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
-  const quoteId = Number.parseInt(resolvedParams.quoteId, 10);
-  const quote = Number.isFinite(quoteId) ? await getQuoteDetails(quoteId) : null;
+  const quoteId = parsePositiveInteger(resolvedParams.quoteId);
+  const quote = quoteId ? await getQuoteDetails(quoteId) : null;
   const days = getParam(resolvedSearchParams.days) ?? "30";
   const startDate = getParam(resolvedSearchParams.startDate);
   const endDate = getParam(resolvedSearchParams.endDate);
@@ -290,4 +290,13 @@ function userProfileHref(userId: number, days: string, startDate?: string, endDa
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function parsePositiveInteger(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

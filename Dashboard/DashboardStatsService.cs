@@ -578,7 +578,11 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             endExclusiveDate);
 
         IReadOnlyList<ScopedUserRow> scopedUsers = includeEconomy || includeStocks || includeServer
-            ? await GetScopedUsersAsync(effectiveGuildId, effectiveUserId, cancellationToken)
+            ? await GetScopedUsersAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                channelDiscordId.HasValue ? activityQuery : null,
+                cancellationToken)
             : [];
         List<int> scopedUserIds = includeStocks
             ? [.. scopedUsers.Select(user => user.UserId)]
@@ -641,6 +645,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 scopedUsers,
                 effectiveGuildId,
                 effectiveUserId,
+                effectiveGuildId.HasValue || channelDiscordId.HasValue,
                 startDate,
                 endExclusiveDate,
                 safeDays,
@@ -963,6 +968,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
     private async Task<IReadOnlyList<ScopedUserRow>> GetScopedUsersAsync(
         int? guildId,
         int? userId,
+        IQueryable<UserActivity>? channelActivityQuery,
         CancellationToken cancellationToken)
     {
         IQueryable<User> query = dbContext.Users.AsNoTracking();
@@ -970,6 +976,17 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         if (userId.HasValue)
         {
             query = query.Where(user => user.Id == userId.Value);
+        }
+        else if (channelActivityQuery is not null)
+        {
+            List<int> scopedUserIds = await channelActivityQuery
+                .Select(activity => activity.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            query = scopedUserIds.Count == 0
+                ? query.Where(_ => false)
+                : query.Where(user => scopedUserIds.Contains(user.Id));
         }
         else if (guildId.HasValue)
         {
@@ -4420,6 +4437,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         IReadOnlyList<ScopedUserRow> scopedUsers,
         int? guildId,
         int? userId,
+        bool restrictToScopedUsers,
         DateTime startDate,
         DateTime endExclusiveDate,
         int days,
@@ -4436,7 +4454,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 transaction.UserId == userId.Value ||
                 transaction.TargetUserId == userId.Value);
         }
-        else if (guildId.HasValue)
+        else if (restrictToScopedUsers)
         {
             transactionQuery = scopedUserIds.Count == 0
                 ? transactionQuery.Where(_ => false)

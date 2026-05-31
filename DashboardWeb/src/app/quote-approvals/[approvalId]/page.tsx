@@ -18,11 +18,11 @@ export default async function QuoteApprovalDetailPage({
 }) {
   const resolvedParams = await Promise.resolve(params);
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
-  const approvalId = Number.parseInt(resolvedParams.approvalId, 10);
+  const approvalId = parsePositiveInteger(resolvedParams.approvalId);
   const days = getParam(resolvedSearchParams.days) ?? "365";
   const startDate = getParam(resolvedSearchParams.startDate);
   const endDate = getParam(resolvedSearchParams.endDate);
-  const request = Number.isFinite(approvalId) ? await getQuoteApprovalDetails(approvalId) : null;
+  const request = approvalId ? await getQuoteApprovalDetails(approvalId) : null;
   const quotesDashboardHref = `/?${buildQuery({ scope: "global", view: "quotes", days, startDate, endDate })}`;
 
   if (!request) {
@@ -197,4 +197,13 @@ function buildQuery(params: Record<string, string | number | undefined>) {
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function parsePositiveInteger(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
