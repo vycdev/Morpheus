@@ -5843,12 +5843,13 @@ function formatDateLabel(value: string) {
 }
 
 function parseNumber(value: string | undefined, fallback: number) {
-  if (!value) {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) {
     return fallback;
   }
 
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : fallback;
 }
 
 function parseOptionalNumber(value: string | undefined) {
@@ -5867,8 +5868,32 @@ function parseOptionalDiscordId(value: string | undefined) {
 }
 
 function parseScope(value: string | undefined, guildId?: number, userId?: number, channelId?: string): DashboardScope {
-  if (value === "global" || value === "server" || value === "user" || value === "channel") {
-    return value;
+  if (value === "global") {
+    return "global";
+  }
+
+  if (value === "channel" && channelId) {
+    return "channel";
+  }
+
+  if (value === "channel") {
+    return "global";
+  }
+
+  if (value === "user" && userId) {
+    return "user";
+  }
+
+  if (value === "user") {
+    return "global";
+  }
+
+  if (value === "server" && guildId) {
+    return "server";
+  }
+
+  if (value === "server") {
+    return "global";
   }
 
   if (channelId) {
