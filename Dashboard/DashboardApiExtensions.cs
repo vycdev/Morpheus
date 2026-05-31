@@ -217,21 +217,26 @@ public static class DashboardApiExtensions
 
         api.MapGet("/quotes/{quoteId:int}", async (
             int quoteId,
-            QuoteService quoteService) =>
+            DashboardStatsService statsService,
+            CancellationToken cancellationToken) =>
         {
-            QuoteDetails? quote = await quoteService.GetQuoteDetailsAsync(quoteId);
+            DashboardQuoteDetailsResponse? quote = await statsService.GetQuoteDetailsAsync(quoteId, cancellationToken);
 
             return quote == null
                 ? Results.NotFound()
-                : Results.Ok(new DashboardQuoteDetailsResponse(
-                    quote.Id,
-                    quote.GuildId,
-                    quote.Content,
-                    quote.InsertDate,
-                    quote.Approved,
-                    quote.Removed,
-                    quote.TotalScore,
-                    quote.Author));
+                : Results.Ok(quote);
+        });
+
+        api.MapGet("/quote-approvals/{approvalId:int}", async (
+            int approvalId,
+            DashboardStatsService statsService,
+            CancellationToken cancellationToken) =>
+        {
+            DashboardQuoteApprovalRequestItem? approval = await statsService.GetQuoteApprovalDetailsAsync(approvalId, cancellationToken);
+
+            return approval == null
+                ? Results.NotFound()
+                : Results.Ok(approval);
         });
 
         return app;

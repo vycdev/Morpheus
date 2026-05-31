@@ -4,10 +4,14 @@ import type {
   DashboardData,
   DashboardDrilldownData,
   DashboardFilters,
+  DashboardFilterOptions,
   DashboardGlobalOverviewResponse,
   DashboardGuildSummary,
+  DashboardInsightsResponse,
   DashboardLeaderboardResponse,
   DashboardOverviewResponse,
+  DashboardQuoteApprovalRequestItem,
+  DashboardQuoteDetailsResponse,
   DashboardQuotePageResponse,
 } from "@/lib/types";
 import { clamp } from "@/lib/utils";
@@ -33,7 +37,20 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
   };
 
   try {
-    const shouldFetchDrilldown = hasDrilldownScope(safeFilters);
+    const hasScopedSelection =
+      safeFilters.scope === "server" ? Boolean(safeFilters.guildId) :
+      safeFilters.scope === "user" ? Boolean(safeFilters.userId) :
+      safeFilters.scope === "channel" ? Boolean(safeFilters.channelId) :
+      false;
+    const shouldFetchDrilldown =
+      hasScopedSelection ||
+      (safeFilters.scope === "global" &&
+        (safeFilters.view === "activity" ||
+          safeFilters.view === "quotes" ||
+          safeFilters.view === "economy" ||
+          safeFilters.view === "stocks" ||
+          safeFilters.view === "operations" ||
+          safeFilters.view === "settings"));
     const shouldFetchGlobalOverview = safeFilters.scope === "global";
     const shouldFetchOverview =
       shouldFetchDrilldown && (safeFilters.view === "summary" || safeFilters.view === "activity");
@@ -54,12 +71,20 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
     ]);
     let drilldown: DashboardDrilldownData | null = null;
     let drilldownError: string | undefined;
+    let filterOptions: DashboardFilterOptions = createEmptyFilterOptions();
 
     if (shouldFetchDrilldown) {
       try {
         drilldown = await getDashboardDrilldownData(safeFilters);
+        filterOptions = drilldown.insights.filterOptions;
       } catch (error) {
         drilldownError = error instanceof Error ? error.message : "Dashboard drilldown data is unavailable.";
+      }
+    } else if (safeFilters.scope !== "global") {
+      try {
+        filterOptions = await getDashboardFilterOptions(safeFilters);
+      } catch (error) {
+        drilldownError = error instanceof Error ? error.message : "Dashboard filter options are unavailable.";
       }
     }
 
@@ -67,6 +92,7 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
       globalOverview,
       overview: overview ?? createOverviewFromGlobalOverview(globalOverview),
       guilds,
+      filterOptions,
       drilldown,
       drilldownError,
       usingDemoData: false,
@@ -74,6 +100,38 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
   } catch (error) {
     const message = error instanceof Error ? error.message : "Dashboard API is unavailable.";
     return createDemoDashboardData(safeFilters, message);
+  }
+}
+
+async function getDashboardFilterOptions(filters: DashboardFilters): Promise<DashboardFilterOptions> {
+  const optionScope = filters.guildId ? "server" : "global";
+  const insights = await dashboardRequest<DashboardInsightsResponse>("/insights", {
+    guildId: filters.guildId,
+    days: filters.days,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+    scope: optionScope,
+    view: "summary",
+    sortDirection: filters.sortDirection,
+    minActivity: filters.minActivity,
+  });
+
+  return insights.filterOptions;
+}
+
+export async function getQuoteDetails(quoteId: number): Promise<DashboardQuoteDetailsResponse | null> {
+  try {
+    return await dashboardRequest<DashboardQuoteDetailsResponse>(`/quotes/${quoteId}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getQuoteApprovalDetails(approvalId: number): Promise<DashboardQuoteApprovalRequestItem | null> {
+  try {
+    return await dashboardRequest<DashboardQuoteApprovalRequestItem>(`/quote-approvals/${approvalId}`);
+  } catch {
+    return null;
   }
 }
 
@@ -185,10 +243,22 @@ function createEmptyGlobalOverview(days: number): DashboardGlobalOverviewRespons
   };
 }
 
+function createEmptyFilterOptions(): DashboardFilterOptions {
+  return {
+    users: [],
+    channels: [],
+  };
+}
+
 async function getDashboardDrilldownData(filters: DashboardFilters): Promise<DashboardDrilldownData> {
   const view = filters.view ?? "summary";
+  const isServerSummary = filters.scope === "server" && view === "summary" && Boolean(filters.guildId);
+  const isUserSummary = filters.scope === "user" && view === "summary" && Boolean(filters.userId);
+  const insightView = isServerSummary || isUserSummary ? undefined : view;
+  const shouldFetchActivity = view === "activity" || isServerSummary || isUserSummary;
+  const shouldFetchLeaderboards = view === "users" || isServerSummary || isUserSummary;
   const [activity, xpLeaderboard, messageLeaderboard, insights] = await Promise.all([
-    view === "activity"
+    shouldFetchActivity
       ? dashboardRequest<DashboardActivitySeriesResponse>("/activity", {
           guildId: filters.guildId,
           userId: filters.userId,
@@ -198,7 +268,7 @@ async function getDashboardDrilldownData(filters: DashboardFilters): Promise<Das
           endDate: filters.endDate,
         })
       : Promise.resolve(createEmptyActivitySeries(filters.guildId, filters.days)),
-    view === "users"
+    shouldFetchLeaderboards
       ? dashboardRequest<DashboardLeaderboardResponse>("/leaderboard", {
           guildId: filters.guildId,
           userId: filters.userId,
@@ -210,7 +280,7 @@ async function getDashboardDrilldownData(filters: DashboardFilters): Promise<Das
           limit: 10,
         })
       : Promise.resolve(createEmptyLeaderboard(filters.guildId, "xp", filters.days)),
-    view === "users"
+    shouldFetchLeaderboards
       ? dashboardRequest<DashboardLeaderboardResponse>("/leaderboard", {
           guildId: filters.guildId,
           userId: filters.userId,
@@ -230,7 +300,7 @@ async function getDashboardDrilldownData(filters: DashboardFilters): Promise<Das
       startDate: filters.startDate,
       endDate: filters.endDate,
       scope: filters.scope,
-      view,
+      view: insightView,
       sortDirection: filters.sortDirection,
       minActivity: filters.minActivity,
     }),
@@ -348,10 +418,6 @@ function pruneDashboardResponseCache(now: number) {
 
 function ensureTrailingSlash(value: string) {
   return value.endsWith("/") ? value : `${value}/`;
-}
-
-function hasDrilldownScope(filters: DashboardFilters) {
-  return filters.scope !== "global" || Boolean(filters.guildId || filters.userId || filters.channelId);
 }
 
 function withDashboardTimeout<T>(promise: Promise<T>, path: string): Promise<T> {

@@ -213,6 +213,8 @@ function dashboardHref({
   endDate?: string;
 }) {
   const params = new URLSearchParams({ scope, days: String(days) });
+  const isServerPage = scope === "server" && Boolean(guildId);
+  const isUserPage = scope === "user" && Boolean(userId);
 
   if (startDate) {
     params.set("startDate", startDate);
@@ -222,11 +224,11 @@ function dashboardHref({
     params.set("endDate", endDate);
   }
 
-  if (guildId) {
+  if (guildId && !isServerPage) {
     params.set("guildId", String(guildId));
   }
 
-  if (userId) {
+  if (userId && !isUserPage) {
     params.set("userId", String(userId));
   }
 
@@ -234,5 +236,6 @@ function dashboardHref({
     params.set("channelId", channelId);
   }
 
-  return `/?${params.toString()}`;
+  const path = isServerPage ? `/servers/${guildId}` : isUserPage ? `/users/${userId}` : "/";
+  return `${path}?${params.toString()}`;
 }
