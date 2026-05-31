@@ -226,8 +226,8 @@ export default async function DashboardPage({
   const totals = global.totals;
 
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-[1540px] auto-rows-max content-start gap-4 px-4 py-4 sm:px-6 lg:px-8">
-      <section className="rounded-lg border border-border bg-white shadow-sm">
+    <main className="mx-auto grid min-h-screen w-full max-w-[1540px] auto-rows-max content-start gap-5 px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <section className="rounded-lg border border-border bg-card shadow-sm">
         <div className="flex flex-col gap-4 p-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <Image
@@ -299,6 +299,15 @@ export default async function DashboardPage({
         sortDirection={sortDirection}
         startDate={startDate}
         userId={userId}
+      />
+
+      <DashboardViewContext
+        activeView={dashboardView}
+        dataMode={data.usingDemoData ? "Demo data" : "Live API"}
+        dateWindowLabel={dateWindowLabel}
+        minActivity={minActivity}
+        scope={scope}
+        scopeLabel={scopeLabel}
       />
 
       <DashboardAnswerStrip
@@ -2507,26 +2516,32 @@ function ScopedViewEmptyState({ error }: { error?: string }) {
   );
 }
 
-const SCOPED_VIEW_TABS: Array<{ view: DashboardView; label: string }> = [
-  { view: "summary", label: "Summary" },
-  { view: "activity", label: "Activity" },
-  { view: "users", label: "Users" },
-  { view: "quotes", label: "Quotes" },
-  { view: "economy", label: "Economy" },
-  { view: "stocks", label: "Stocks" },
-  { view: "operations", label: "Ops" },
-  { view: "settings", label: "Settings" },
+type DashboardViewTab = {
+  view: DashboardView;
+  label: string;
+  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+};
+
+const SCOPED_VIEW_TABS: DashboardViewTab[] = [
+  { view: "summary", label: "Summary", icon: Gauge },
+  { view: "activity", label: "Activity", icon: Activity },
+  { view: "users", label: "Users", icon: Users },
+  { view: "quotes", label: "Quotes", icon: Quote },
+  { view: "economy", label: "Economy", icon: Wallet },
+  { view: "stocks", label: "Stocks", icon: TrendingUp },
+  { view: "operations", label: "Ops", icon: ShieldCheck },
+  { view: "settings", label: "Settings", icon: Settings },
 ];
 
-const GLOBAL_VIEW_TABS: Array<{ view: DashboardView; label: string }> = [
-  { view: "summary", label: "Summary" },
-  { view: "activity", label: "Activity" },
-  { view: "servers", label: "Servers" },
-  { view: "users", label: "Users" },
-  { view: "economy", label: "Economy" },
-  { view: "quotes", label: "Quotes" },
-  { view: "stocks", label: "Stocks" },
-  { view: "operations", label: "Ops" },
+const GLOBAL_VIEW_TABS: DashboardViewTab[] = [
+  { view: "summary", label: "Summary", icon: Gauge },
+  { view: "activity", label: "Activity", icon: Activity },
+  { view: "servers", label: "Servers", icon: Server },
+  { view: "users", label: "Users", icon: Users },
+  { view: "economy", label: "Economy", icon: Wallet },
+  { view: "quotes", label: "Quotes", icon: Quote },
+  { view: "stocks", label: "Stocks", icon: TrendingUp },
+  { view: "operations", label: "Ops", icon: ShieldCheck },
 ];
 
 function DashboardPageTabs({
@@ -2555,41 +2570,138 @@ function DashboardPageTabs({
   const tabs = scope === "global" ? GLOBAL_VIEW_TABS : SCOPED_VIEW_TABS;
 
   return (
-    <nav aria-label="Dashboard pages" className="inline-flex w-fit max-w-full flex-wrap items-center gap-2 justify-self-start rounded-lg border border-border bg-white p-2 shadow-sm">
-      {tabs.map((tab) => {
-        const active = tab.view === activeView;
-        const href = scope === "global"
-          ? dashboardHref({ scope: "global", days, startDate, endDate, view: tab.view })
-          : dashboardHref({
-              channelId,
-              days,
-              endDate,
-              guildId,
-              minActivity,
-              scope,
-              sortDirection,
-              startDate,
-              userId,
-              view: tab.view,
-            });
+    <nav aria-label="Dashboard pages" className="sticky top-3 z-20 -mx-1 overflow-x-auto rounded-lg border border-border bg-card p-2 shadow-sm scrollbar-clean">
+      <div className="flex min-w-max items-center gap-2">
+        {tabs.map((tab) => {
+          const active = tab.view === activeView;
+          const Icon = tab.icon;
+          const href = scope === "global"
+            ? dashboardHref({ scope: "global", days, startDate, endDate, view: tab.view })
+            : dashboardHref({
+                channelId,
+                days,
+                endDate,
+                guildId,
+                minActivity,
+                scope,
+                sortDirection,
+                startDate,
+                userId,
+                view: tab.view,
+              });
 
-        return (
-          <DashboardNavLink
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "border border-border bg-white text-muted hover:border-primary hover:text-foreground",
-            )}
-            href={href}
-            key={tab.view}
-          >
-            {tab.label}
-          </DashboardNavLink>
-        );
-      })}
+          return (
+            <DashboardNavLink
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
+                active
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border bg-white text-muted hover:border-primary hover:text-foreground",
+              )}
+              href={href}
+              key={tab.view}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden />
+              {tab.label}
+            </DashboardNavLink>
+          );
+        })}
+      </div>
     </nav>
+  );
+}
+
+const DASHBOARD_VIEW_META: Record<DashboardView, {
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+}> = {
+  summary: {
+    title: "Command Summary",
+    description: "Current bot footprint, top signals, and newest records.",
+    icon: Gauge,
+  },
+  activity: {
+    title: "Activity and XP",
+    description: "Message volume, XP gain, rolling trends, active periods, and contribution shape.",
+    icon: Activity,
+  },
+  servers: {
+    title: "Server Performance",
+    description: "Server activity leaders, growth, message share, and setup context.",
+    icon: Server,
+  },
+  users: {
+    title: "User Analytics",
+    description: "User activity, XP leaders, message behavior, wealth, and contribution history.",
+    icon: Users,
+  },
+  quotes: {
+    title: "Quotes and Approvals",
+    description: "Quote culture, approval queues, author performance, voting, and moderation state.",
+    icon: Quote,
+  },
+  economy: {
+    title: "Economy",
+    description: "Money supply, wallet distribution, transactions, UBI, slots, and robbery outcomes.",
+    icon: Wallet,
+  },
+  stocks: {
+    title: "Stock Market",
+    description: "Market movers, holdings, portfolio value, trade volume, and ownership concentration.",
+    icon: TrendingUp,
+  },
+  operations: {
+    title: "Operations",
+    description: "Reminders, moderation, button game, logs, configuration health, and bot status.",
+    icon: ShieldCheck,
+  },
+  settings: {
+    title: "Configuration",
+    description: "Server setup, safety gaps, channel configuration, and automation settings.",
+    icon: Settings,
+  },
+};
+
+function DashboardViewContext({
+  activeView,
+  dataMode,
+  dateWindowLabel,
+  minActivity,
+  scope,
+  scopeLabel,
+}: {
+  activeView: DashboardView;
+  dataMode: string;
+  dateWindowLabel: string;
+  minActivity: number;
+  scope: DashboardScope;
+  scopeLabel: string;
+}) {
+  const meta = DASHBOARD_VIEW_META[activeView];
+  const Icon = meta.icon;
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+            <Icon className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold leading-tight text-foreground">{meta.title}</h2>
+            <p className="mt-1 max-w-4xl text-sm text-muted">{meta.description}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="muted">{scopeLabel}</Badge>
+          <Badge variant="muted">{dateWindowLabel}</Badge>
+          <Badge variant={dataMode === "Live API" ? "success" : "warning"}>{dataMode}</Badge>
+          {scope !== "global" && <Badge variant="muted">Min {formatInteger(minActivity)} messages</Badge>}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2674,7 +2786,7 @@ function DashboardAnswerStrip({
       {cards.map((card) => (
         <Link
           className={cn(
-            "group rounded-lg border bg-white p-4 shadow-sm transition-colors hover:border-primary hover:shadow-md",
+            "group rounded-lg border bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             activeView === "summary" ? "border-border" : "border-border/80",
           )}
           href={card.href}
@@ -2688,14 +2800,16 @@ function DashboardAnswerStrip({
             </div>
             <span
               className={cn(
-                "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
-                card.tone === "cyan" && "bg-cyan-500",
-                card.tone === "green" && "bg-emerald-500",
-                card.tone === "amber" && "bg-amber-500",
-                card.tone === "rose" && "bg-rose-500",
-                card.tone === "slate" && "bg-slate-400",
+                "grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors",
+                card.tone === "cyan" && "bg-cyan-50 text-cyan-700",
+                card.tone === "green" && "bg-emerald-50 text-emerald-700",
+                card.tone === "amber" && "bg-amber-50 text-amber-700",
+                card.tone === "rose" && "bg-rose-50 text-rose-700",
+                card.tone === "slate" && "bg-slate-50 text-muted",
               )}
-            />
+            >
+              <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden />
+            </span>
           </div>
         </Link>
       ))}
@@ -5371,7 +5485,19 @@ function SettingsTable({ settings }: { settings: DashboardGuildSettingsSummary[]
 }
 
 function EmptyRow({ label }: { label: string }) {
-  return <div className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted">{label}</div>;
+  const detail = label === "No setup issues found"
+    ? "No configuration issues need attention in the selected scope."
+    : "Adjust filters or check back after more data is collected.";
+
+  return (
+    <div className="grid min-h-32 place-items-center rounded-lg border border-dashed border-border bg-slate-50 p-6 text-center">
+      <div>
+        <Database className="mx-auto h-6 w-6 text-muted" aria-hidden />
+        <div className="mt-3 text-sm font-medium text-foreground">{label}</div>
+        <div className="mt-1 text-xs text-muted">{detail}</div>
+      </div>
+    </div>
+  );
 }
 
 function dashboardHref({

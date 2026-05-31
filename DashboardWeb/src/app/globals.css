@@ -164,12 +164,22 @@ select {
 }
 
 .scrollbar-clean {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+  scrollbar-width: thin;
 }
 
 .scrollbar-clean::-webkit-scrollbar {
-  display: none;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.scrollbar-clean::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-clean::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  border-radius: 999px;
 }
 
 @keyframes dashboard-loading-bar {

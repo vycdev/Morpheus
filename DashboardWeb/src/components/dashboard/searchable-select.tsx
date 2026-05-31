@@ -119,12 +119,12 @@ export function SearchableSelect({
   }
 
   return (
-    <div className="relative grid gap-1 text-sm" ref={rootRef}>
+    <div className="relative grid min-w-0 gap-1 text-sm" ref={rootRef}>
       <span className="font-medium text-muted">{label}</span>
       <input name={name} readOnly type="hidden" value={selectedValue} />
       <button
         aria-expanded={open}
-        className="flex h-10 min-w-56 items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 text-left text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary focus:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 text-left text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary focus:border-primary disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-56"
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         type="button"

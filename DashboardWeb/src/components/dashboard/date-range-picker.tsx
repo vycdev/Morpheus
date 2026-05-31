@@ -94,7 +94,7 @@ export function DashboardDateRangePicker({
   }
 
   return (
-    <div className="relative grid gap-1 text-sm" ref={rootRef}>
+    <div className="relative grid min-w-0 gap-1 text-sm" ref={rootRef}>
       <span className="font-medium text-muted">Time window</span>
       <input name="days" readOnly type="hidden" value={rangeDays} />
       <input name="startDate" readOnly type="hidden" value={range.startDate} />
@@ -102,7 +102,7 @@ export function DashboardDateRangePicker({
 
       <button
         aria-expanded={open}
-        className="flex h-10 min-w-64 items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 text-left text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary focus:border-primary"
+        className="flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 text-left text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary focus:border-primary sm:min-w-64"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >

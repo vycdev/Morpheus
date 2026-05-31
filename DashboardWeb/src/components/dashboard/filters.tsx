@@ -92,15 +92,15 @@ export function DashboardFilters({
   ];
 
   return (
-    <div className="flex flex-col gap-3">
-      <nav aria-label="Dashboard scope" className="inline-flex w-fit max-w-full flex-wrap items-center gap-2 self-start">
+    <div className="flex flex-col gap-4">
+      <nav aria-label="Dashboard scope" className="flex w-full max-w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-slate-50 p-1 sm:w-fit sm:self-start">
         {scopeTabs.map((tab) => {
           const active = tab.scope === scope;
           const className = cn(
-            "inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors",
+            "inline-flex h-9 flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors sm:flex-none",
             active
               ? "bg-primary text-primary-foreground"
-              : "border border-border bg-white text-muted hover:border-primary hover:text-foreground",
+              : "text-muted hover:bg-card hover:text-foreground",
           );
 
           return (
@@ -116,7 +116,7 @@ export function DashboardFilters({
         })}
       </nav>
 
-      <DashboardUpdateForm className="flex flex-wrap items-end gap-3">
+      <DashboardUpdateForm className="grid grid-cols-1 items-end gap-3 rounded-lg border border-border bg-slate-50 p-3 sm:grid-cols-2 xl:flex xl:flex-wrap">
         <input name="scope" type="hidden" defaultValue={scope} />
         <input name="view" type="hidden" defaultValue={view} />
 
