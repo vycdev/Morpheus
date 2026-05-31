@@ -224,6 +224,7 @@ export default async function DashboardPage({
     (userId ? `User #${userId}` : channelId ? `Channel ${channelId}` : "All Morpheus data");
   const global = data.globalOverview;
   const totals = global.totals;
+  const globalHrefBase = { scope: "global" as const, days, startDate, endDate };
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-[1540px] auto-rows-max content-start gap-5 px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
@@ -277,15 +278,17 @@ export default async function DashboardPage({
       </section>
 
       {data.usingDemoData && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Showing demo data because the dashboard API did not respond. {data.error}
-        </div>
+        <DashboardStatusBanner
+          detail={data.error ?? "The dashboard API did not respond."}
+          title="Demo data active"
+        />
       )}
 
       {data.drilldownError && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          The global overview loaded, but scoped drilldown data did not respond. {data.drilldownError}
-        </div>
+        <DashboardStatusBanner
+          detail={data.drilldownError}
+          title="Scoped data unavailable"
+        />
       )}
 
       <DashboardPageTabs
@@ -324,22 +327,50 @@ export default async function DashboardPage({
       />
 
       {!drilldownActive && dashboardView === "summary" && (
-      <section id="global-overview" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Server} label="Servers" value={formatInteger(totals.totalServers)} meta="tracked globally" tone="blue" />
-        <StatCard icon={Users} label="Known users" value={formatInteger(totals.totalKnownUsers)} meta="unique Discord users" tone="cyan" />
-        <StatCard icon={MessageSquareText} label="Messages" value={formatCompactNumber(totals.totalTrackedMessages)} meta={`${formatCompactNumber(totals.latestDayMessages)} in latest day`} tone="green" />
-        <StatCard icon={TrendingUp} label="XP generated" value={formatCompactNumber(totals.totalXpGenerated)} meta={`${formatCompactNumber(totals.latestDayXpGenerated)} in latest day`} tone="green" />
-        <StatCard icon={Quote} label="Quotes" value={formatInteger(totals.totalQuotes)} meta={`${formatInteger(totals.totalApprovedQuotes)} approved`} tone="rose" />
-        <StatCard icon={ShieldCheck} label="Approved quotes" value={formatInteger(totals.totalApprovedQuotes)} meta={`${formatInteger(totals.pendingQuotes)} pending quotes`} tone="rose" />
-        <StatCard icon={AlertTriangle} label="Quote approvals" value={formatInteger(totals.pendingQuoteApprovals)} meta="approval messages open" tone="amber" />
-        <StatCard icon={Wallet} label="Economy balance" value={formatCurrency(totals.totalEconomyBalance)} meta="cash in wallets" tone="amber" />
-        <StatCard icon={Banknote} label="Net worth" value={formatCurrency(totals.totalEstimatedNetWorth)} meta="cash plus portfolios" tone="amber" />
-        <StatCard icon={Database} label="UBI pool" value={formatCurrency(totals.ubiPoolSize)} meta="community reserve" tone="cyan" />
-        <StatCard icon={Gamepad2} label="Slots vault" value={formatCurrency(totals.slotsVaultSize)} meta="jackpot backing" tone="blue" />
-        <StatCard icon={Activity} label="Transactions" value={formatCompactNumber(totals.totalTransactions)} meta="economy event log" tone="slate" />
-        <StatCard icon={Gamepad2} label="Button presses" value={formatCompactNumber(totals.totalButtonPresses)} meta="all-time presses" tone="cyan" />
-        <StatCard icon={Bell} label="Reminders" value={formatInteger(totals.activeReminders)} meta="active queue" tone="blue" />
-        <StatCard icon={AlertTriangle} label="Warnings/errors" value={formatInteger(totals.recentWarningsOrErrors)} meta="last 24 hours" tone={totals.recentWarningsOrErrors > 0 ? "rose" : "green"} />
+      <section id="global-overview" className="grid gap-5">
+        <DashboardMetricGroup
+          description="Core participation signals across every known Morpheus server."
+          id="global-community"
+          title="Community footprint"
+        >
+          <StatCard icon={Server} label="Servers" value={formatInteger(totals.totalServers)} meta="tracked globally" tone="blue" href={dashboardHref({ ...globalHrefBase, view: "servers" })} />
+          <StatCard icon={Users} label="Known users" value={formatInteger(totals.totalKnownUsers)} meta="unique Discord users" tone="cyan" href={dashboardHref({ ...globalHrefBase, view: "users" })} />
+          <StatCard icon={MessageSquareText} label="Messages" value={formatCompactNumber(totals.totalTrackedMessages)} meta={`${formatCompactNumber(totals.latestDayMessages)} in latest day`} tone="green" href={dashboardHref({ ...globalHrefBase, view: "activity" })} />
+          <StatCard icon={TrendingUp} label="XP generated" value={formatCompactNumber(totals.totalXpGenerated)} meta={`${formatCompactNumber(totals.latestDayXpGenerated)} in latest day`} tone="green" href={dashboardHref({ ...globalHrefBase, view: "activity" })} />
+        </DashboardMetricGroup>
+
+        <DashboardMetricGroup
+          description="Quote culture and moderation pressure that may need human follow-through."
+          id="global-culture"
+          title="Culture and moderation"
+        >
+          <StatCard icon={Quote} label="Quotes" value={formatInteger(totals.totalQuotes)} meta={`${formatInteger(totals.totalApprovedQuotes)} approved`} tone="rose" href={dashboardHref({ ...globalHrefBase, view: "quotes" })} />
+          <StatCard icon={ShieldCheck} label="Approved quotes" value={formatInteger(totals.totalApprovedQuotes)} meta={`${formatInteger(totals.pendingQuotes)} pending quotes`} tone="rose" href={dashboardHref({ ...globalHrefBase, view: "quotes" })} />
+          <StatCard icon={AlertTriangle} label="Quote approvals" value={formatInteger(totals.pendingQuoteApprovals)} meta="approval messages open" tone="amber" href={dashboardHref({ ...globalHrefBase, view: "quotes" })} />
+          <StatCard icon={AlertTriangle} label="Warnings/errors" value={formatInteger(totals.recentWarningsOrErrors)} meta="last 24 hours" tone={totals.recentWarningsOrErrors > 0 ? "rose" : "green"} href={dashboardHref({ ...globalHrefBase, view: "operations" })} />
+        </DashboardMetricGroup>
+
+        <DashboardMetricGroup
+          description="Wallet supply, net worth, shared reserves, and economy event volume."
+          id="global-economy"
+          title="Economy health"
+        >
+          <StatCard icon={Wallet} label="Economy balance" value={formatCurrency(totals.totalEconomyBalance)} meta="cash in wallets" tone="amber" href={dashboardHref({ ...globalHrefBase, view: "economy" })} />
+          <StatCard icon={Banknote} label="Net worth" value={formatCurrency(totals.totalEstimatedNetWorth)} meta="cash plus portfolios" tone="amber" href={dashboardHref({ ...globalHrefBase, view: "economy" })} />
+          <StatCard icon={Database} label="UBI pool" value={formatCurrency(totals.ubiPoolSize)} meta="community reserve" tone="cyan" href={dashboardHref({ ...globalHrefBase, view: "economy" })} />
+          <StatCard icon={Activity} label="Transactions" value={formatCompactNumber(totals.totalTransactions)} meta="economy event log" tone="slate" href={dashboardHref({ ...globalHrefBase, view: "economy" })} />
+        </DashboardMetricGroup>
+
+        <DashboardMetricGroup
+          columnsClassName="md:grid-cols-2 xl:grid-cols-3"
+          description="Interactive queues and game systems that affect daily bot operations."
+          id="global-games"
+          title="Games and queues"
+        >
+          <StatCard icon={Gamepad2} label="Slots vault" value={formatCurrency(totals.slotsVaultSize)} meta="jackpot backing" tone="blue" href={dashboardHref({ ...globalHrefBase, view: "economy" })} />
+          <StatCard icon={Gamepad2} label="Button presses" value={formatCompactNumber(totals.totalButtonPresses)} meta="all-time presses" tone="cyan" href={dashboardHref({ ...globalHrefBase, view: "operations" })} />
+          <StatCard icon={Bell} label="Reminders" value={formatInteger(totals.activeReminders)} meta="active queue" tone="blue" href={dashboardHref({ ...globalHrefBase, view: "operations" })} />
+        </DashboardMetricGroup>
       </section>
       )}
 
@@ -2513,6 +2544,54 @@ function ScopedViewEmptyState({ error }: { error?: string }) {
         {error ?? "The global overview is available, but the selected scoped data is unavailable right now."}
       </p>
     </div>
+  );
+}
+
+function DashboardStatusBanner({
+  detail,
+  title,
+}: {
+  detail: string;
+  title: string;
+}) {
+  return (
+    <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        <div className="min-w-0">
+          <div className="font-semibold">{title}</div>
+          <div className="mt-1 break-words">{detail}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardMetricGroup({
+  children,
+  columnsClassName = "md:grid-cols-2 xl:grid-cols-4",
+  description,
+  id,
+  title,
+}: {
+  children: React.ReactNode;
+  columnsClassName?: string;
+  description: string;
+  id: string;
+  title: string;
+}) {
+  return (
+    <section aria-labelledby={id} className="grid gap-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-normal text-foreground" id={id}>{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted">{description}</p>
+        </div>
+      </div>
+      <div className={cn("grid grid-cols-1 gap-4", columnsClassName)}>
+        {children}
+      </div>
+    </section>
   );
 }
 

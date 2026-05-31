@@ -80,6 +80,11 @@ html.dark .bg-slate-50 {
   background-color: #0f172a !important;
 }
 
+html[data-theme="dark"] .bg-slate-100,
+html.dark .bg-slate-100 {
+  background-color: #1f2937 !important;
+}
+
 html[data-theme="dark"] .hover\:bg-slate-50:hover,
 html[data-theme="dark"] .hover\:bg-slate-100:hover,
 html.dark .hover\:bg-slate-50:hover,
