@@ -110,8 +110,9 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         DateTime last30Days = now.AddDays(-30);
 
         bool includeAll = safeView == "all";
+        bool includeSummary = safeView == "summary";
 
-        DashboardGlobalTotals totals = safeView == "summary" || includeAll
+        DashboardGlobalTotals totals = includeSummary || includeAll
             ? await BuildGlobalTotalsAsync(last24Hours, dateRange.EndDateUtc, endExclusiveDate, cancellationToken)
             : EmptyGlobalTotals();
 
@@ -140,7 +141,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         IReadOnlyList<DashboardEconomyEventItem> recentEconomyEvents = [];
         IReadOnlyList<DashboardLogItem> recentBotHealthEvents = [];
 
-        if (safeView == "servers" || includeAll)
+        if (safeView == "servers" || includeSummary || includeAll)
         {
             mostActiveServersToday = await GetGlobalServerActivityAsync(today, 5, cancellationToken);
             mostActiveServersThisWeek = await GetGlobalServerActivityAsync(last7Days, 5, cancellationToken);
@@ -153,7 +154,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 endExclusiveDate);
         }
 
-        if (safeView == "users" || includeAll)
+        if (safeView == "users" || includeSummary || includeAll)
         {
             biggestXpGainers = await GetGlobalUserActivityAsync(startDate, "xp", 10, cancellationToken, endExclusiveDate);
             richestUsersByBalance = await GetGlobalWealthUsersAsync(orderByNetWorth: false, 10, cancellationToken);
@@ -166,7 +167,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             recentlyCreatedStocks = await GetRecentStocksAsync(8, cancellationToken);
         }
 
-        if (safeView == "quotes" || includeAll)
+        if (safeView == "quotes" || includeSummary || includeAll)
         {
             mostPopularQuotes = await GetPopularQuotesAsync(10, cancellationToken);
         }
@@ -185,6 +186,11 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 cancellationToken);
             biggestStockGainers = stockMarket.Winners;
             biggestStockLosers = stockMarket.Losers;
+        }
+        else if (includeSummary)
+        {
+            biggestStockGainers = await GetStockMoversAsync(winners: true, 5, cancellationToken);
+            biggestStockLosers = await GetStockMoversAsync(winners: false, 5, cancellationToken);
         }
 
         if (safeView == "activity" || includeAll)
@@ -1345,6 +1351,45 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 stock.Price,
                 stock.DailyChangePercent,
                 stock.InsertDate))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardStockMover>> GetStockMoversAsync(
+        bool winners,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Stock> orderedStocks = winners
+            ? dbContext.Stocks.AsNoTracking().OrderByDescending(stock => (double)stock.DailyChangePercent).ThenByDescending(stock => (double)stock.Price)
+            : dbContext.Stocks.AsNoTracking().OrderBy(stock => (double)stock.DailyChangePercent).ThenByDescending(stock => (double)stock.Price);
+
+        List<StockInsightRow> rows = await orderedStocks
+            .Take(limit)
+            .Select(stock => new StockInsightRow(
+                stock.Id,
+                stock.EntityType,
+                stock.EntityId,
+                stock.Price,
+                stock.DailyChangePercent,
+                stock.PreviousPrice,
+                stock.InsertDate,
+                stock.LastUpdatedDate))
+            .ToListAsync(cancellationToken);
+
+        Dictionary<int, string> stockNames = await GetStockNamesAsync(rows, cancellationToken);
+        Dictionary<int, decimal> holdingValues = await GetHoldingValuesByStockAsync(
+            rows.Select(stock => stock.StockId),
+            cancellationToken);
+
+        return
+        [
+            .. rows.Select(stock => new DashboardStockMover(
+                stock.StockId,
+                EntityTypeLabel(stock.EntityType),
+                stockNames.GetValueOrDefault(stock.StockId, $"{EntityTypeLabel(stock.EntityType)} #{stock.EntityId}"),
+                stock.Price,
+                stock.DailyChangePercent,
+                holdingValues.GetValueOrDefault(stock.StockId)))
         ];
     }
 
@@ -2575,13 +2620,12 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
     private static IReadOnlyList<DashboardActivityParetoPoint> BuildParetoPoints(
         IReadOnlyList<DashboardActivityDistributionPoint> rows)
     {
-        long total = rows.Sum(row => row.Messages);
         decimal cumulative = 0m;
         List<DashboardActivityParetoPoint> points = [];
 
         foreach (DashboardActivityDistributionPoint row in rows.OrderByDescending(row => row.Messages))
         {
-            decimal share = Percentage(row.Messages, total);
+            decimal share = row.SharePercent;
             cumulative += share;
             points.Add(new DashboardActivityParetoPoint(
                 row.Id,
@@ -2632,6 +2676,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 $"XP in past {days} days",
                 "xp",
                 "XP",
+                guildId,
                 query,
                 minActivity,
                 cancellationToken),
@@ -2659,6 +2704,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 $"Messages in past {days} days",
                 "messages",
                 "messages",
+                guildId,
                 query,
                 minActivity,
                 cancellationToken),
@@ -2667,6 +2713,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 "Average message length",
                 "average-message-length",
                 "chars",
+                guildId,
                 query,
                 minActivity,
                 cancellationToken),
@@ -2685,6 +2732,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 query,
                 cancellationToken),
             await BuildConsistentUsersLeaderboardSetAsync(
+                guildId,
                 query,
                 startDate,
                 endExclusiveDate,
@@ -2771,6 +2819,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             metric,
             unit,
             candidates,
+            guildId,
             cancellationToken);
     }
 
@@ -2808,6 +2857,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         string title,
         string metric,
         string unit,
+        int? guildId,
         IQueryable<UserActivity> query,
         int minActivity,
         CancellationToken cancellationToken)
@@ -2857,6 +2907,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             metric,
             unit,
             candidates,
+            guildId,
             cancellationToken);
     }
 
@@ -2910,10 +2961,12 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             "levels",
             "levels",
             candidates,
+            guildId,
             cancellationToken);
     }
 
     private async Task<DashboardActivityLeaderboardSet> BuildConsistentUsersLeaderboardSetAsync(
+        int? guildId,
         IQueryable<UserActivity> query,
         DateTime startDate,
         DateTime endExclusiveDate,
@@ -2962,6 +3015,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             "consistency",
             "%",
             candidates,
+            guildId,
             cancellationToken);
     }
 
@@ -3107,6 +3161,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         string metric,
         string unit,
         IReadOnlyList<ActivityLeaderboardCandidate> candidates,
+        int? guildId,
         CancellationToken cancellationToken)
     {
         List<ActivityLeaderboardCandidate> ordered =
@@ -3122,7 +3177,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             .Select(row => row.UserId!.Value)];
         Dictionary<int, (string DiscordId, string Username)> labels =
             await GetUserLabelsAsync(userIds, cancellationToken);
-        Dictionary<int, int> levels = await GetUserLevelsAsync(userIds, null, cancellationToken);
+        Dictionary<int, int> levels = await GetUserLevelsAsync(userIds, guildId, cancellationToken);
 
         IReadOnlyList<DashboardActivityLeaderboardItem> items =
         [
@@ -3373,20 +3428,48 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                 .ToListAsync(cancellationToken);
         Dictionary<int, QuoteScoreStats> scoreStatsByQuote = BuildQuoteScoreStats(scoreRows);
 
-        List<QuoteApprovalInsightRow> approvalMessages = quoteIds.Count == 0
-            ? []
-            : await dbContext.QuoteApprovalMessages
-                .AsNoTracking()
-                .Where(approval => quoteIds.Contains(approval.QuoteId))
-                .Select(approval => new QuoteApprovalInsightRow(
+        IQueryable<QuoteApprovalMessage> approvalQuery = dbContext.QuoteApprovalMessages
+            .AsNoTracking()
+            .Where(approval => approval.InsertDate >= startDate && approval.InsertDate < endExclusiveDate);
+
+        if (guildId.HasValue)
+            approvalQuery = approvalQuery.Where(approval => approval.Quote!.GuildId == guildId.Value);
+
+        if (userId.HasValue)
+            approvalQuery = approvalQuery.Where(approval => approval.Quote!.UserId == userId.Value);
+
+        var approvalRows = await approvalQuery
+            .Select(approval => new
+            {
+                Approval = new QuoteApprovalInsightRow(
                     approval.Id,
                     approval.QuoteId,
                     approval.ApprovalMessageId,
                     approval.Score,
                     approval.InsertDate,
                     approval.Type,
-                    approval.Approved))
-                .ToListAsync(cancellationToken);
+                    approval.Approved),
+                Quote = new QuoteInsightRow(
+                    approval.Quote!.Id,
+                    approval.Quote.GuildId,
+                    approval.Quote.UserId,
+                    approval.Quote.User.DiscordId.ToString(),
+                    approval.Quote.User.Username,
+                    approval.Quote.Content,
+                    approval.Quote.InsertDate,
+                    approval.Quote.Approved,
+                    approval.Quote.Removed)
+            })
+            .ToListAsync(cancellationToken);
+
+        List<QuoteApprovalInsightRow> approvalMessages = [.. approvalRows.Select(row => row.Approval)];
+        List<QuoteInsightRow> approvalQuoteRows =
+        [
+            .. approvalRows
+                .Select(row => row.Quote)
+                .GroupBy(quote => quote.Id)
+                .Select(group => group.First())
+        ];
         List<int> approvalIds = [.. approvalMessages.Select(approval => approval.Id)];
         List<QuoteApprovalVoteInsightRow> approvalVotes = approvalIds.Count == 0
             ? []
@@ -3400,7 +3483,14 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                     vote.UserId,
                     vote.InsertDate))];
 
-        List<int> quoteGuildIds = [.. quoteRows.Select(quote => quote.GuildId).Distinct()];
+        List<QuoteInsightRow> approvalContextQuoteRows =
+        [
+            .. quoteRows
+                .Concat(approvalQuoteRows)
+                .GroupBy(quote => quote.Id)
+                .Select(group => group.First())
+        ];
+        List<int> quoteGuildIds = [.. approvalContextQuoteRows.Select(quote => quote.GuildId).Distinct()];
         List<GuildQuoteConfigRow> guildConfigs = await GetQuoteGuildConfigsAsync(
             guildId,
             userId.HasValue ? quoteGuildIds : null,
@@ -3411,7 +3501,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         List<DashboardQuoteApprovalRequestItem> approvalRequestItems = BuildQuoteApprovalRequestItems(
             approvalMessages,
             approvalVotes,
-            quoteRows,
+            approvalContextQuoteRows,
             guildConfigById,
             approvalExpiryDays,
             now);
@@ -4038,18 +4128,20 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
         IReadOnlyDictionary<int, GuildQuoteConfigRow> guildConfigById) =>
         [
             .. quoteRows
-                .GroupBy(quote => quote.GuildId)
-                .Select(group =>
+                .Select(quote => quote.GuildId)
+                .Concat(approvalRequests.Select(request => request.GuildId))
+                .Distinct()
+                .Select(guildId =>
                 {
-                    GuildQuoteConfigRow config = guildConfigById.GetValueOrDefault(group.Key)
-                        ?? GuildQuoteConfigRow.Unknown(group.Key);
-                    List<QuoteInsightRow> rows = [.. group];
+                    GuildQuoteConfigRow config = guildConfigById.GetValueOrDefault(guildId)
+                        ?? GuildQuoteConfigRow.Unknown(guildId);
+                    List<QuoteInsightRow> rows = [.. quoteRows.Where(quote => quote.GuildId == guildId)];
                     List<DashboardQuoteApprovalRequestItem> serverApprovals =
                     [
-                        .. approvalRequests.Where(request => request.GuildId == group.Key)
+                        .. approvalRequests.Where(request => request.GuildId == guildId)
                     ];
                     return new DashboardQuoteServerSummary(
-                        group.Key,
+                        guildId,
                         config.DiscordId,
                         config.Name,
                         rows.Count,
@@ -4065,6 +4157,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
                         GetQuoteSetupHealth(config).Health);
                 })
                 .OrderByDescending(summary => summary.Total)
+                .ThenByDescending(summary => summary.ApprovalRequests)
                 .ThenByDescending(summary => summary.TotalScore)
                 .Take(12)
         ];
@@ -5057,7 +5150,7 @@ public sealed class DashboardStatsService(DB dbContext, DashboardApiOptions opti
             Losers: [.. movers.OrderBy(stock => stock.DailyChangePercent).Take(5)],
             EntityTypes: entityTypes,
             MostValuableStocks: [.. stockTableItems.OrderByDescending(stock => stock.HoldingValue).Take(10).Select((stock, index) => stock with { Rank = index + 1 })],
-            MostHeldStocks: [.. stockTableItems.OrderByDescending(stock => stock.SharesHeld).ThenByDescending(stock => stock.Holders).Take(10).Select((stock, index) => stock with { Rank = index + 1 })],
+            MostHeldStocks: [.. stockTableItems.OrderByDescending(stock => stock.Holders).ThenByDescending(stock => stock.SharesHeld).Take(10).Select((stock, index) => stock with { Rank = index + 1 })],
             MostTradedStocks: [.. stockTableItems.OrderByDescending(stock => stock.TradeVolume).ThenByDescending(stock => stock.TradeCount).Take(10).Select((stock, index) => stock with { Rank = index + 1 })],
             NewestStocks: [.. stockTableItems.OrderByDescending(stock => stock.InsertedAtUtc).Take(10).Select((stock, index) => stock with { Rank = index + 1 })],
             DailyChangeHistogram: BuildDailyChangeHistogram(stockRows.Select(stock => stock.DailyChangePercent)),

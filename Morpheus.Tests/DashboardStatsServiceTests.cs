@@ -204,6 +204,16 @@ public class DashboardStatsServiceTests
         Assert.Single(overview.Visuals.TransactionTypes);
         Assert.Single(overview.Feeds.RecentEconomyEvents);
         Assert.Single(overview.Feeds.RecentBotHealthEvents);
+
+        DashboardGlobalOverviewResponse summary = await service.GetGlobalOverviewAsync(7, "summary");
+        Assert.Single(summary.Highlights.MostActiveUsers);
+        Assert.Single(summary.Highlights.MostActiveServersSelectedWindow);
+        Assert.Single(summary.Highlights.MostActiveChannels);
+        Assert.Single(summary.Highlights.MostPopularQuotes);
+        Assert.Single(summary.Highlights.BiggestStockGainers);
+        Assert.Single(summary.Highlights.RecentlyCreatedUsers);
+        Assert.Empty(summary.Visuals.Activity);
+        Assert.Empty(summary.Feeds.RecentEconomyEvents);
     }
 
     [Fact]
@@ -310,6 +320,31 @@ public class DashboardStatsServiceTests
                 InsertDate = today.AddDays(-offset).AddHours(20)
             });
         }
+        List<User> lowVolumeUsers = [];
+        for (int index = 0; index < 11; index++)
+        {
+            lowVolumeUsers.Add(new User
+            {
+                DiscordId = (ulong)(10_000 + index),
+                Username = $"low-volume-{index}"
+            });
+        }
+        testDb.Db.Users.AddRange(lowVolumeUsers);
+        await testDb.Db.SaveChangesAsync();
+
+        for (int index = 0; index < lowVolumeUsers.Count; index++)
+        {
+            testDb.Db.UserActivity.Add(new UserActivity
+            {
+                GuildId = firstGuild.Id,
+                UserId = lowVolumeUsers[index].Id,
+                DiscordChannelId = general.DiscordId,
+                DiscordMessageId = (ulong)(300 + index),
+                XpGained = 1,
+                MessageLength = 24,
+                InsertDate = today.AddHours(8).AddMinutes(index)
+            });
+        }
         await testDb.Db.SaveChangesAsync();
 
         DashboardStatsService service = CreateService(testDb.Db);
@@ -327,7 +362,7 @@ public class DashboardStatsServiceTests
             endDateUtc: today);
 
         DashboardActivityAnalytics analytics = insights.ActivityAnalytics;
-        Assert.Equal(12, insights.Activity.Messages);
+        Assert.Equal(23, insights.Activity.Messages);
         Assert.NotEmpty(analytics.ComparisonSeries);
         Assert.Contains(analytics.ComparisonSeries, series => series.Kind == "time-range");
         Assert.NotEmpty(analytics.XpByUser);
@@ -341,6 +376,8 @@ public class DashboardStatsServiceTests
         Assert.NotEmpty(analytics.ServerDayHeatmap);
         Assert.NotEmpty(analytics.ChannelDayHeatmap);
         Assert.NotEmpty(analytics.UserContributionPareto);
+        Assert.Equal(12, analytics.UserContributionPareto.Count);
+        Assert.True(analytics.UserContributionPareto[^1].CumulativePercent < 100m);
         Assert.Contains(analytics.Leaderboards, board => board.Key == "global-xp");
         Assert.Contains(analytics.Leaderboards, board => board.Key == "recent-messages");
         Assert.NotEmpty(analytics.DailyActiveUsers);
@@ -421,7 +458,23 @@ public class DashboardStatsServiceTests
             Removed = true,
             InsertDate = start.AddDays(4)
         };
-        testDb.Db.Quotes.AddRange(topQuote, lowQuote, freshPendingQuote, expiredPendingQuote, removedQuote);
+        Quote oldApprovedQuote = new()
+        {
+            GuildId = guild.Id,
+            UserId = author.Id,
+            Content = "old approved quote with fresh removal request",
+            Approved = true,
+            InsertDate = start.AddDays(-3)
+        };
+        Quote weakGuildOldQuote = new()
+        {
+            GuildId = weakGuild.Id,
+            UserId = author.Id,
+            Content = "weak guild old quote with fresh approval pressure",
+            Approved = true,
+            InsertDate = start.AddDays(-4)
+        };
+        testDb.Db.Quotes.AddRange(topQuote, lowQuote, freshPendingQuote, expiredPendingQuote, removedQuote, oldApprovedQuote, weakGuildOldQuote);
         await testDb.Db.SaveChangesAsync();
 
         testDb.Db.QuoteScores.AddRange(
@@ -453,7 +506,23 @@ public class DashboardStatsServiceTests
             Type = QuoteApprovalType.AddRequest,
             InsertDate = start.AddDays(1)
         };
-        testDb.Db.QuoteApprovalMessages.AddRange(completedApproval, freshApproval, expiredApproval);
+        QuoteApprovalMessage oldQuoteRemoveApproval = new()
+        {
+            QuoteId = oldApprovedQuote.Id,
+            ApprovalMessageId = 1004,
+            Approved = false,
+            Type = QuoteApprovalType.RemoveRequest,
+            InsertDate = today.AddDays(-2)
+        };
+        QuoteApprovalMessage weakGuildApproval = new()
+        {
+            QuoteId = weakGuildOldQuote.Id,
+            ApprovalMessageId = 1005,
+            Approved = false,
+            Type = QuoteApprovalType.RemoveRequest,
+            InsertDate = today.AddDays(-2)
+        };
+        testDb.Db.QuoteApprovalMessages.AddRange(completedApproval, freshApproval, expiredApproval, oldQuoteRemoveApproval, weakGuildApproval);
         await testDb.Db.SaveChangesAsync();
 
         testDb.Db.QuoteApprovals.AddRange(
@@ -481,9 +550,9 @@ public class DashboardStatsServiceTests
         Assert.Equal(2, quotes.Approved);
         Assert.Equal(2, quotes.Pending);
         Assert.Equal(1, quotes.Removed);
-        Assert.Equal(3, quotes.ApprovalRequests);
+        Assert.Equal(5, quotes.ApprovalRequests);
         Assert.Equal(1, quotes.CompletedApprovalRequests);
-        Assert.Equal(1, quotes.PendingApprovalRequests);
+        Assert.Equal(3, quotes.PendingApprovalRequests);
         Assert.Equal(1, quotes.ExpiredApprovalRequests);
         Assert.NotEmpty(quotes.CreationTimeline);
         Assert.NotEmpty(quotes.ScoreTrend);
@@ -492,11 +561,14 @@ public class DashboardStatsServiceTests
         Assert.Contains(quotes.LowestScoringQuotes, quote => quote.Id == lowQuote.Id);
         Assert.Contains(quotes.MostRemovedQuotes, quote => quote.Id == removedQuote.Id);
         Assert.Contains(quotes.PendingApprovalQueue, request => request.Id == freshApproval.Id);
+        Assert.Contains(quotes.PendingApprovalQueue, request => request.Id == oldQuoteRemoveApproval.Id);
+        Assert.Contains(quotes.PendingApprovalQueue, request => request.Id == weakGuildApproval.Id);
         Assert.Contains(quotes.ExpiredApprovalQueue, request => request.Id == expiredApproval.Id);
         Assert.Contains(quotes.RemovedQuoteList, quote => quote.Id == removedQuote.Id);
         Assert.Contains(quotes.TopVoters, vote => vote.Username == voter.Username);
         Assert.Contains(quotes.ApprovalVoters, vote => vote.Username == reviewer.Username);
         Assert.Contains(quotes.ServerSummaries, summary => summary.GuildId == guild.Id && summary.Total == 5);
+        Assert.Contains(quotes.ServerSummaries, summary => summary.GuildId == weakGuild.Id && summary.Total == 0 && summary.ApprovalRequests == 1);
         Assert.Contains(quotes.SetupSummaries, setup => setup.GuildId == weakGuild.Id && setup.Health == "Missing");
 
         DashboardQuoteDetailsResponse? detail = await service.GetQuoteDetailsAsync(topQuote.Id);
@@ -563,6 +635,7 @@ public class DashboardStatsServiceTests
 
         testDb.Db.StockHoldings.AddRange(
             new StockHolding { UserId = firstUser.Id, StockId = userStock.Id, Shares = 2m, TotalInvested = 180m },
+            new StockHolding { UserId = secondUser.Id, StockId = userStock.Id, Shares = 0.1m, TotalInvested = 12m },
             new StockHolding { UserId = secondUser.Id, StockId = guildStock.Id, Shares = 3m, TotalInvested = 270m },
             new StockHolding { UserId = secondUser.Id, StockId = channelStock.Id, Shares = 1m, TotalInvested = 120m });
         testDb.Db.UserActivity.AddRange(
@@ -647,6 +720,8 @@ public class DashboardStatsServiceTests
         Assert.Equal(60m, stockInsights.Stocks.SellVolume);
         Assert.Equal(25m, stockInsights.Stocks.StockTransferVolume);
         Assert.NotEmpty(stockInsights.Stocks.MostValuableStocks);
+        Assert.Equal(userStock.Id, stockInsights.Stocks.MostHeldStocks[0].StockId);
+        Assert.Equal(2, stockInsights.Stocks.MostHeldStocks[0].Holders);
         Assert.NotEmpty(stockInsights.Stocks.HoldingsByUser);
         Assert.NotEmpty(stockInsights.Stocks.HoldingsTable);
         Assert.NotEmpty(stockInsights.Stocks.TradeVolumeTimeline);
