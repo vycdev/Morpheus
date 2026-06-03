@@ -1,0 +1,10 @@
+.next
+.next-dev
+artifacts
+node_modules
+npm-debug.log
+*.log
+*.tsbuildinfo
+.env
+.env*.local
+out
