@@ -16,6 +16,11 @@
 **/charts
 **/docker-compose*
 **/Dockerfile*
+DashboardWeb/.next
+DashboardWeb/.next-dev
+DashboardWeb/artifacts
+DashboardWeb/*.log
+DashboardWeb/*.tsbuildinfo
 **/node_modules
 **/npm-debug.log
 **/obj
