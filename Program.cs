@@ -22,6 +22,7 @@ builder.Services
 WebApplication app = builder.Build();
 
 app.UseCors();
+app.UseOutputCache();
 app.MapDashboardApi();
 
 app.RunStartupMigrations();

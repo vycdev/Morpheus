@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import { useId, useMemo } from "react";
 import type React from "react";
 import {
   Area,
@@ -62,6 +63,12 @@ import type {
 import { formatCompactNumber, formatCurrency } from "@/lib/utils";
 
 const chartColors = ["#2563eb", "#0891b2", "#059669", "#d97706", "#e11d48", "#7c3aed"];
+const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const shortDateFormatter = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
 
 export function GlobalActivityLineChart({ points }: { points: DashboardActivityDerivedPoint[] }) {
   const hasActivity = points.some((point) => point.messages > 0 || point.activeUsers > 0);
@@ -94,6 +101,7 @@ export function GlobalActivityLineChart({ points }: { points: DashboardActivityD
 }
 
 export function CumulativeXpChart({ points }: { points: DashboardActivityDerivedPoint[] }) {
+  const fillId = useChartId("global-cumulative-xp-fill");
   const hasXp = points.some((point) => point.cumulativeXp > 0);
   const data = points.map((point) => ({
     date: formatShortDate(point.dateUtc),
@@ -105,7 +113,7 @@ export function CumulativeXpChart({ points }: { points: DashboardActivityDerived
       <ResponsiveContainer width="100%" height="100%" minHeight={260}>
         <AreaChart data={data} margin={{ left: 4, right: 8, top: 14, bottom: 0 }}>
           <defs>
-            <linearGradient id="global-cumulative-xp-fill" x1="0" x2="0" y1="0" y2="1">
+            <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
               <stop offset="5%" stopColor="#059669" stopOpacity={0.24} />
               <stop offset="95%" stopColor="#059669" stopOpacity={0.03} />
             </linearGradient>
@@ -122,7 +130,7 @@ export function CumulativeXpChart({ points }: { points: DashboardActivityDerived
           <Tooltip content={<TooltipContent />} />
           <Area
             dataKey="Cumulative XP"
-            fill="url(#global-cumulative-xp-fill)"
+            fill={`url(#${fillId})`}
             isAnimationActive={false}
             stroke="#059669"
             strokeWidth={2.3}
@@ -462,13 +470,17 @@ export function StackedServerActivityChart({ points }: { points: DashboardStacke
 }
 
 export function CalendarActivityHeatmap({ cells }: { cells: DashboardCalendarActivityCell[] }) {
-  if (cells.length === 0) {
+  const sortedCells = useMemo(
+    () => [...cells].sort((a, b) => getUtcTimestamp(a.dateUtc) - getUtcTimestamp(b.dateUtc)),
+    [cells],
+  );
+
+  if (sortedCells.length === 0) {
     return <EmptyState label="No calendar activity in this window" />;
   }
 
-  const sortedCells = [...cells].sort((a, b) => new Date(a.dateUtc).getTime() - new Date(b.dateUtc).getTime());
-  const max = Math.max(1, ...sortedCells.map((cell) => cell.messages));
-  const firstDay = new Date(sortedCells[0].dateUtc).getUTCDay();
+  const max = maxBy(sortedCells, (cell) => cell.messages);
+  const firstDay = getUtcDayOfWeek(sortedCells[0].dateUtc);
   const blanks = Array.from({ length: firstDay }, (_, index) => index);
   const columns = Math.ceil((blanks.length + sortedCells.length) / 7);
 
@@ -489,7 +501,6 @@ export function CalendarActivityHeatmap({ cells }: { cells: DashboardCalendarAct
           ))}
           {sortedCells.map((cell) => {
             const intensity = cell.messages === 0 ? 7 : Math.round(18 + (cell.messages / max) * 58);
-            const date = new Date(cell.dateUtc);
             return (
               <span
                 className="grid min-h-12 content-between rounded-md border border-border p-2 text-left shadow-sm"
@@ -499,7 +510,7 @@ export function CalendarActivityHeatmap({ cells }: { cells: DashboardCalendarAct
                 }}
                 title={`${formatShortDate(cell.dateUtc)}: ${cell.messages} messages, ${formatCompactNumber(cell.xp)} XP`}
               >
-                <span className="text-xs font-semibold text-foreground">{date.getUTCDate()}</span>
+                <span className="text-xs font-semibold text-foreground">{getUtcDayOfMonth(cell.dateUtc)}</span>
                 <span className="justify-self-end text-[11px] font-medium text-muted">
                   {cell.messages > 0 ? formatCompactNumber(cell.messages) : ""}
                 </span>
@@ -1186,20 +1197,27 @@ export function ActivityComparisonChart({
   series: DashboardActivityComparisonSeries[];
   metric?: "messages" | "xp" | "activeUsers";
 }) {
-  const visibleSeries = series
-    .filter((item) => item.points.some((point) => point[metric] > 0))
-    .slice(0, 7);
-  const dates = Array.from(
-    new Set(visibleSeries.flatMap((item) => item.points.map((point) => point.dateUtc.slice(0, 10)))),
-  ).sort();
-  const data = dates.map((date) => {
-    const row: Record<string, string | number> = { date: formatShortDate(date) };
-    for (const item of visibleSeries) {
-      const point = item.points.find((candidate) => candidate.dateUtc.slice(0, 10) === date);
-      row[item.key] = point?.[metric] ?? 0;
-    }
-    return row;
-  });
+  const { data, visibleSeries } = useMemo(() => {
+    const nextVisibleSeries = series
+      .filter((item) => item.points.some((point) => point[metric] > 0))
+      .slice(0, 7)
+      .map((item, index) => ({ ...item, dataKey: `series-${index}` }));
+    const dates = Array.from(
+      new Set(nextVisibleSeries.flatMap((item) => item.points.map((point) => point.dateUtc.slice(0, 10)))),
+    ).sort();
+    const pointsBySeries = nextVisibleSeries.map(
+      (item) => new Map(item.points.map((point) => [point.dateUtc.slice(0, 10), point])),
+    );
+    const data = dates.map((date) => {
+      const row: Record<string, string | number> = { date: formatShortDate(date) };
+      nextVisibleSeries.forEach((item, index) => {
+        row[item.dataKey] = pointsBySeries[index].get(date)?.[metric] ?? 0;
+      });
+      return row;
+    });
+
+    return { data, visibleSeries: nextVisibleSeries };
+  }, [metric, series]);
 
   return (
     <ChartFrame empty={visibleSeries.length === 0} emptyLabel="No comparison data in this window">
@@ -1217,7 +1235,7 @@ export function ActivityComparisonChart({
           <Tooltip content={<TooltipContent />} />
           {visibleSeries.map((item, index) => (
             <Line
-              dataKey={item.key}
+              dataKey={item.dataKey}
               dot={false}
               isAnimationActive={false}
               key={item.key}
@@ -1519,10 +1537,25 @@ export function ServerDayHeatmap({ cells }: { cells: DashboardServerDayActivityC
 }
 
 export function ActivityHeatmap({ cells }: { cells: DashboardHeatmapCell[] }) {
-  const max = Math.max(1, ...cells.map((cell) => cell.messages));
-  const byDay = Array.from({ length: 7 }, (_, day) =>
-    cells.filter((cell) => cell.dayOfWeek === day).sort((a, b) => a.hourUtc - b.hourUtc),
-  );
+  const { labelsByDay, lookup, max } = useMemo(() => {
+    const labelsByDay = new Map<number, string>();
+    const lookup = new Map<string, DashboardHeatmapCell>();
+
+    for (const cell of cells) {
+      labelsByDay.set(cell.dayOfWeek, cell.dayLabel);
+      lookup.set(`${cell.dayOfWeek}-${cell.hourUtc}`, cell);
+    }
+
+    return {
+      labelsByDay,
+      lookup,
+      max: maxBy(cells, (cell) => cell.messages),
+    };
+  }, [cells]);
+
+  if (cells.length === 0) {
+    return <EmptyState label="No activity heatmap data in this window" />;
+  }
 
   return (
     <div className="grid gap-2 pb-1">
@@ -1533,8 +1566,14 @@ export function ActivityHeatmap({ cells }: { cells: DashboardHeatmapCell[] }) {
             {hour % 3 === 0 ? hour : ""}
           </span>
         ))}
-        {byDay.map((dayCells, dayIndex) => (
-          <FragmentRow cells={dayCells} dayIndex={dayIndex} key={dayIndex} max={max} />
+        {dayLabels.map((fallbackLabel, dayIndex) => (
+          <ActivityHeatmapRow
+            dayIndex={dayIndex}
+            key={dayIndex}
+            label={labelsByDay.get(dayIndex) ?? fallbackLabel}
+            lookup={lookup}
+            max={max}
+          />
         ))}
       </div>
     </div>
@@ -1698,28 +1737,31 @@ function ServerDayHeatmapRow({
   );
 }
 
-function FragmentRow({
-  cells,
+function ActivityHeatmapRow({
   dayIndex,
+  label,
+  lookup,
   max,
 }: {
-  cells: DashboardHeatmapCell[];
   dayIndex: number;
+  label: string;
+  lookup: Map<string, DashboardHeatmapCell>;
   max: number;
 }) {
-  const label = cells[0]?.dayLabel ?? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dayIndex];
-
   return (
     <>
       <span className="flex min-w-0 items-center text-[10px] font-medium sm:text-xs">{label}</span>
-      {cells.map((cell) => {
-        const opacity = cell.messages === 0 ? 0.08 : 0.18 + (cell.messages / max) * 0.72;
+      {Array.from({ length: 24 }, (_, hour) => {
+        const cell = lookup.get(`${dayIndex}-${hour}`);
+        const messages = cell?.messages ?? 0;
+        const opacity = messages === 0 ? 0.08 : 0.18 + (messages / max) * 0.72;
+
         return (
           <span
             className="aspect-square min-h-2 rounded-[3px] border border-border"
-            key={`${cell.dayOfWeek}-${cell.hourUtc}`}
+            key={`${dayIndex}-${hour}`}
             style={{ backgroundColor: `rgba(8, 145, 178, ${opacity})` }}
-            title={`${cell.dayLabel} ${cell.hourUtc}:00 UTC: ${cell.messages} messages`}
+            title={`${label} ${hour}:00 UTC: ${messages} messages`}
           />
         );
       })}
@@ -1795,7 +1837,7 @@ function TooltipContent({
   currency = false,
 }: {
   active?: boolean;
-  payload?: Array<{ name: string; value: number; color?: string }>;
+  payload?: Array<{ name?: string | number; value?: unknown; color?: string; dataKey?: string | number }>;
   label?: string;
   currency?: boolean;
 }) {
@@ -1807,20 +1849,65 @@ function TooltipContent({
     <div className="rounded-lg border border-border bg-white px-3 py-2 text-sm shadow-md">
       <div className="mb-1 font-medium text-foreground">{label}</div>
       <div className="grid gap-1">
-        {payload.map((item) => (
-          <div className="flex items-center gap-2 text-muted" key={item.name}>
-            <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: item.color }} />
-            <span>{item.name}</span>
-            <span className="font-medium text-foreground">
-              {currency ? formatCurrency(item.value) : formatCompactNumber(item.value)}
-            </span>
-          </div>
-        ))}
+        {payload.map((item, index) => {
+          const name = item.name ?? item.dataKey ?? "Value";
+
+          return (
+            <div className="flex items-center gap-2 text-muted" key={`${name}-${index}`}>
+              <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: item.color }} />
+              <span>{name}</span>
+              <span className="font-medium text-foreground">
+                {formatTooltipValue(item.value, currency)}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function formatShortDate(value: string) {
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : shortDateFormatter.format(date);
+}
+
+function formatTooltipValue(value: unknown, currency: boolean) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  if (Number.isFinite(numericValue)) {
+    return currency ? formatCurrency(numericValue) : formatCompactNumber(numericValue);
+  }
+
+  return String(value ?? "");
+}
+
+function getUtcTimestamp(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getUtcDayOfWeek(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getUTCDay();
+}
+
+function getUtcDayOfMonth(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.getUTCDate();
+}
+
+function maxBy<T>(items: T[], getValue: (item: T) => number) {
+  let max = 1;
+
+  for (const item of items) {
+    max = Math.max(max, getValue(item));
+  }
+
+  return max;
+}
+
+function useChartId(prefix: string) {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  return `${prefix}-${id}`;
 }

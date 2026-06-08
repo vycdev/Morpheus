@@ -23,13 +23,28 @@ export function DashboardUpdateForm({ children, className }: DashboardUpdateForm
     event.preventDefault();
 
     const form = event.currentTarget;
+    const formData = new FormData(form);
     const target = new URL(form.action || window.location.href, window.location.href);
     const params = new URLSearchParams();
 
-    for (const [key, value] of new FormData(form)) {
+    for (const [key, value] of formData) {
       if (typeof value === "string" && value.trim() !== "") {
-        params.set(key, value);
+        params.set(key, value.trim());
       }
+    }
+
+    const scope = getFormString(formData, "scope");
+    const guildId = parsePositiveInteger(getFormString(formData, "guildId"));
+    const userId = parsePositiveInteger(getFormString(formData, "userId"));
+
+    if (scope === "server" && guildId) {
+      target.pathname = `/servers/${guildId}`;
+      params.delete("guildId");
+    } else if (scope === "user" && userId) {
+      target.pathname = `/users/${userId}`;
+      params.delete("userId");
+    } else {
+      target.pathname = "/";
     }
 
     target.search = params.toString();
@@ -52,4 +67,18 @@ export function DashboardUpdateForm({ children, className }: DashboardUpdateForm
       {children}
     </form>
   );
+}
+
+function getFormString(formData: FormData, name: string) {
+  const value = formData.get(name);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parsePositiveInteger(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

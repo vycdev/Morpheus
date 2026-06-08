@@ -17,10 +17,17 @@ import type {
 import { clamp } from "@/lib/utils";
 
 const defaultApiUrl = "http://127.0.0.1:5267";
-const dashboardRequestTimeoutMs = 7000;
-const dashboardResponseCacheTtlMs = 10000;
-const dashboardResponseCacheMaxEntries = 128;
-const dashboardResponseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const dashboardRequestTimeoutMs = 3000;
+const dashboardLongRequestTimeoutMs = 15000;
+const dashboardResponseCacheFreshMs = 15000;
+const dashboardResponseCacheStaleMs = 120000;
+const dashboardSelectorCacheFreshMs = 300000;
+const dashboardSelectorCacheStaleMs = 900000;
+const dashboardDetailCacheFreshMs = 60000;
+const dashboardDetailCacheStaleMs = 300000;
+const dashboardResponseCacheMaxEntries = 256;
+const dashboardResponseCache = new Map<string, { freshUntil: number; staleUntil: number; value: unknown }>();
+const dashboardInFlightRequests = new Map<string, Promise<unknown>>();
 
 export async function getDashboardData(filters: DashboardFilters): Promise<DashboardData> {
   const safeFilters = {
@@ -51,53 +58,66 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
           safeFilters.view === "stocks" ||
           safeFilters.view === "operations" ||
           safeFilters.view === "settings"));
-    const globalOverviewView = safeFilters.scope === "global" && safeFilters.view !== "summary"
-      ? "all"
-      : "summary";
+    const shouldFetchGlobalOverview = safeFilters.scope === "global";
+    const globalOverviewView = shouldFetchGlobalOverview ? safeFilters.view : "summary";
     const shouldFetchOverview =
-      shouldFetchDrilldown && (safeFilters.view === "summary" || safeFilters.view === "activity");
+      hasScopedSelection &&
+      (safeFilters.view === "activity" ||
+        (safeFilters.view === "summary" && safeFilters.scope === "channel"));
     const shouldFetchFullGuilds = shouldFetchDrilldown && safeFilters.view === "settings";
-    const globalOverviewRequest = dashboardRequest<DashboardGlobalOverviewResponse>("/global-overview", {
-      days: safeFilters.days,
-      startDate: safeFilters.startDate,
-      endDate: safeFilters.endDate,
-      view: globalOverviewView,
-    });
-    const [globalOverview, overview, guilds] = await Promise.all([
-      safeFilters.scope === "global"
-        ? globalOverviewRequest
-        : globalOverviewRequest.catch(() => createEmptyGlobalOverview(safeFilters.days)),
+    const globalOverviewRequest = shouldFetchGlobalOverview
+      ? dashboardRequest<DashboardGlobalOverviewResponse>("/global-overview", {
+          days: safeFilters.days,
+          startDate: safeFilters.startDate,
+          endDate: safeFilters.endDate,
+          view: globalOverviewView,
+        })
+      : Promise.resolve(createEmptyGlobalOverview(safeFilters.days));
+    const drilldownDataRequest = shouldFetchDrilldown
+      ? getDashboardDrilldownData(safeFilters)
+          .then((drilldown) => ({
+            drilldown,
+            drilldownError: undefined,
+            filterOptions: drilldown.insights.filterOptions,
+          }))
+          .catch((error) => ({
+            drilldown: null,
+            drilldownError: error instanceof Error ? error.message : "Dashboard drilldown data is unavailable.",
+            filterOptions: createEmptyFilterOptions(),
+          }))
+      : safeFilters.scope !== "global"
+        ? getDashboardFilterOptions(safeFilters)
+            .then((filterOptions) => ({
+              drilldown: null,
+              drilldownError: undefined,
+              filterOptions,
+            }))
+            .catch((error) => ({
+              drilldown: null,
+              drilldownError: error instanceof Error ? error.message : "Dashboard filter options are unavailable.",
+              filterOptions: createEmptyFilterOptions(),
+            }))
+        : Promise.resolve({
+          drilldown: null,
+          drilldownError: undefined,
+          filterOptions: createEmptyFilterOptions(),
+        });
+    const [globalOverview, overview, guilds, drilldownData] = await Promise.all([
+      globalOverviewRequest,
       shouldFetchOverview
-        ? dashboardRequest<DashboardOverviewResponse>("/overview")
+        ? dashboardRequest<DashboardOverviewResponse>("/overview").catch(() => null)
         : Promise.resolve<DashboardOverviewResponse | null>(null),
       getGuildSummaries(shouldFetchFullGuilds),
+      drilldownDataRequest,
     ]);
-    let drilldown: DashboardDrilldownData | null = null;
-    let drilldownError: string | undefined;
-    let filterOptions: DashboardFilterOptions = createEmptyFilterOptions();
-
-    if (shouldFetchDrilldown) {
-      try {
-        drilldown = await getDashboardDrilldownData(safeFilters);
-        filterOptions = drilldown.insights.filterOptions;
-      } catch (error) {
-        drilldownError = error instanceof Error ? error.message : "Dashboard drilldown data is unavailable.";
-      }
-    } else if (safeFilters.scope !== "global") {
-      try {
-        filterOptions = await getDashboardFilterOptions(safeFilters);
-      } catch (error) {
-        drilldownError = error instanceof Error ? error.message : "Dashboard filter options are unavailable.";
-      }
-    }
 
     return {
       globalOverview,
       overview: overview ?? createOverviewFromGlobalOverview(globalOverview),
       guilds,
-      filterOptions,
-      drilldown,
-      drilldownError,
+      filterOptions: drilldownData.filterOptions,
+      drilldown: drilldownData.drilldown,
+      drilldownError: drilldownData.drilldownError,
       usingDemoData: false,
     };
   } catch (error) {
@@ -145,8 +165,12 @@ async function getGuildSummaries(fetchFull: boolean): Promise<DashboardGuildSumm
 
   try {
     return await dashboardRequest<DashboardGuildSummary[]>("/guild-options");
-  } catch {
-    return dashboardRequest<DashboardGuildSummary[]>("/guilds");
+  } catch (error) {
+    if (shouldTryFullGuildFallback(error)) {
+      return dashboardRequest<DashboardGuildSummary[]>("/guilds");
+    }
+
+    return [];
   }
 }
 
@@ -256,10 +280,9 @@ function createEmptyFilterOptions(): DashboardFilterOptions {
 async function getDashboardDrilldownData(filters: DashboardFilters): Promise<DashboardDrilldownData> {
   const view = filters.view ?? "summary";
   const isServerSummary = filters.scope === "server" && view === "summary" && Boolean(filters.guildId);
-  const isUserSummary = filters.scope === "user" && view === "summary" && Boolean(filters.userId);
-  const insightView = isServerSummary || isUserSummary ? undefined : view;
-  const shouldFetchActivity = view === "activity" || isServerSummary || isUserSummary;
-  const shouldFetchLeaderboards = view === "users" || isServerSummary || isUserSummary;
+  const insightView = view;
+  const shouldFetchActivity = filters.scope !== "global" && view === "activity";
+  const shouldFetchLeaderboards = view === "users" || isServerSummary;
   const [activity, xpLeaderboard, messageLeaderboard, insights] = await Promise.all([
     shouldFetchActivity
       ? dashboardRequest<DashboardActivitySeriesResponse>("/activity", {
@@ -375,36 +398,83 @@ async function dashboardRequest<T>(
   const now = Date.now();
   pruneDashboardResponseCache(now);
   const cached = dashboardResponseCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
+  if (cached && cached.freshUntil > now) {
     return cached.value as T;
   }
 
-  const response = await withDashboardTimeout(
-    fetch(url, {
+  if (cached && cached.staleUntil > now) {
+    void refreshDashboardCache<T>(cacheKey, url, headers, path, params).catch(() => undefined);
+    return cached.value as T;
+  }
+
+  return refreshDashboardCache<T>(cacheKey, url, headers, path, params);
+}
+
+async function refreshDashboardCache<T>(
+  cacheKey: string,
+  url: URL,
+  headers: Headers,
+  path: string,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+): Promise<T> {
+  const inFlight = dashboardInFlightRequests.get(cacheKey);
+  if (inFlight) {
+    return inFlight as Promise<T>;
+  }
+
+  const timeoutMs = getDashboardRequestTimeoutMs(path, params);
+  const request = fetchDashboardJson<T>(url, headers, path, timeoutMs)
+    .then((value) => {
+      const fetchedAt = Date.now();
+      const cachePolicy = getDashboardCachePolicy(path);
+      pruneDashboardResponseCache(fetchedAt);
+      dashboardResponseCache.set(cacheKey, {
+        freshUntil: fetchedAt + cachePolicy.freshMs,
+        staleUntil: fetchedAt + cachePolicy.staleMs,
+        value,
+      });
+
+      return value;
+    })
+    .finally(() => {
+      dashboardInFlightRequests.delete(cacheKey);
+    });
+
+  dashboardInFlightRequests.set(cacheKey, request);
+  return request;
+}
+
+async function fetchDashboardJson<T>(url: URL, headers: Headers, path: string, timeoutMs: number): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
       headers,
       cache: "no-store",
-    }),
-    path,
-  );
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Dashboard API timed out for ${path}.`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Dashboard API returned ${response.status} for ${path}.`);
   }
 
-  const value = (await response.json()) as T;
-  const fetchedAt = Date.now();
-  pruneDashboardResponseCache(fetchedAt);
-  dashboardResponseCache.set(cacheKey, {
-    expiresAt: fetchedAt + dashboardResponseCacheTtlMs,
-    value,
-  });
-
-  return value;
+  return (await response.json()) as T;
 }
 
 function pruneDashboardResponseCache(now: number) {
   for (const [key, cached] of dashboardResponseCache) {
-    if (cached.expiresAt <= now) {
+    if (cached.staleUntil <= now) {
       dashboardResponseCache.delete(key);
     }
   }
@@ -423,18 +493,66 @@ function ensureTrailingSlash(value: string) {
   return value.endsWith("/") ? value : `${value}/`;
 }
 
-function withDashboardTimeout<T>(promise: Promise<T>, path: string): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<T>((_, reject) => {
-    timeout = setTimeout(
-      () => reject(new Error(`Dashboard API timed out for ${path}.`)),
-      dashboardRequestTimeoutMs,
-    );
-  });
+function getDashboardRequestTimeoutMs(
+  path: string,
+  params: Record<string, string | number | boolean | null | undefined>,
+) {
+  if (!usesDateWindowTimeout(path)) {
+    return dashboardRequestTimeoutMs;
+  }
 
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timeout) {
-      clearTimeout(timeout);
+  return hasLongDashboardDateWindow(params) ? dashboardLongRequestTimeoutMs : dashboardRequestTimeoutMs;
+}
+
+function usesDateWindowTimeout(path: string) {
+  return path === "/global-overview" ||
+    path === "/insights" ||
+    path === "/activity" ||
+    path === "/leaderboard";
+}
+
+function hasLongDashboardDateWindow(params: Record<string, string | number | boolean | null | undefined>) {
+  const days = typeof params.days === "number"
+    ? params.days
+    : Number.parseInt(String(params.days ?? ""), 10);
+  if (Number.isFinite(days) && days > 365) {
+    return true;
+  }
+
+  const startDate = typeof params.startDate === "string" ? Date.parse(params.startDate) : Number.NaN;
+  const endDate = typeof params.endDate === "string" ? Date.parse(params.endDate) : Number.NaN;
+  if (Number.isFinite(startDate) && Number.isFinite(endDate)) {
+    const spanDays = Math.abs(endDate - startDate) / 86400000;
+    if (spanDays > 365) {
+      return true;
     }
-  });
+  }
+
+  return false;
+}
+
+function getDashboardCachePolicy(path: string) {
+  if (path === "/guilds" || path === "/guild-options") {
+    return {
+      freshMs: dashboardSelectorCacheFreshMs,
+      staleMs: dashboardSelectorCacheStaleMs,
+    };
+  }
+
+  if (path.startsWith("/quotes/") || path.startsWith("/quote-approvals/")) {
+    return {
+      freshMs: dashboardDetailCacheFreshMs,
+      staleMs: dashboardDetailCacheStaleMs,
+    };
+  }
+
+  return {
+    freshMs: dashboardResponseCacheFreshMs,
+    staleMs: dashboardResponseCacheStaleMs,
+  };
+}
+
+function shouldTryFullGuildFallback(error: unknown) {
+  return error instanceof Error &&
+    (error.message.includes("returned 404") || error.message.includes("returned 405"));
 }

@@ -73,7 +73,13 @@ namespace Morpheus.Migrations
 
                     b.HasIndex("GuildId");
 
+                    b.HasIndex("GuildId", "InsertDate");
+
+                    b.HasIndex("InsertDate");
+
                     b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "InsertDate");
 
                     b.ToTable("ButtonGamePresses");
                 });
@@ -200,6 +206,8 @@ namespace Morpheus.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("InsertDate", "Severity");
+
                     b.ToTable("Logs");
                 });
 
@@ -233,6 +241,8 @@ namespace Morpheus.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("GuildId");
+
+                    b.HasIndex("InsertDate", "Approved", "Removed");
 
                     b.HasIndex("UserId");
 
@@ -291,6 +301,8 @@ namespace Morpheus.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Approved", "InsertDate");
 
                     b.HasIndex("QuoteId");
 
@@ -570,7 +582,11 @@ namespace Morpheus.Migrations
 
                     b.HasIndex("StockId");
 
+                    b.HasIndex("StockId", "InsertDate");
+
                     b.HasIndex("TargetUserId");
+
+                    b.HasIndex("InsertDate");
 
                     b.HasIndex("UserId", "InsertDate");
 
@@ -710,6 +726,12 @@ namespace Morpheus.Migrations
                     b.HasIndex("DiscordChannelId", "InsertDate");
 
                     b.HasIndex("GuildId", "InsertDate");
+
+                    b.HasIndex("InsertDate", "DiscordChannelId");
+
+                    b.HasIndex("InsertDate", "GuildId");
+
+                    b.HasIndex("InsertDate", "UserId");
 
                     b.HasIndex("UserId", "GuildId", "InsertDate");
 

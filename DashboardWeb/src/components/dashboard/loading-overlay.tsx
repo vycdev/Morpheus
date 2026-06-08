@@ -7,16 +7,24 @@ import { Loader2 } from "lucide-react";
 const loadingStartEvent = "morpheus-dashboard-loading:start";
 const loadingEndEvent = "morpheus-dashboard-loading:end";
 const showDelayMs = 120;
-const maxVisibleMs = 20000;
+const maxVisibleMs = 8000;
 
 export function showDashboardLoadingOverlay(
   message = "Loading dashboard data",
   options: { immediate?: boolean } = {},
 ) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
   window.dispatchEvent(new CustomEvent(loadingStartEvent, { detail: { message, immediate: options.immediate } }));
 }
 
 export function hideDashboardLoadingOverlay() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
   window.dispatchEvent(new Event(loadingEndEvent));
 }
 
@@ -81,7 +89,7 @@ export function DashboardLoadingOverlay() {
     <div
       aria-busy="true"
       aria-live="polite"
-      className="fixed inset-0 z-[100] grid place-items-center bg-background/70 px-4 backdrop-blur-[2px]"
+      className="pointer-events-none fixed inset-0 z-[100] grid place-items-center bg-background/70 px-4 backdrop-blur-[2px]"
       role="status"
     >
       <div className="absolute inset-x-0 top-0 h-1 overflow-hidden bg-transparent">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -14,17 +15,28 @@ import {
 import type { DashboardActivityPoint } from "@/lib/types";
 import { formatCompactNumber } from "@/lib/utils";
 
+const shortDateFormatter = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
 type ActivityChartProps = {
   points: DashboardActivityPoint[];
 };
 
 export function ActivityChart({ points }: ActivityChartProps) {
-  const data = points.map((point) => ({
-    date: new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(point.dateUtc)),
-    xp: point.xp,
-    messages: point.messages,
-    activeUsers: point.activeUsers,
-  }));
+  const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const xpFillId = `activity-xp-fill-${chartId}`;
+  const data = useMemo(
+    () =>
+      points.map((point) => ({
+        date: formatShortDate(point.dateUtc),
+        xp: point.xp,
+        messages: point.messages,
+      })),
+    [points],
+  );
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
@@ -35,7 +47,7 @@ export function ActivityChart({ points }: ActivityChartProps) {
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={260}>
           <AreaChart data={data} margin={{ left: 6, right: 8, top: 14, bottom: 4 }}>
             <defs>
-              <linearGradient id="xp-fill" x1="0" x2="0" y1="0" y2="1">
+              <linearGradient id={xpFillId} x1="0" x2="0" y1="0" y2="1">
                 <stop offset="5%" stopColor="#2563eb" stopOpacity={0.26} />
                 <stop offset="95%" stopColor="#2563eb" stopOpacity={0.03} />
               </linearGradient>
@@ -56,7 +68,7 @@ export function ActivityChart({ points }: ActivityChartProps) {
               name="XP"
               stroke="#2563eb"
               strokeWidth={2}
-              fill="url(#xp-fill)"
+              fill={`url(#${xpFillId})`}
               isAnimationActive={false}
               activeDot={{ r: 4 }}
             />
@@ -94,7 +106,7 @@ function DashboardTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ name: string; value: number; color?: string }>;
+  payload?: Array<{ name?: string | number; value?: unknown; color?: string; dataKey?: string | number }>;
   label?: string;
 }) {
   if (!active || !payload?.length) {
@@ -105,14 +117,28 @@ function DashboardTooltip({
     <div className="rounded-lg border border-border bg-white px-3 py-2 text-sm shadow-md">
       <div className="mb-1 font-medium text-foreground">{label}</div>
       <div className="grid gap-1">
-        {payload.map((item) => (
-          <div key={item.name} className="flex items-center gap-2 text-muted">
-            <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: item.color }} />
-            <span>{item.name}</span>
-            <span className="font-medium text-foreground">{formatCompactNumber(item.value)}</span>
-          </div>
-        ))}
+        {payload.map((item, index) => {
+          const name = item.name ?? item.dataKey ?? "Value";
+
+          return (
+            <div key={`${name}-${index}`} className="flex items-center gap-2 text-muted">
+              <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: item.color }} />
+              <span>{name}</span>
+              <span className="font-medium text-foreground">{formatTooltipValue(item.value)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : shortDateFormatter.format(date);
+}
+
+function formatTooltipValue(value: unknown) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numericValue) ? formatCompactNumber(numericValue) : String(value ?? "");
 }

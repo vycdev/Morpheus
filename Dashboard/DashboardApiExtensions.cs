@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.OutputCaching;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Services;
@@ -10,6 +11,8 @@ namespace Morpheus.Dashboard;
 public static class DashboardApiExtensions
 {
     private const string CorsPolicyName = "DashboardCors";
+    private const string ShortCachePolicyName = "DashboardShort";
+    private const string SelectorCachePolicyName = "DashboardSelectors";
 
     public static IServiceCollection AddDashboardApi(
         this IServiceCollection services,
@@ -17,6 +20,11 @@ public static class DashboardApiExtensions
     {
         services.AddSingleton(options);
         services.AddScoped<DashboardStatsService>();
+        services.AddOutputCache(cacheOptions =>
+        {
+            cacheOptions.AddPolicy(ShortCachePolicyName, BuildDashboardCachePolicy(TimeSpan.FromSeconds(10)));
+            cacheOptions.AddPolicy(SelectorCachePolicyName, BuildDashboardCachePolicy(TimeSpan.FromMinutes(1)));
+        });
 
         services.ConfigureHttpJsonOptions(jsonOptions =>
         {
@@ -70,7 +78,8 @@ public static class DashboardApiExtensions
         {
             DashboardOverviewResponse overview = await statsService.GetOverviewAsync(cancellationToken);
             return Results.Ok(overview);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/global-overview", async (
             int? days,
@@ -88,7 +97,8 @@ public static class DashboardApiExtensions
                 cancellationToken);
 
             return Results.Ok(overview);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/guilds", async (
             DashboardStatsService statsService,
@@ -96,7 +106,8 @@ public static class DashboardApiExtensions
         {
             IReadOnlyList<DashboardGuildSummary> guilds = await statsService.GetGuildsAsync(cancellationToken);
             return Results.Ok(guilds);
-        });
+        })
+        .CacheOutput(SelectorCachePolicyName);
 
         api.MapGet("/guild-options", async (
             DashboardStatsService statsService,
@@ -104,7 +115,8 @@ public static class DashboardApiExtensions
         {
             IReadOnlyList<DashboardGuildSummary> guilds = await statsService.GetGuildOptionsAsync(cancellationToken);
             return Results.Ok(guilds);
-        });
+        })
+        .CacheOutput(SelectorCachePolicyName);
 
         api.MapGet("/activity", async (
             int? guildId,
@@ -129,7 +141,8 @@ public static class DashboardApiExtensions
                 cancellationToken);
 
             return Results.Ok(series);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/leaderboard", async (
             int? guildId,
@@ -158,7 +171,8 @@ public static class DashboardApiExtensions
                 cancellationToken);
 
             return Results.Ok(leaderboard);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/insights", async (
             int? guildId,
@@ -191,7 +205,8 @@ public static class DashboardApiExtensions
                 cancellationToken);
 
             return Results.Ok(insights);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/quotes", async (
             int? guildId,
@@ -222,7 +237,8 @@ public static class DashboardApiExtensions
                     item.Score))]);
 
             return Results.Ok(response);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/quotes/{quoteId:int}", async (
             int quoteId,
@@ -234,7 +250,8 @@ public static class DashboardApiExtensions
             return quote == null
                 ? Results.NotFound()
                 : Results.Ok(quote);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/quote-approvals/{approvalId:int}", async (
             int approvalId,
@@ -246,10 +263,17 @@ public static class DashboardApiExtensions
             return approval == null
                 ? Results.NotFound()
                 : Results.Ok(approval);
-        });
+        })
+        .CacheOutput(ShortCachePolicyName);
 
         return app;
     }
+
+    private static Action<OutputCachePolicyBuilder> BuildDashboardCachePolicy(TimeSpan duration) =>
+        policy => policy
+            .Expire(duration)
+            .SetVaryByQuery("*")
+            .SetVaryByHeader("X-Dashboard-Key", "Origin");
 
     private static bool HasInvalidDiscordId(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&

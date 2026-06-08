@@ -32,6 +32,9 @@ export function SearchableSelect({
   pageSize = 10,
 }: SearchableSelectProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const buttonId = useId();
+  const listboxId = useId();
   const searchId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -114,6 +117,11 @@ export function SearchableSelect({
 
   function chooseOption(option: SearchableSelectOption) {
     setSelectedValue(option.value);
+    if (inputRef.current) {
+      inputRef.current.value = option.value;
+      inputRef.current.dispatchEvent(new Event("input", { bubbles: true }));
+      inputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+    }
     setOpen(false);
     setQuery("");
   }
@@ -121,12 +129,21 @@ export function SearchableSelect({
   return (
     <div className="relative grid min-w-0 gap-1 text-sm" ref={rootRef}>
       <span className="font-medium text-muted">{label}</span>
-      <input name={name} readOnly type="hidden" value={selectedValue} />
+      <input name={name} readOnly ref={inputRef} type="hidden" value={selectedValue} />
       <button
+        aria-controls={open ? listboxId : undefined}
         aria-expanded={open}
+        aria-haspopup="listbox"
         className="flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 text-left text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary focus:border-primary disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-56"
         disabled={disabled}
+        id={buttonId}
         onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
         type="button"
       >
         <span className={cn("min-w-0 truncate", !selectedOption && "text-muted")}>
@@ -156,7 +173,12 @@ export function SearchableSelect({
             />
           </label>
 
-          <div className="mt-2 grid gap-1">
+          <div
+            aria-labelledby={buttonId}
+            className="mt-2 grid gap-1"
+            id={listboxId}
+            role="listbox"
+          >
             {visibleOptions.length === 0 ? (
               <div className="rounded-md border border-dashed border-border p-4 text-center text-sm text-muted">
                 No matches
@@ -167,12 +189,14 @@ export function SearchableSelect({
 
                 return (
                   <button
+                    aria-selected={selected}
                     className={cn(
                       "grid min-h-10 rounded-md px-3 py-2 text-left transition-colors hover:bg-slate-50",
                       selected && "bg-blue-50 text-foreground",
                     )}
                     key={`${name}-${option.value || "empty"}`}
                     onClick={() => chooseOption(option)}
+                    role="option"
                     type="button"
                   >
                     <span className="truncate text-sm font-medium text-foreground">{option.label}</span>

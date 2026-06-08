@@ -222,7 +222,7 @@ public class DashboardStatsServiceTests
     }
 
     [Fact]
-    public async Task GetGlobalOverviewAsync_ViewActivityReturnsOnlyActivitySlice()
+    public async Task GetGlobalOverviewAsync_ViewActivityReturnsTotalsAndOnlyActivitySlice()
     {
         await using SqliteTestDb testDb = await CreateSqliteDbAsync();
         (Guild guild, User user) = await SeedBaseAsync(testDb.Db);
@@ -243,7 +243,7 @@ public class DashboardStatsServiceTests
 
         DashboardGlobalOverviewResponse overview = await service.GetGlobalOverviewAsync(7, "activity");
 
-        Assert.Equal(0, overview.Totals.TotalServers);
+        Assert.Equal(1, overview.Totals.TotalServers);
         Assert.Equal(7, overview.Visuals.Activity.Count);
         Assert.Single(overview.Visuals.CalendarActivity, cell => cell.Messages > 0);
         Assert.Empty(overview.Highlights.MostActiveServersToday);

@@ -28,11 +28,20 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<Guild>().HasIndex(g => g.DiscordId).IsUnique();
         modelBuilder.Entity<QuoteApproval>().HasIndex(a => new { a.QuoteApprovalMessageId, a.UserId }).IsUnique();
         modelBuilder.Entity<QuoteScore>().HasIndex(s => new { s.QuoteId, s.UserId }).IsUnique();
+        modelBuilder.Entity<Quote>().HasIndex(q => new { q.InsertDate, q.Approved, q.Removed });
+        modelBuilder.Entity<QuoteApprovalMessage>().HasIndex(qam => new { qam.Approved, qam.InsertDate });
+        modelBuilder.Entity<Log>().HasIndex(log => new { log.InsertDate, log.Severity });
+        modelBuilder.Entity<ButtonGamePress>().HasIndex(press => press.InsertDate);
+        modelBuilder.Entity<ButtonGamePress>().HasIndex(press => new { press.GuildId, press.InsertDate });
+        modelBuilder.Entity<ButtonGamePress>().HasIndex(press => new { press.UserId, press.InsertDate });
         // Speeds up recent per-user, per-guild activity queries
         modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.UserId, ua.GuildId, ua.InsertDate });
         modelBuilder.Entity<UserActivity>().HasIndex(ua => ua.InsertDate);
         modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.GuildId, ua.InsertDate });
         modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.DiscordChannelId, ua.InsertDate });
+        modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.InsertDate, ua.GuildId });
+        modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.InsertDate, ua.UserId });
+        modelBuilder.Entity<UserActivity>().HasIndex(ua => new { ua.InsertDate, ua.DiscordChannelId });
         modelBuilder.Entity<UserLevels>().HasIndex(ul => new { ul.UserId, ul.GuildId }).IsUnique();
 
         // Indexes for temporary bans processing
@@ -49,6 +58,8 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<Stock>().HasIndex(s => new { s.LastUpdatedDate, s.UpdateTimeMinutes });
         modelBuilder.Entity<StockHolding>().HasIndex(sh => new { sh.UserId, sh.StockId }).IsUnique();
         modelBuilder.Entity<StockTransaction>().HasIndex(st => new { st.UserId, st.InsertDate });
+        modelBuilder.Entity<StockTransaction>().HasIndex(st => st.InsertDate);
+        modelBuilder.Entity<StockTransaction>().HasIndex(st => new { st.StockId, st.InsertDate });
 
         // Stock Price uses decimal(18,4) for precision
         modelBuilder.Entity<Stock>().Property(s => s.Price).HasColumnType("decimal(18,4)");

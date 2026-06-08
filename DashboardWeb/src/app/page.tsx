@@ -313,18 +313,20 @@ export default async function DashboardPage({
         scopeLabel={scopeLabel}
       />
 
-      <DashboardAnswerStrip
-        activeView={dashboardView}
-        days={days}
-        endDate={endDate}
-        guildId={guildId}
-        channelId={channelId}
-        global={global}
-        insights={insights}
-        scope={scope}
-        startDate={startDate}
-        userId={userId}
-      />
+      {scope === "global" && (
+        <DashboardAnswerStrip
+          activeView={dashboardView}
+          days={days}
+          endDate={endDate}
+          guildId={guildId}
+          channelId={channelId}
+          global={global}
+          insights={insights}
+          scope={scope}
+          startDate={startDate}
+          userId={userId}
+        />
+      )}
 
       {!drilldownActive && dashboardView === "summary" && (
       <section id="global-overview" className="grid gap-5">
@@ -1357,7 +1359,7 @@ function ServerDashboardSummary({
         <StatCard icon={ShieldCheck} label="Approved quotes" value={formatInteger(totals.approvedQuotes)} meta={`${formatInteger(totals.pendingQuotes)} pending`} tone="rose" href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "quotes" })} />
         <StatCard icon={AlertTriangle} label="Pending approvals" value={formatInteger(totals.pendingQuoteApprovals)} meta="quote approval messages" tone={totals.pendingQuoteApprovals > 0 ? "amber" : "green"} href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "quotes" })} />
         <StatCard icon={Bell} label="Active reminders" value={formatInteger(totals.activeReminders)} meta="server reminder queue" tone="blue" href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "operations" })} />
-        <StatCard icon={Gamepad2} label="Button presses" value={formatCompactNumber(totals.buttonPresses)} meta={`${formatCompactNumber(insights.buttonGame.presses)} in window`} tone="cyan" href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "operations" })} />
+        <StatCard icon={Gamepad2} label="Button presses" value={formatCompactNumber(totals.buttonPresses)} meta="all-time presses" tone="cyan" href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "operations" })} />
         <StatCard icon={Banknote} label="Economy activity" value={formatCurrency(totals.economyVolume)} meta={`${formatCompactNumber(totals.economyTransactions)} transactions`} tone="amber" href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "economy" })} />
         <StatCard icon={TrendingUp} label="Stock activity" value={formatInteger(totals.stockActivity)} meta={`${formatCurrency(totals.stockMarketValue)} market value`} tone="slate" href={dashboardHref({ scope: "server", guildId, days, startDate, endDate, view: "stocks" })} />
         <StatCard icon={Activity} label="Last activity" value={formatRelativeDate(totals.lastActivityAtUtc)} meta={dateWindowSummary(days)} tone="green" />

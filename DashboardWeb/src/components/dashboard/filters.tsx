@@ -84,11 +84,29 @@ export function DashboardFilters({
     })),
   ];
 
-  const scopeTabs: Array<{ label: string; scope: DashboardScope; href: string }> = [
+  const defaultGuildId = selectedGuildId ?? guilds[0]?.id;
+  const defaultUserId = selectedUserId ?? users[0]?.userId;
+  const defaultChannelId = selectedChannelId ?? channels[0]?.discordId;
+  const scopeTabs: Array<{ label: string; scope: DashboardScope; href: string; disabled?: boolean }> = [
     { label: "Global", scope: "global", href: dashboardHref({ scope: "global", days, startDate, endDate }) },
-    { label: "Server", scope: "server", href: dashboardHref({ scope: "server", guildId: selectedGuildId, days, startDate, endDate }) },
-    { label: "User", scope: "user", href: dashboardHref({ scope: "user", userId: selectedUserId, guildId: selectedGuildId, days, startDate, endDate }) },
-    { label: "Channel", scope: "channel", href: dashboardHref({ scope: "channel", channelId: selectedChannelId, guildId: selectedGuildId, days, startDate, endDate }) },
+    {
+      label: "Server",
+      scope: "server",
+      href: dashboardHref({ scope: "server", guildId: defaultGuildId, days, startDate, endDate }),
+      disabled: !defaultGuildId,
+    },
+    {
+      label: "User",
+      scope: "user",
+      href: dashboardHref({ scope: "user", userId: defaultUserId, guildId: defaultGuildId, days, startDate, endDate }),
+      disabled: !defaultUserId,
+    },
+    {
+      label: "Channel",
+      scope: "channel",
+      href: dashboardHref({ scope: "channel", channelId: defaultChannelId, guildId: defaultGuildId, days, startDate, endDate }),
+      disabled: !defaultChannelId,
+    },
   ];
 
   return (
@@ -107,6 +125,7 @@ export function DashboardFilters({
             <DashboardNavLink
               aria-current={active ? "page" : undefined}
               className={className}
+              disabled={tab.disabled}
               href={tab.href}
               key={tab.scope}
             >
