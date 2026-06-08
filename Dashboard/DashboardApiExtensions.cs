@@ -109,6 +109,18 @@ public static class DashboardApiExtensions
         })
         .CacheOutput(SelectorCachePolicyName);
 
+        api.MapGet("/guilds/{guildId:int}", async (
+            int guildId,
+            DashboardStatsService statsService,
+            CancellationToken cancellationToken) =>
+        {
+            DashboardGuildSummary? guild = await statsService.GetGuildAsync(guildId, cancellationToken);
+            return guild is null
+                ? Results.NotFound(new { error = "Guild not found." })
+                : Results.Ok(guild);
+        })
+        .CacheOutput(SelectorCachePolicyName);
+
         api.MapGet("/guild-options", async (
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>

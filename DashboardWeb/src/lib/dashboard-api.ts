@@ -49,14 +49,7 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
       safeFilters.scope === "user" ? Boolean(safeFilters.userId) :
       safeFilters.scope === "channel" ? Boolean(safeFilters.channelId) :
       false;
-    const shouldFetchDrilldown =
-      hasScopedSelection ||
-      (safeFilters.scope === "global" &&
-        (safeFilters.view === "quotes" ||
-          safeFilters.view === "economy" ||
-          safeFilters.view === "stocks" ||
-          safeFilters.view === "operations" ||
-          safeFilters.view === "settings"));
+    const shouldFetchDrilldown = hasScopedSelection;
     const shouldFetchGlobalOverview = safeFilters.scope === "global";
     const globalOverviewView = shouldFetchGlobalOverview ? safeFilters.view : "summary";
     const shouldFetchOverview =
@@ -106,7 +99,7 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
       shouldFetchOverview
         ? dashboardRequest<DashboardOverviewResponse>("/overview").catch(() => null)
         : Promise.resolve<DashboardOverviewResponse | null>(null),
-      getGuildSummaries(shouldFetchFullGuilds),
+      getGuildSummaries(shouldFetchFullGuilds, safeFilters.guildId),
       drilldownDataRequest,
     ]);
 
@@ -157,9 +150,22 @@ export async function getQuoteApprovalDetails(approvalId: number): Promise<Dashb
   }
 }
 
-async function getGuildSummaries(fetchFull: boolean): Promise<DashboardGuildSummary[]> {
+async function getGuildSummaries(fetchFull: boolean, guildId?: number): Promise<DashboardGuildSummary[]> {
   if (fetchFull) {
-    return dashboardRequest<DashboardGuildSummary[]>("/guilds");
+    if (guildId) {
+      try {
+        const guild = await dashboardRequest<DashboardGuildSummary>(`/guilds/${guildId}`);
+        return [guild];
+      } catch {
+        return [];
+      }
+    }
+
+    try {
+      return await dashboardRequest<DashboardGuildSummary[]>("/guilds");
+    } catch {
+      return [];
+    }
   }
 
   try {
@@ -531,7 +537,7 @@ function hasLongDashboardDateWindow(params: Record<string, string | number | boo
 }
 
 function getDashboardCachePolicy(path: string) {
-  if (path === "/guilds" || path === "/guild-options") {
+  if (path === "/guilds" || path.startsWith("/guilds/") || path === "/guild-options") {
     return {
       freshMs: dashboardSelectorCacheFreshMs,
       staleMs: dashboardSelectorCacheStaleMs,

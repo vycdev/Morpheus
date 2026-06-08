@@ -119,6 +119,7 @@ public sealed class DashboardStatsService(
         bool includeSummaryExtras = includeSummary && !useLongRangeSummaryShortcuts;
         bool includeServers = safeView == "servers" || includeSummary || includeAll;
         bool includeUsers = safeView == "users" || includeSummary || includeAll;
+        bool includeEconomyWealth = safeView == "economy";
         bool includeQuotes = safeView == "quotes" || includeSummaryExtras || includeAll;
         bool includeStocks = safeView == "stocks" || includeSummaryExtras || includeAll;
         bool includeActivity = safeView == "activity" || includeAll;
@@ -155,6 +156,8 @@ public sealed class DashboardStatsService(
                     useLongRangeSummaryShortcuts,
                     includeWealthRankings: !useLongRangeSummaryShortcuts,
                     cancellationToken)
+                : includeEconomyWealth
+                    ? await BuildGlobalWealthHighlightsAsync(10, cancellationToken)
                 : EmptyGlobalUserHighlights();
             mostPopularQuotes = includeQuotes
                 ? await GetPopularQuotesAsync(10, cancellationToken)
@@ -202,6 +205,10 @@ public sealed class DashboardStatsService(
                         includeWealthRankings: !useLongRangeSummaryShortcuts,
                         cancellationToken),
                     cancellationToken)
+                : includeEconomyWealth
+                    ? RunIsolatedDashboardQueryAsync(
+                        service => service.BuildGlobalWealthHighlightsAsync(10, cancellationToken),
+                        cancellationToken)
                 : Task.FromResult(EmptyGlobalUserHighlights());
             Task<IReadOnlyList<DashboardPopularQuote>> popularQuotesTask = includeQuotes
                 ? RunIsolatedDashboardQueryAsync(service => service.GetPopularQuotesAsync(10, cancellationToken), cancellationToken)
@@ -357,6 +364,24 @@ public sealed class DashboardStatsService(
         new(
             await GetStockMoversAsync(winners: true, limit, cancellationToken),
             await GetStockMoversAsync(winners: false, limit, cancellationToken));
+
+    private async Task<GlobalUserHighlights> BuildGlobalWealthHighlightsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        GlobalWealthRankings wealthRankings = await GetGlobalWealthRankingsAsync(limit, cancellationToken);
+
+        return new GlobalUserHighlights(
+            [],
+            wealthRankings.RichestByBalance,
+            wealthRankings.RichestByNetWorth,
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+    }
 
     private async Task<GlobalActivityVisuals> BuildGlobalActivityVisualsAsync(
         DateTime startDate,
@@ -532,10 +557,24 @@ public sealed class DashboardStatsService(
             : "summary";
     }
 
-    public async Task<IReadOnlyList<DashboardGuildSummary>> GetGuildsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<DashboardGuildSummary>> GetGuildsAsync(CancellationToken cancellationToken = default) =>
+        await GetGuildSummariesAsync(null, cancellationToken);
+
+    public async Task<DashboardGuildSummary?> GetGuildAsync(int guildId, CancellationToken cancellationToken = default)
     {
-        var guilds = await dbContext.Guilds
-            .AsNoTracking()
+        IReadOnlyList<DashboardGuildSummary> guilds = await GetGuildSummariesAsync(guildId, cancellationToken);
+        return guilds.FirstOrDefault();
+    }
+
+    private async Task<IReadOnlyList<DashboardGuildSummary>> GetGuildSummariesAsync(
+        int? guildId,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Guild> query = dbContext.Guilds.AsNoTracking();
+        if (guildId.HasValue)
+            query = query.Where(guild => guild.Id == guildId.Value);
+
+        var guilds = await query
             .OrderBy(guild => guild.Name)
             .Select(guild => new
             {
@@ -887,11 +926,14 @@ public sealed class DashboardStatsService(
                 safeDays,
                 cancellationToken)
             : null;
-        DashboardFilterOptions filterOptions = await BuildFilterOptionsAsync(
-            effectiveGuildId,
-            effectiveUserId,
-            channelDiscordId,
-            cancellationToken);
+        DashboardFilterOptions filterOptions =
+            filters.Scope == "server" && safeView == "settings"
+                ? await BuildServerSettingsNavigationOptionsAsync(effectiveGuildId!.Value, cancellationToken)
+                : await BuildFilterOptionsAsync(
+                    effectiveGuildId,
+                    effectiveUserId,
+                    channelDiscordId,
+                    cancellationToken);
 
         return new DashboardInsightsResponse(
             effectiveGuildId,
@@ -2082,6 +2124,51 @@ public sealed class DashboardStatsService(
             cancellationToken);
 
         return new DashboardFilterOptions(users, channels);
+    }
+
+    private async Task<DashboardFilterOptions> BuildServerSettingsNavigationOptionsAsync(
+        int guildId,
+        CancellationToken cancellationToken)
+    {
+        DashboardUserOption? user = await dbContext.UserLevels
+            .AsNoTracking()
+            .Where(levels => levels.GuildId == guildId)
+            .OrderByDescending(levels => levels.UserMessageCount)
+            .ThenByDescending(levels => levels.TotalXp)
+            .ThenBy(levels => levels.UserId)
+            .Select(levels => new DashboardUserOption(
+                levels.UserId,
+                levels.User!.DiscordId.ToString(),
+                levels.User.Username))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        ulong? channelDiscordId = await dbContext.UserActivity
+            .AsNoTracking()
+            .Where(activity => activity.GuildId == guildId)
+            .OrderByDescending(activity => activity.InsertDate)
+            .ThenByDescending(activity => activity.Id)
+            .Select(activity => (ulong?)activity.DiscordChannelId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        DashboardChannelOption? channel = null;
+        if (channelDiscordId.HasValue)
+        {
+            string? channelName = await dbContext.Channels
+                .AsNoTracking()
+                .Where(row => row.DiscordId == channelDiscordId.Value)
+                .Select(row => row.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            channel = new DashboardChannelOption(
+                channelDiscordId.Value.ToString(),
+                string.IsNullOrWhiteSpace(channelName)
+                    ? $"channel-{ShortDiscordId(channelDiscordId.Value)}"
+                    : channelName);
+        }
+
+        return new DashboardFilterOptions(
+            user is null ? [] : [user],
+            channel is null ? [] : [channel]);
     }
 
     private async Task<IReadOnlyList<DashboardUserOption>> BuildUserFilterOptionsAsync(
