@@ -287,7 +287,7 @@ export default async function DashboardPage({
       {data.drilldownError && (
         <DashboardStatusBanner
           detail={data.drilldownError}
-          title="Scoped data unavailable"
+          title="Additional data unavailable"
         />
       )}
 

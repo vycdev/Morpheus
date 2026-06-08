@@ -52,8 +52,7 @@ export async function getDashboardData(filters: DashboardFilters): Promise<Dashb
     const shouldFetchDrilldown =
       hasScopedSelection ||
       (safeFilters.scope === "global" &&
-        (safeFilters.view === "activity" ||
-          safeFilters.view === "quotes" ||
+        (safeFilters.view === "quotes" ||
           safeFilters.view === "economy" ||
           safeFilters.view === "stocks" ||
           safeFilters.view === "operations" ||
