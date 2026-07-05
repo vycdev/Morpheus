@@ -42,6 +42,13 @@ public static class BotStartupExtensions
         services.AddScoped<QuoteService>();
         services.AddSingleton<SlotsService>();
 
+        // Feed subscriptions (xkcd / YouTube / RSS / Twitch) & reusable webhooks
+        services.AddSingleton<DiscordWebhookService>();
+        services.AddScoped<WebhookService>();
+        services.AddSingleton<YoutubeFeedService>();
+        services.AddSingleton<RssFeedService>();
+        services.AddSingleton<TwitchService>();
+
         return services;
     }
 
@@ -53,6 +60,11 @@ public static class BotStartupExtensions
         services.AddScoped<StockUpdateJob>();
         services.AddScoped<UbiJob>();
         services.AddScoped<WealthTaxJob>();
+        services.AddScoped<XkcdJob>();
+        services.AddScoped<YoutubeRssJob>();
+        services.AddScoped<RssFeedJob>();
+        services.AddScoped<TwitchLiveJob>();
+        services.AddScoped<WebhookHealthJob>();
 
         services.AddQuartz(q =>
         {
@@ -114,6 +126,36 @@ public static class BotStartupExtensions
                 .WithIdentity("stockUpdate", "discord")
                 .StartAt(DateTime.UtcNow.AddMinutes(2))
                 .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(5)).RepeatForever())
+            );
+
+            q.ScheduleJob<XkcdJob>(trigger => trigger
+                .WithIdentity("xkcdFeed", "feeds")
+                .StartAt(DateTime.UtcNow.AddMinutes(1))
+                .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromHours(1)).RepeatForever())
+            );
+
+            q.ScheduleJob<YoutubeRssJob>(trigger => trigger
+                .WithIdentity("youtubeFeed", "feeds")
+                .StartAt(DateTime.UtcNow.AddMinutes(1))
+                .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(5)).RepeatForever())
+            );
+
+            q.ScheduleJob<RssFeedJob>(trigger => trigger
+                .WithIdentity("rssFeed", "feeds")
+                .StartAt(DateTime.UtcNow.AddMinutes(2))
+                .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(10)).RepeatForever())
+            );
+
+            q.ScheduleJob<TwitchLiveJob>(trigger => trigger
+                .WithIdentity("twitchLive", "feeds")
+                .StartAt(DateTime.UtcNow.AddMinutes(2))
+                .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromMinutes(2)).RepeatForever())
+            );
+
+            q.ScheduleJob<WebhookHealthJob>(trigger => trigger
+                .WithIdentity("webhookHealth", "feeds")
+                .StartAt(DateTime.UtcNow.AddMinutes(5))
+                .WithSimpleSchedule(x => x.WithInterval(TimeSpan.FromHours(6)).RepeatForever())
             );
         });
 

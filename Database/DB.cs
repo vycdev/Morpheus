@@ -79,6 +79,48 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
             .WithMany()
             .HasForeignKey(st => st.TargetUserId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Webhooks & feed subscriptions
+        // One reusable webhook per Discord channel
+        modelBuilder.Entity<Webhook>().HasIndex(w => w.ChannelDiscordId).IsUnique();
+
+        // xkcd: one subscription per channel, global "seen" set keyed by comic link
+        modelBuilder.Entity<XkcdSubscription>().HasIndex(s => s.ChannelDiscordId).IsUnique();
+        modelBuilder.Entity<XkcdSeen>().HasIndex(s => s.Link).IsUnique();
+        modelBuilder.Entity<XkcdSubscription>()
+            .HasOne(s => s.Webhook)
+            .WithMany()
+            .HasForeignKey(s => s.WebhookId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // YouTube: one subscription per (channel, youtuber), global "seen" set keyed by video id
+        modelBuilder.Entity<YoutubeSubscription>().HasIndex(s => new { s.ChannelDiscordId, s.YoutubeChannelId }).IsUnique();
+        modelBuilder.Entity<YoutubeSubscription>().HasIndex(s => s.YoutubeChannelId);
+        modelBuilder.Entity<YoutubeSeenVideo>().HasIndex(s => s.VideoId).IsUnique();
+        modelBuilder.Entity<YoutubeSubscription>()
+            .HasOne(s => s.Webhook)
+            .WithMany()
+            .HasForeignKey(s => s.WebhookId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Generic RSS/Atom feeds: one subscription per (channel, feed), global "seen" set per feed
+        modelBuilder.Entity<RssSubscription>().HasIndex(s => new { s.ChannelDiscordId, s.FeedUrl }).IsUnique();
+        modelBuilder.Entity<RssSubscription>().HasIndex(s => s.FeedUrl);
+        modelBuilder.Entity<RssSeenEntry>().HasIndex(s => new { s.FeedUrl, s.EntryId }).IsUnique();
+        modelBuilder.Entity<RssSubscription>()
+            .HasOne(s => s.Webhook)
+            .WithMany()
+            .HasForeignKey(s => s.WebhookId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Twitch go-live: one subscription per (channel, streamer)
+        modelBuilder.Entity<TwitchSubscription>().HasIndex(s => new { s.ChannelDiscordId, s.TwitchUserId }).IsUnique();
+        modelBuilder.Entity<TwitchSubscription>().HasIndex(s => s.TwitchUserId);
+        modelBuilder.Entity<TwitchSubscription>()
+            .HasOne(s => s.Webhook)
+            .WithMany()
+            .HasForeignKey(s => s.WebhookId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     public DbSet<User> Users { get; set; }
@@ -101,4 +143,12 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<Stock> Stocks { get; set; }
     public DbSet<StockHolding> StockHoldings { get; set; }
     public DbSet<StockTransaction> StockTransactions { get; set; }
+    public DbSet<Webhook> Webhooks { get; set; }
+    public DbSet<XkcdSubscription> XkcdSubscriptions { get; set; }
+    public DbSet<XkcdSeen> XkcdSeen { get; set; }
+    public DbSet<YoutubeSubscription> YoutubeSubscriptions { get; set; }
+    public DbSet<YoutubeSeenVideo> YoutubeSeenVideos { get; set; }
+    public DbSet<RssSubscription> RssSubscriptions { get; set; }
+    public DbSet<RssSeenEntry> RssSeenEntries { get; set; }
+    public DbSet<TwitchSubscription> TwitchSubscriptions { get; set; }
 }

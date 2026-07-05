@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20260705185902_FeedSubscriptions")]
+    partial class FeedSubscriptions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -464,76 +467,6 @@ namespace Morpheus.Migrations
                     b.ToTable("Roles");
                 });
 
-            modelBuilder.Entity("Morpheus.Database.Models.RssSeenEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("EntryId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("FeedUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("SeenAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FeedUrl", "EntryId")
-                        .IsUnique();
-
-                    b.ToTable("RssSeenEntries");
-                });
-
-            modelBuilder.Entity("Morpheus.Database.Models.RssSubscription", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AvatarUrl")
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("ChannelDiscordId")
-                        .HasColumnType("numeric(20,0)");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("FeedUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("GuildDiscordId")
-                        .HasColumnType("numeric(20,0)");
-
-                    b.Property<DateTime>("InsertDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("WebhookId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FeedUrl");
-
-                    b.HasIndex("WebhookId");
-
-                    b.HasIndex("ChannelDiscordId", "FeedUrl")
-                        .IsUnique();
-
-                    b.ToTable("RssSubscriptions");
-                });
-
             modelBuilder.Entity("Morpheus.Database.Models.Stock", b =>
                 {
                     b.Property<int>("Id")
@@ -690,59 +623,6 @@ namespace Morpheus.Migrations
                     b.HasIndex("GuildId", "UserId");
 
                     b.ToTable("TemporaryBans");
-                });
-
-            modelBuilder.Entity("Morpheus.Database.Models.TwitchSubscription", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AvatarUrl")
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("ChannelDiscordId")
-                        .HasColumnType("numeric(20,0)");
-
-                    b.Property<decimal>("GuildDiscordId")
-                        .HasColumnType("numeric(20,0)");
-
-                    b.Property<DateTime>("InsertDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsLive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("LastAnnouncedStreamId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("TwitchDisplayName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("TwitchLogin")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("TwitchUserId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("WebhookId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TwitchUserId");
-
-                    b.HasIndex("WebhookId");
-
-                    b.HasIndex("ChannelDiscordId", "TwitchUserId")
-                        .IsUnique();
-
-                    b.ToTable("TwitchSubscriptions");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.User", b =>
@@ -1177,17 +1057,6 @@ namespace Morpheus.Migrations
                     b.Navigation("Guild");
                 });
 
-            modelBuilder.Entity("Morpheus.Database.Models.RssSubscription", b =>
-                {
-                    b.HasOne("Morpheus.Database.Models.Webhook", "Webhook")
-                        .WithMany()
-                        .HasForeignKey("WebhookId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Webhook");
-                });
-
             modelBuilder.Entity("Morpheus.Database.Models.StockHolding", b =>
                 {
                     b.HasOne("Morpheus.Database.Models.Stock", "Stock")
@@ -1229,17 +1098,6 @@ namespace Morpheus.Migrations
                     b.Navigation("TargetUser");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Morpheus.Database.Models.TwitchSubscription", b =>
-                {
-                    b.HasOne("Morpheus.Database.Models.Webhook", "Webhook")
-                        .WithMany()
-                        .HasForeignKey("WebhookId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Webhook");
                 });
 
             modelBuilder.Entity("Morpheus.Database.Models.UserActivity", b =>
