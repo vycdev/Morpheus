@@ -1098,17 +1098,6 @@ public class LevelsModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         return ownerId != 0 && Context.User != null && Context.User.Id == ownerId;
     }
 
-    private bool ValidateDays(int days)
-    {
-        int maxDays = Env.Get<int>("ACTIVITY_GRAPHS_MAX_DAYS", 90);
-        if (!IsOwner() && (days <= 0 || days > maxDays))
-        {
-            ReplyAsync($"Please provide a number of days between 1 and {maxDays}.").GetAwaiter().GetResult();
-            return false;
-        }
-        return true;
-    }
-
     private DateTime GetStartDate(int days) => DateTime.UtcNow.Date.AddDays(-(days - 1));
 
     private DateTime NormalizeToUtc(DateTime dt) => DateTime.SpecifyKind(dt, DateTimeKind.Utc);

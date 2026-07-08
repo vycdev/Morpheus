@@ -191,7 +191,14 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
                         var seconds = (int)intFields[1].GetValue(rateAttrInstance)!;
                         rateLimitText = $"{uses} use(s) per {seconds} second(s)";
                     }
-                    catch { rateLimitText = "Rate limit present"; }
+                    catch (InvalidCastException)
+                    {
+                        rateLimitText = "Rate limit present";
+                    }
+                    catch (TargetException)
+                    {
+                        rateLimitText = "Rate limit present";
+                    }
                 }
                 else
                 {
