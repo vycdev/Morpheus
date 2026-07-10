@@ -16,7 +16,7 @@ dotnet build
 
 ## Development setup
 
-- Requires .NET 8 SDK and a Python 3 interpreter on your PATH.
+- Requires .NET 10 SDK and a Python 3 interpreter on your PATH.
 - Optional: `dotnet-ef` tools if you will add migrations.
 
 Install dotnet-ef (if needed):
@@ -51,7 +51,7 @@ If the change needs a manual database migration for production, explain it in th
 
 ## Coding style and expectations
 
-- Language: C# targeting .NET 8.
+- Language: C# targeting .NET 10.
 - Use the project's existing style for naming, nullability annotations, and dependency injection patterns.
 - Prefer small, focused PRs. Unit tests are not required, but are nice to have. 
 - If you change public behavior (commands, DB schema, bot permissions), document it in the PR description.
