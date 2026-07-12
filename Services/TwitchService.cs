@@ -148,7 +148,7 @@ public class TwitchService(LogsService logsService)
 
             _accessToken = token.AccessToken;
             // Refresh a minute early to avoid using an about-to-expire token.
-            _tokenExpiresAt = DateTime.UtcNow.AddSeconds(Math.Max(60, token.ExpiresIn - 60));
+            _tokenExpiresAt = DateTime.UtcNow.Add(CalculateTokenCacheDuration(token.ExpiresIn));
             return _accessToken;
         }
         catch (Exception ex)
@@ -160,6 +160,11 @@ public class TwitchService(LogsService logsService)
         {
             _tokenLock.Release();
         }
+    }
+
+    internal static TimeSpan CalculateTokenCacheDuration(int expiresInSeconds)
+    {
+        return TimeSpan.FromSeconds(Math.Max(0, expiresInSeconds - 60));
     }
 
     private sealed class TokenResponse
