@@ -1,20 +1,48 @@
+using System.Collections.Concurrent;
 using Discord;
 using Discord.Commands;
+using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
+using Morpheus.Handlers;
 using Morpheus.Services;
 using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
 [Name("Subscriptions")]
-public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFeedService youtubeFeed, RssFeedService rssFeed, TwitchService twitch)
-    : ModuleBase<SocketCommandContextExtended>
+public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
 {
+    private const string BrowserCustomIdPrefix = "subscriptions_browser:";
+    private static readonly TimeSpan BrowserSessionLifetime = TimeSpan.FromMinutes(15);
+    private static readonly ConcurrentDictionary<ulong, SubscriptionBrowserSession> BrowserSessions = new();
+
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
+
+    private readonly DB db;
+    private readonly WebhookService webhookService;
+    private readonly YoutubeFeedService youtubeFeed;
+    private readonly RssFeedService rssFeed;
+    private readonly TwitchService twitch;
+
+    public SubscriptionsModule(
+        DB db,
+        WebhookService webhookService,
+        YoutubeFeedService youtubeFeed,
+        RssFeedService rssFeed,
+        TwitchService twitch,
+        InteractionsHandler interactionHandler)
+    {
+        this.db = db;
+        this.webhookService = webhookService;
+        this.youtubeFeed = youtubeFeed;
+        this.rssFeed = rssFeed;
+        this.twitch = twitch;
+        interactionHandler.RegisterInteraction("subscriptions_browser", HandleSubscriptionBrowserInteraction);
+    }
 
     // ============================= xkcd =============================
 
@@ -403,7 +431,7 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
     }
 
     [Name("List Subscriptions")]
-    [Summary("Lists all xkcd, YouTube, RSS and Twitch feed subscriptions configured in this server.")]
+    [Summary("Opens an interactive, paginated browser for all xkcd, YouTube, RSS and Twitch subscriptions configured in this server.")]
     [Command("subscriptions")]
     [Alias("listsubscriptions", "listsubs", "feeds", "ytsubs")]
     [RequireContext(ContextType.Guild)]
@@ -437,27 +465,210 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
             return;
         }
 
-        EmbedBuilder embed = new()
+        List<SubscriptionBrowserItem> items =
+        [
+            .. xkcd.Select(subscription => new SubscriptionBrowserItem(
+                SubscriptionFeedType.Xkcd,
+                "xkcd",
+                subscription.ChannelDiscordId,
+                "https://xkcd.com/")),
+            .. youtube.Select(subscription => new SubscriptionBrowserItem(
+                SubscriptionFeedType.Youtube,
+                subscription.YoutubeChannelTitle,
+                subscription.ChannelDiscordId,
+                $"https://www.youtube.com/channel/{subscription.YoutubeChannelId}")),
+            .. rss.Select(subscription => new SubscriptionBrowserItem(
+                SubscriptionFeedType.Rss,
+                subscription.DisplayName,
+                subscription.ChannelDiscordId,
+                subscription.FeedUrl)),
+            .. twitchSubs.Select(subscription => new SubscriptionBrowserItem(
+                SubscriptionFeedType.Twitch,
+                subscription.TwitchDisplayName,
+                subscription.ChannelDiscordId,
+                $"https://www.twitch.tv/{subscription.TwitchLogin}"))
+        ];
+
+        CleanupExpiredBrowserSessions();
+        SubscriptionBrowserSession session = new(Context.User.Id, Context.Guild.Id, items);
+        (Embed embed, MessageComponent components) = BuildSubscriptionBrowserView(session);
+        IUserMessage message = await ReplyAsync(embed: embed, components: components);
+        BrowserSessions[message.Id] = session;
+    }
+
+    private static async Task HandleSubscriptionBrowserInteraction(SocketInteraction interaction)
+    {
+        if (interaction is not SocketMessageComponent component)
+            return;
+
+        string customId = component.Data.CustomId ?? string.Empty;
+        if (!customId.StartsWith(BrowserCustomIdPrefix, StringComparison.Ordinal))
+            return;
+
+        if (!BrowserSessions.TryGetValue(component.Message.Id, out SubscriptionBrowserSession? session))
         {
-            Color = Utilities.Colors.Blue,
-            Title = "Feed subscriptions"
+            await component.RespondAsync("This subscription browser has expired. Run `subscriptions` again.", ephemeral: true);
+            return;
+        }
+
+        if (component.User.Id != session.UserId)
+        {
+            await component.RespondAsync("Only the person who opened this subscription browser can use its buttons.", ephemeral: true);
+            return;
+        }
+
+        if (component.GuildId != session.GuildId)
+        {
+            await component.RespondAsync("This subscription browser belongs to a different server.", ephemeral: true);
+            return;
+        }
+
+        if (DateTime.UtcNow - session.LastTouchedAt > BrowserSessionLifetime)
+        {
+            BrowserSessions.TryRemove(component.Message.Id, out _);
+            await component.RespondAsync("This subscription browser has expired. Run `subscriptions` again.", ephemeral: true);
+            return;
+        }
+
+        string action = customId[BrowserCustomIdPrefix.Length..];
+        if (action == "close")
+        {
+            BrowserSessions.TryRemove(component.Message.Id, out _);
+            await component.DeferAsync();
+            await component.Message.ModifyAsync(properties => properties.Components = new ComponentBuilder().Build());
+            return;
+        }
+
+        Embed embed;
+        MessageComponent components;
+        lock (session)
+        {
+            if (action == "previous")
+                session.PageIndex--;
+            else if (action == "next")
+                session.PageIndex++;
+            else if (action.StartsWith("filter:", StringComparison.Ordinal) &&
+                     Enum.TryParse(action["filter:".Length..], ignoreCase: true, out SubscriptionFeedType filter))
+            {
+                session.Filter = filter;
+                session.PageIndex = 0;
+            }
+
+            session.LastTouchedAt = DateTime.UtcNow;
+            (embed, components) = BuildSubscriptionBrowserView(session);
+        }
+
+        await component.DeferAsync();
+        await component.Message.ModifyAsync(properties =>
+        {
+            properties.Embed = embed;
+            properties.Components = components;
+        });
+    }
+
+    private static (Embed Embed, MessageComponent Components) BuildSubscriptionBrowserView(SubscriptionBrowserSession session)
+    {
+        SubscriptionBrowserPage page = SubscriptionBrowser.GetPage(session.Items, session.Filter, session.PageIndex);
+        session.PageIndex = page.PageIndex;
+
+        string counts = string.Join("  •  ", new[]
+        {
+            $"**{SubscriptionBrowser.Count(session.Items, SubscriptionFeedType.All)}** total",
+            $"YouTube {SubscriptionBrowser.Count(session.Items, SubscriptionFeedType.Youtube)}",
+            $"RSS {SubscriptionBrowser.Count(session.Items, SubscriptionFeedType.Rss)}",
+            $"Twitch {SubscriptionBrowser.Count(session.Items, SubscriptionFeedType.Twitch)}",
+            $"xkcd {SubscriptionBrowser.Count(session.Items, SubscriptionFeedType.Xkcd)}"
+        });
+
+        string entries = page.Items.Count == 0
+            ? "*No subscriptions in this category.*"
+            : string.Join("\n\n", page.Items.Select((item, index) => FormatBrowserItem(item, page.FirstItemNumber + index)));
+
+        Embed embed = new EmbedBuilder()
+            .WithColor(Utilities.Colors.Blue)
+            .WithTitle($"Feed subscriptions — {SubscriptionBrowser.DisplayName(page.Filter)}")
+            .WithDescription($"{counts}\n\n{entries}")
+            .WithFooter($"Page {page.PageIndex + 1}/{page.TotalPages} • Showing {page.FirstItemNumber}–{page.LastItemNumber} of {page.TotalItems} • Controls expire after 15 minutes")
+            .Build();
+
+        ComponentBuilder componentBuilder = new();
+        foreach (SubscriptionFeedType feedType in Enum.GetValues<SubscriptionFeedType>())
+        {
+            int count = SubscriptionBrowser.Count(session.Items, feedType);
+            componentBuilder.WithButton(
+                $"{SubscriptionBrowser.DisplayName(feedType)} {count}",
+                $"{BrowserCustomIdPrefix}filter:{feedType.ToString().ToLowerInvariant()}",
+                feedType == page.Filter ? ButtonStyle.Primary : ButtonStyle.Secondary,
+                disabled: count == 0,
+                row: 0);
+        }
+
+        componentBuilder
+            .WithButton("◀ Previous", $"{BrowserCustomIdPrefix}previous", ButtonStyle.Secondary, disabled: page.PageIndex == 0, row: 1)
+            .WithButton("Next ▶", $"{BrowserCustomIdPrefix}next", ButtonStyle.Secondary, disabled: page.PageIndex >= page.TotalPages - 1, row: 1)
+            .WithButton("Close", $"{BrowserCustomIdPrefix}close", ButtonStyle.Danger, row: 1);
+
+        return (embed, componentBuilder.Build());
+    }
+
+    private static string FormatBrowserItem(SubscriptionBrowserItem item, int number)
+    {
+        string icon = item.FeedType switch
+        {
+            SubscriptionFeedType.Youtube => "▶️",
+            SubscriptionFeedType.Rss => "📰",
+            SubscriptionFeedType.Twitch => "🟣",
+            SubscriptionFeedType.Xkcd => "💬",
+            _ => "•"
         };
+        string name = EscapeBrowserText(item.Name, 80);
+        string sourceLabel = item.FeedType switch
+        {
+            SubscriptionFeedType.Youtube => "Open YouTube channel",
+            SubscriptionFeedType.Rss => "Open feed",
+            SubscriptionFeedType.Twitch => "Open Twitch channel",
+            SubscriptionFeedType.Xkcd => "Open xkcd",
+            _ => "Open source"
+        };
+        string source = string.IsNullOrWhiteSpace(item.SourceUrl) || item.SourceUrl.Length > 200
+            ? string.Empty
+            : $" • [{sourceLabel}]({item.SourceUrl.Replace(")", "%29", StringComparison.Ordinal)})";
 
-        static string Clamp(string value) => value.Length > 1024 ? value[..1000] + "\n…" : value;
+        return $"`{number}.` {icon} **{name}**\n   <#{item.ChannelId}>{source}";
+    }
 
-        if (xkcd.Count > 0)
-            embed.AddField("xkcd", Clamp(string.Join("\n", xkcd.Select(s => $"<#{s.ChannelDiscordId}>"))));
+    private static string EscapeBrowserText(string value, int maxLength)
+    {
+        string escaped = value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("*", "\\*", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal)
+            .Replace("~", "\\~", StringComparison.Ordinal)
+            .Replace("`", "'", StringComparison.Ordinal)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+        return escaped.Length <= maxLength ? escaped : escaped[..(maxLength - 1)] + "…";
+    }
 
-        if (youtube.Count > 0)
-            embed.AddField("YouTube", Clamp(string.Join("\n", youtube.Select(s => $"**{s.YoutubeChannelTitle}** → <#{s.ChannelDiscordId}>"))));
+    private static void CleanupExpiredBrowserSessions()
+    {
+        DateTime cutoff = DateTime.UtcNow - BrowserSessionLifetime;
+        foreach ((ulong messageId, SubscriptionBrowserSession session) in BrowserSessions)
+        {
+            if (session.LastTouchedAt < cutoff)
+                BrowserSessions.TryRemove(messageId, out _);
+        }
+    }
 
-        if (rss.Count > 0)
-            embed.AddField("RSS", Clamp(string.Join("\n", rss.Select(s => $"**{s.DisplayName}** → <#{s.ChannelDiscordId}>"))));
-
-        if (twitchSubs.Count > 0)
-            embed.AddField("Twitch", Clamp(string.Join("\n", twitchSubs.Select(s => $"**{s.TwitchDisplayName}** → <#{s.ChannelDiscordId}>"))));
-
-        await ReplyAsync(embed: embed.Build());
+    private sealed class SubscriptionBrowserSession(ulong userId, ulong guildId, IReadOnlyList<SubscriptionBrowserItem> items)
+    {
+        public ulong UserId { get; } = userId;
+        public ulong GuildId { get; } = guildId;
+        public IReadOnlyList<SubscriptionBrowserItem> Items { get; } = items;
+        public SubscriptionFeedType Filter { get; set; } = SubscriptionFeedType.All;
+        public int PageIndex { get; set; }
+        public DateTime LastTouchedAt { get; set; } = DateTime.UtcNow;
     }
 
     private async Task<BulkSubscribeResult> SubscribeYoutubeSourceAsync(string source, ITextChannel target, Webhook webhook)
