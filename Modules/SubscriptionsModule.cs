@@ -92,44 +92,46 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
 
     // ============================ YouTube ============================
 
-    [Name("Subscribe to a YouTuber")]
-    [Summary("Posts a YouTuber's new videos in a channel. Accepts a channel URL, @handle, or channel id. Optionally pass a target channel; otherwise the current channel is used.")]
+    [Name("Subscribe to YouTube channels")]
+    [Summary("Posts new videos from one or more YouTube channels. Separate channel URLs, @handles, or ids with spaces/newlines, or attach a text file. Optionally pass a target Discord channel; otherwise the current channel is used.")]
     [Command("subscribeyoutube")]
     [Alias("ytsubscribe", "ytsub", "subyt", "subscribeyt")]
     [RequireUserPermission(GuildPermission.Administrator)]
     [RequireBotPermission(GuildPermission.ManageWebhooks)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(3, 30)]
-    public async Task SubscribeYoutubeAsync(string youtubeChannel, ITextChannel? channel = null)
+    public async Task SubscribeYoutubeAsync([Remainder] string? input = null)
     {
-        ITextChannel? target = channel ?? Context.Channel as ITextChannel;
+        string bulkInput;
+        try
+        {
+            bulkInput = await CollectBulkInputAsync(input);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await ReplyAsync(ex.Message);
+            return;
+        }
+
+        SubscriptionInputParser.SourceList parsed = SubscriptionInputParser.ParseSources(bulkInput);
+        ITextChannel? target = parsed.ChannelId.HasValue
+            ? Context.Guild.GetTextChannel(parsed.ChannelId.Value)
+            : Context.Channel as ITextChannel;
         if (target == null)
         {
             await ReplyAsync("Please use this in (or specify) a normal text channel.");
             return;
         }
 
-        using IDisposable typing = Context.Channel.EnterTypingState();
-
-        string? youtubeChannelId = await YoutubeUtils.ResolveChannelIdAsync(HttpClient, youtubeChannel);
-        if (string.IsNullOrEmpty(youtubeChannelId))
+        if (parsed.Sources.Count == 0)
         {
-            await ReplyAsync("I couldn't figure out which YouTube channel that is. Try a channel URL (e.g. `https://www.youtube.com/@Handle`), an `@handle`, or a channel id (`UC...`).");
+            await ReplyAsync("Provide one or more YouTube channel URLs, @handles, or channel ids, or attach a text file containing them.");
             return;
         }
 
-        (string? channelTitle, IReadOnlyList<YoutubeFeedService.VideoEntry> entries) = await youtubeFeed.FetchFeedAsync(youtubeChannelId);
-        if (channelTitle == null)
+        if (parsed.Sources.Count > 200)
         {
-            await ReplyAsync("I found the channel but couldn't read its uploads feed. It may have no public uploads. Please try again later.");
-            return;
-        }
-
-        YoutubeSubscription? existing = await db.YoutubeSubscriptions
-            .FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id && s.YoutubeChannelId == youtubeChannelId);
-        if (existing != null)
-        {
-            await ReplyAsync($"**{channelTitle}** is already being posted in <#{target.Id}>.");
+            await ReplyAsync("A single bulk command can contain at most 200 YouTube channels.");
             return;
         }
 
@@ -140,36 +142,21 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
             return;
         }
 
-        string? avatarUrl = await YoutubeUtils.GetChannelAvatarAsync(HttpClient, youtubeChannelId);
-
-        db.YoutubeSubscriptions.Add(new YoutubeSubscription
+        using IDisposable typing = Context.Channel.EnterTypingState();
+        List<BulkSubscribeResult> results = [];
+        foreach (string source in parsed.Sources)
         {
-            GuildDiscordId = target.GuildId,
-            ChannelDiscordId = target.Id,
-            YoutubeChannelId = youtubeChannelId,
-            YoutubeChannelTitle = channelTitle,
-            YoutubeAvatarUrl = avatarUrl,
-            WebhookId = webhook.Id,
-            InsertDate = DateTime.UtcNow
-        });
-
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            // Lost a race with a concurrent subscribe for the same (channel, youtuber).
-            await ReplyAsync($"**{channelTitle}** is already being posted in <#{target.Id}>.");
-            return;
+            try
+            {
+                results.Add(await SubscribeYoutubeSourceAsync(source, target, webhook));
+            }
+            catch (Exception ex)
+            {
+                results.Add(BulkSubscribeResult.Failed(source, ex.Message));
+            }
         }
 
-        // Seed the current uploads as "seen" so we don't backfill the whole history on the
-        // first job run — only videos published after now will be posted. Best-effort: the job's
-        // own initial-seed guard also prevents backfill, so a concurrent seed here is harmless.
-        await SeedSeenVideosBestEffortAsync(youtubeChannelId, entries);
-
-        await ReplyAsync($"Subscribed! New videos from **{channelTitle}** will now be posted in <#{target.Id}>.");
+        await ReplyBulkSummaryAsync("YouTube", target, results);
     }
 
     [Name("Unsubscribe from a YouTuber")]
@@ -210,16 +197,28 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
 
     // ========================= Generic RSS/Atom =========================
 
-    [Name("Subscribe to an RSS/Atom feed")]
-    [Summary("Posts new entries from an RSS or Atom feed in this channel. Works for blogs (e.g. https://blog.vycdev.com/index.xml) and GitHub feeds (e.g. https://github.com/owner/repo/releases.atom). Optionally give it a display name.")]
+    [Name("Subscribe to RSS/Atom feeds")]
+    [Summary("Posts new entries from one or more RSS or Atom feeds in this channel. Separate URLs with spaces/newlines, or attach a text file. A one-feed command can still include a display name; bulk files can use `URL | Display name`.")]
     [Command("subscriberss")]
     [Alias("rsssubscribe", "subrss", "addfeed", "subscribefeed")]
     [RequireUserPermission(GuildPermission.Administrator)]
     [RequireBotPermission(GuildPermission.ManageWebhooks)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(3, 30)]
-    public async Task SubscribeRssAsync(string feedUrl, [Remainder] string? displayName = null)
+    public async Task SubscribeRssAsync([Remainder] string? input = null)
     {
+        string bulkInput;
+        try
+        {
+            bulkInput = await CollectBulkInputAsync(input);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await ReplyAsync(ex.Message);
+            return;
+        }
+
+        IReadOnlyList<SubscriptionInputParser.RssSource> sources = SubscriptionInputParser.ParseRssSources(bulkInput);
         ITextChannel? target = Context.Channel as ITextChannel;
         if (target == null)
         {
@@ -227,28 +226,15 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
             return;
         }
 
-        if (!Uri.TryCreate(feedUrl, UriKind.Absolute, out Uri? uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (sources.Count == 0)
         {
-            await ReplyAsync("Please provide a valid feed URL starting with `http://` or `https://`.");
+            await ReplyAsync("Provide one or more RSS/Atom feed URLs, or attach a text file containing them.");
             return;
         }
 
-        feedUrl = uri.ToString();
-
-        using IDisposable typing = Context.Channel.EnterTypingState();
-
-        (string? feedTitle, string? feedImage, IReadOnlyList<RssFeedService.FeedEntry> entries) = await rssFeed.FetchAsync(feedUrl);
-        if (feedTitle == null && entries.Count == 0)
+        if (sources.Count > 200)
         {
-            await ReplyAsync("I couldn't read that feed. Make sure the URL points to a valid RSS or Atom feed.");
-            return;
-        }
-
-        RssSubscription? existing = await db.RssSubscriptions
-            .FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id && s.FeedUrl == feedUrl);
-        if (existing != null)
-        {
-            await ReplyAsync($"That feed is already being posted in <#{target.Id}>.");
+            await ReplyAsync("A single bulk command can contain at most 200 RSS/Atom feeds.");
             return;
         }
 
@@ -259,36 +245,21 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
             return;
         }
 
-        string name = !string.IsNullOrWhiteSpace(displayName) ? displayName!.Trim()
-            : !string.IsNullOrWhiteSpace(feedTitle) ? feedTitle!
-            : uri.Host;
-        if (name.Length > 80)
-            name = name[..80];
-
-        db.RssSubscriptions.Add(new RssSubscription
+        using IDisposable typing = Context.Channel.EnterTypingState();
+        List<BulkSubscribeResult> results = [];
+        foreach (SubscriptionInputParser.RssSource source in sources)
         {
-            GuildDiscordId = target.GuildId,
-            ChannelDiscordId = target.Id,
-            FeedUrl = feedUrl,
-            DisplayName = name,
-            AvatarUrl = feedImage,
-            WebhookId = webhook.Id,
-            InsertDate = DateTime.UtcNow
-        });
-
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            await ReplyAsync($"That feed is already being posted in <#{target.Id}>.");
-            return;
+            try
+            {
+                results.Add(await SubscribeRssSourceAsync(source, target, webhook));
+            }
+            catch (Exception ex)
+            {
+                results.Add(BulkSubscribeResult.Failed(source.Url, ex.Message));
+            }
         }
 
-        await SeedSeenRssBestEffortAsync(feedUrl, entries);
-
-        await ReplyAsync($"Subscribed! New entries from **{name}** will now be posted in <#{target.Id}>.");
+        await ReplyBulkSummaryAsync("RSS/Atom", target, results);
     }
 
     [Name("Unsubscribe from an RSS/Atom feed")]
@@ -326,44 +297,52 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
 
     // ============================= Twitch =============================
 
-    [Name("Subscribe to a Twitch streamer")]
-    [Summary("Posts a notification when a Twitch streamer goes live. Accepts a Twitch login/handle or channel URL. Optionally pass a target channel; otherwise the current channel is used.")]
+    [Name("Subscribe to Twitch streamers")]
+    [Summary("Posts go-live notifications for one or more Twitch streamers. Separate handles or URLs with spaces/newlines, or attach a text file. Optionally pass a target Discord channel; otherwise the current channel is used.")]
     [Command("subscribetwitch")]
     [Alias("twitchsubscribe", "twitchsub", "subtwitch")]
     [RequireUserPermission(GuildPermission.Administrator)]
     [RequireBotPermission(GuildPermission.ManageWebhooks)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(3, 30)]
-    public async Task SubscribeTwitchAsync(string streamer, ITextChannel? channel = null)
+    public async Task SubscribeTwitchAsync([Remainder] string? input = null)
     {
-        ITextChannel? target = channel ?? Context.Channel as ITextChannel;
+        string bulkInput;
+        try
+        {
+            bulkInput = await CollectBulkInputAsync(input);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await ReplyAsync(ex.Message);
+            return;
+        }
+
+        SubscriptionInputParser.SourceList parsed = SubscriptionInputParser.ParseSources(bulkInput);
+        ITextChannel? target = parsed.ChannelId.HasValue
+            ? Context.Guild.GetTextChannel(parsed.ChannelId.Value)
+            : Context.Channel as ITextChannel;
         if (target == null)
         {
             await ReplyAsync("Please use this in (or specify) a normal text channel.");
             return;
         }
 
+        if (parsed.Sources.Count == 0)
+        {
+            await ReplyAsync("Provide one or more Twitch handles or channel URLs, or attach a text file containing them.");
+            return;
+        }
+
+        if (parsed.Sources.Count > 200)
+        {
+            await ReplyAsync("A single bulk command can contain at most 200 Twitch streamers.");
+            return;
+        }
+
         if (!twitch.IsConfigured)
         {
             await ReplyAsync("Twitch notifications aren't configured on this bot (missing `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET`).");
-            return;
-        }
-
-        using IDisposable typing = Context.Channel.EnterTypingState();
-
-        string login = ExtractTwitchLogin(streamer);
-        TwitchService.TwitchUser? user = await twitch.GetUserAsync(login);
-        if (user == null)
-        {
-            await ReplyAsync($"I couldn't find a Twitch channel called `{login}`.");
-            return;
-        }
-
-        TwitchSubscription? existing = await db.TwitchSubscriptions
-            .FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id && s.TwitchUserId == user.Id);
-        if (existing != null)
-        {
-            await ReplyAsync($"**{user.DisplayName}** go-live notifications are already set up in <#{target.Id}>.");
             return;
         }
 
@@ -374,35 +353,21 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
             return;
         }
 
-        // Seed current live state so we don't fire a notification for a stream already in progress.
-        IReadOnlyDictionary<string, TwitchService.TwitchStream> live = await twitch.GetLiveStreamsAsync([user.Id]);
-        live.TryGetValue(user.Id, out TwitchService.TwitchStream? currentStream);
-
-        db.TwitchSubscriptions.Add(new TwitchSubscription
+        using IDisposable typing = Context.Channel.EnterTypingState();
+        List<BulkSubscribeResult> results = [];
+        foreach (string source in parsed.Sources)
         {
-            GuildDiscordId = target.GuildId,
-            ChannelDiscordId = target.Id,
-            TwitchUserId = user.Id,
-            TwitchLogin = user.Login,
-            TwitchDisplayName = user.DisplayName,
-            AvatarUrl = user.ProfileImageUrl,
-            IsLive = currentStream != null,
-            LastAnnouncedStreamId = currentStream?.Id,
-            WebhookId = webhook.Id,
-            InsertDate = DateTime.UtcNow
-        });
-
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            await ReplyAsync($"**{user.DisplayName}** go-live notifications are already set up in <#{target.Id}>.");
-            return;
+            try
+            {
+                results.Add(await SubscribeTwitchSourceAsync(source, target, webhook));
+            }
+            catch (Exception ex)
+            {
+                results.Add(BulkSubscribeResult.Failed(source, ex.Message));
+            }
         }
 
-        await ReplyAsync($"Subscribed! I'll post in <#{target.Id}> when **{user.DisplayName}** goes live.");
+        await ReplyBulkSummaryAsync("Twitch", target, results);
     }
 
     [Name("Unsubscribe from a Twitch streamer")]
@@ -493,6 +458,221 @@ public class SubscriptionsModule(DB db, WebhookService webhookService, YoutubeFe
             embed.AddField("Twitch", Clamp(string.Join("\n", twitchSubs.Select(s => $"**{s.TwitchDisplayName}** → <#{s.ChannelDiscordId}>"))));
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    private async Task<BulkSubscribeResult> SubscribeYoutubeSourceAsync(string source, ITextChannel target, Webhook webhook)
+    {
+        string? youtubeChannelId = await YoutubeUtils.ResolveChannelIdAsync(HttpClient, source);
+        if (string.IsNullOrEmpty(youtubeChannelId))
+            return BulkSubscribeResult.Failed(source, "Channel could not be resolved.");
+
+        (string? channelTitle, IReadOnlyList<YoutubeFeedService.VideoEntry> entries) = await youtubeFeed.FetchFeedAsync(youtubeChannelId);
+        if (channelTitle == null)
+            return BulkSubscribeResult.Failed(source, "Uploads feed could not be read.");
+
+        bool exists = await db.YoutubeSubscriptions
+            .AnyAsync(subscription => subscription.ChannelDiscordId == target.Id && subscription.YoutubeChannelId == youtubeChannelId);
+        if (exists)
+            return BulkSubscribeResult.Already(source, channelTitle);
+
+        string? avatarUrl = await YoutubeUtils.GetChannelAvatarAsync(HttpClient, youtubeChannelId);
+        YoutubeSubscription subscription = new()
+        {
+            GuildDiscordId = target.GuildId,
+            ChannelDiscordId = target.Id,
+            YoutubeChannelId = youtubeChannelId,
+            YoutubeChannelTitle = channelTitle,
+            YoutubeAvatarUrl = avatarUrl,
+            WebhookId = webhook.Id,
+            InsertDate = DateTime.UtcNow
+        };
+        db.YoutubeSubscriptions.Add(subscription);
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(subscription).State = EntityState.Detached;
+            return BulkSubscribeResult.Already(source, channelTitle);
+        }
+        catch
+        {
+            db.Entry(subscription).State = EntityState.Detached;
+            throw;
+        }
+
+        await SeedSeenVideosBestEffortAsync(youtubeChannelId, entries);
+        return BulkSubscribeResult.Subscribed(source, channelTitle);
+    }
+
+    private async Task<BulkSubscribeResult> SubscribeRssSourceAsync(
+        SubscriptionInputParser.RssSource source,
+        ITextChannel target,
+        Webhook webhook)
+    {
+        if (!Uri.TryCreate(source.Url, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return BulkSubscribeResult.Failed(source.Url, "URL must start with http:// or https://.");
+
+        string feedUrl = uri.ToString();
+        (string? feedTitle, string? feedImage, IReadOnlyList<RssFeedService.FeedEntry> entries) = await rssFeed.FetchAsync(feedUrl);
+        if (feedTitle == null && entries.Count == 0)
+            return BulkSubscribeResult.Failed(source.Url, "Feed could not be read.");
+
+        bool exists = await db.RssSubscriptions
+            .AnyAsync(subscription => subscription.ChannelDiscordId == target.Id && subscription.FeedUrl == feedUrl);
+        if (exists)
+            return BulkSubscribeResult.Already(source.Url, feedTitle ?? uri.Host);
+
+        string name = !string.IsNullOrWhiteSpace(source.DisplayName) ? source.DisplayName.Trim()
+            : !string.IsNullOrWhiteSpace(feedTitle) ? feedTitle
+            : uri.Host;
+        if (name.Length > 80)
+            name = name[..80];
+
+        RssSubscription subscription = new()
+        {
+            GuildDiscordId = target.GuildId,
+            ChannelDiscordId = target.Id,
+            FeedUrl = feedUrl,
+            DisplayName = name,
+            AvatarUrl = feedImage,
+            WebhookId = webhook.Id,
+            InsertDate = DateTime.UtcNow
+        };
+        db.RssSubscriptions.Add(subscription);
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(subscription).State = EntityState.Detached;
+            return BulkSubscribeResult.Already(source.Url, name);
+        }
+        catch
+        {
+            db.Entry(subscription).State = EntityState.Detached;
+            throw;
+        }
+
+        await SeedSeenRssBestEffortAsync(feedUrl, entries);
+        return BulkSubscribeResult.Subscribed(source.Url, name);
+    }
+
+    private async Task<BulkSubscribeResult> SubscribeTwitchSourceAsync(string source, ITextChannel target, Webhook webhook)
+    {
+        string login = ExtractTwitchLogin(source);
+        TwitchService.TwitchUser? user = await twitch.GetUserAsync(login);
+        if (user == null)
+            return BulkSubscribeResult.Failed(source, $"Twitch channel `{login}` was not found.");
+
+        bool exists = await db.TwitchSubscriptions
+            .AnyAsync(subscription => subscription.ChannelDiscordId == target.Id && subscription.TwitchUserId == user.Id);
+        if (exists)
+            return BulkSubscribeResult.Already(source, user.DisplayName);
+
+        IReadOnlyDictionary<string, TwitchService.TwitchStream> live = await twitch.GetLiveStreamsAsync([user.Id]);
+        live.TryGetValue(user.Id, out TwitchService.TwitchStream? currentStream);
+
+        TwitchSubscription subscription = new()
+        {
+            GuildDiscordId = target.GuildId,
+            ChannelDiscordId = target.Id,
+            TwitchUserId = user.Id,
+            TwitchLogin = user.Login,
+            TwitchDisplayName = user.DisplayName,
+            AvatarUrl = user.ProfileImageUrl,
+            IsLive = currentStream != null,
+            LastAnnouncedStreamId = currentStream?.Id,
+            WebhookId = webhook.Id,
+            InsertDate = DateTime.UtcNow
+        };
+        db.TwitchSubscriptions.Add(subscription);
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(subscription).State = EntityState.Detached;
+            return BulkSubscribeResult.Already(source, user.DisplayName);
+        }
+        catch
+        {
+            db.Entry(subscription).State = EntityState.Detached;
+            throw;
+        }
+
+        return BulkSubscribeResult.Subscribed(source, user.DisplayName);
+    }
+
+    private async Task<string> CollectBulkInputAsync(string? input)
+    {
+        List<string> parts = [];
+        if (!string.IsNullOrWhiteSpace(input))
+            parts.Add(input);
+
+        foreach (Attachment attachment in Context.Message.Attachments)
+        {
+            if (attachment.Size > 256 * 1024)
+                throw new InvalidOperationException($"Attachment `{attachment.Filename}` is too large. Bulk-list files must be 256 KB or smaller.");
+
+            string extension = Path.GetExtension(attachment.Filename);
+            if (!extension.Equals(".txt", StringComparison.OrdinalIgnoreCase) &&
+                !extension.Equals(".csv", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Attachment `{attachment.Filename}` must be a .txt or .csv file.");
+
+            parts.Add(await HttpClient.GetStringAsync(attachment.Url));
+        }
+
+        return string.Join('\n', parts);
+    }
+
+    private async Task ReplyBulkSummaryAsync(string sourceType, ITextChannel target, IReadOnlyList<BulkSubscribeResult> results)
+    {
+        int subscribed = results.Count(result => result.Status == BulkSubscribeStatus.Subscribed);
+        int already = results.Count(result => result.Status == BulkSubscribeStatus.AlreadySubscribed);
+        int failed = results.Count(result => result.Status == BulkSubscribeStatus.Failed);
+        string response = $"{sourceType} subscription finished for <#{target.Id}>: **{subscribed} subscribed**, **{already} already subscribed**, **{failed} failed**.";
+
+        foreach (BulkSubscribeResult failure in results.Where(result => result.Status == BulkSubscribeStatus.Failed))
+        {
+            string line = $"\n- `{ClampSummaryText(failure.Source, 100)}`: {ClampSummaryText(failure.Detail ?? "Unknown error", 180)}";
+            if (response.Length + line.Length > 1900)
+            {
+                response += "\n- Additional failures omitted; fix the listed inputs, then retry the same bulk command.";
+                break;
+            }
+
+            response += line;
+        }
+
+        await ReplyAsync(response);
+    }
+
+    private static string ClampSummaryText(string value, int maxLength)
+    {
+        string sanitized = value.Replace('`', '\'').Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return sanitized.Length <= maxLength ? sanitized : sanitized[..(maxLength - 1)] + "…";
+    }
+
+    private enum BulkSubscribeStatus
+    {
+        Subscribed,
+        AlreadySubscribed,
+        Failed
+    }
+
+    private sealed record BulkSubscribeResult(string Source, string Label, BulkSubscribeStatus Status, string? Detail = null)
+    {
+        public static BulkSubscribeResult Subscribed(string source, string label) => new(source, label, BulkSubscribeStatus.Subscribed);
+        public static BulkSubscribeResult Already(string source, string label) => new(source, label, BulkSubscribeStatus.AlreadySubscribed);
+        public static BulkSubscribeResult Failed(string source, string detail) => new(source, source, BulkSubscribeStatus.Failed, detail);
     }
 
     private async Task SeedSeenRssBestEffortAsync(string feedUrl, IReadOnlyList<RssFeedService.FeedEntry> entries)
