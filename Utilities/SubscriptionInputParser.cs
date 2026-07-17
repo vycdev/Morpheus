@@ -6,6 +6,13 @@ internal static partial class SubscriptionInputParser
 {
     internal sealed record SourceList(IReadOnlyList<string> Sources, ulong? ChannelId);
     internal sealed record RssSource(string Url, string? DisplayName);
+    private sealed record RssUrlKey(
+        string Scheme,
+        string Host,
+        int Port,
+        string UserInfo,
+        string PathAndQuery,
+        string Fragment);
 
     public static SourceList ParseSources(string input)
     {
@@ -62,9 +69,21 @@ internal static partial class SubscriptionInputParser
         }
 
         return sources
-            .GroupBy(source => source.Url, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(source => GetRssUrlKey(source.Url))
             .Select(group => group.First())
             .ToArray();
+    }
+
+    private static RssUrlKey GetRssUrlKey(string value)
+    {
+        Uri uri = new(value, UriKind.Absolute);
+        return new RssUrlKey(
+            uri.Scheme.ToLowerInvariant(),
+            uri.IdnHost.ToLowerInvariant(),
+            uri.Port,
+            uri.UserInfo,
+            uri.PathAndQuery,
+            uri.Fragment);
     }
 
     private static IEnumerable<string> SplitTokens(string input) => input
