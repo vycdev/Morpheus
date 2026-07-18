@@ -75,4 +75,15 @@ public class SubscriptionInputParserTests
             ["https://EXAMPLE.com/Feed.xml", "https://example.com/feed.xml"],
             parsed.Select(source => source.Url));
     }
+
+    [Fact]
+    public void ParseRssSources_PreservesCaseSensitivePathsInSpaceSeparatedUrls()
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            "https://example.com/Feed.xml https://example.com/feed.xml");
+
+        Assert.Equal(
+            ["https://example.com/Feed.xml", "https://example.com/feed.xml"],
+            parsed.Select(source => source.Url));
+    }
 }

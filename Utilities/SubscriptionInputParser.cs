@@ -44,7 +44,10 @@ internal static partial class SubscriptionInputParser
             string[] tokens = SplitTokens(lines[0]).ToArray();
             string[] urls = tokens.Where(IsHttpUrl).ToArray();
             if (urls.Length > 1)
-                return Deduplicate(urls).Select(url => new RssSource(url, null)).ToArray();
+                return urls
+                    .GroupBy(GetRssUrlKey)
+                    .Select(group => new RssSource(group.First(), null))
+                    .ToArray();
         }
 
         List<RssSource> sources = [];
