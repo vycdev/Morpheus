@@ -923,7 +923,7 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
         }
     }
 
-    private static string ExtractTwitchLogin(string input)
+    internal static string ExtractTwitchLogin(string input)
     {
         input = input.Trim();
 
@@ -932,11 +932,11 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
         if (idx >= 0)
             input = input[(idx + "twitch.tv/".Length)..];
 
-        // Strip any leading @, trailing slash / query, and lowercase.
+        // Strip any leading @, trailing slash, query, or fragment, and lowercase.
         input = input.TrimStart('@').Trim('/');
-        int slash = input.IndexOfAny(['/', '?']);
-        if (slash >= 0)
-            input = input[..slash];
+        int delimiter = input.IndexOfAny(['/', '?', '#']);
+        if (delimiter >= 0)
+            input = input[..delimiter];
 
         return input.ToLowerInvariant();
     }
