@@ -293,7 +293,8 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     public async Task RockPaperScissors(string choice)
     {
         string[] choices = ["rock", "paper", "scissors"];
-        if (!choices.Contains(choice.ToLower()))
+        choice = NormalizeRockPaperScissorsChoice(choice);
+        if (!choices.Contains(choice))
         {
             await ReplyAsync("Invalid choice. Please choose either `rock`, `paper`, or `scissors`.");
             return;
@@ -319,6 +320,8 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             return;
         }
     }
+
+    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.ToLowerInvariant();
 
     [Name("Info")]
     [Summary("Displays information about the bot.")]
