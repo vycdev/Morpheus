@@ -34,39 +34,50 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
 
         foreach (TwitchSubscription sub in subscriptions)
         {
-            bool isLiveNow = live.TryGetValue(sub.TwitchUserId, out TwitchService.TwitchStream? stream);
-
-            if (isLiveNow && stream != null)
-            {
-                // Announce only on a fresh stream (not one we've already posted about).
-                if (sub.LastAnnouncedStreamId != stream.Id)
-                {
-                    await AnnounceAsync(sub, stream);
-                    sub.LastAnnouncedStreamId = stream.Id;
-                    changed = true;
-                }
-
-                if (!sub.IsLive)
-                {
-                    sub.IsLive = true;
-                    changed = true;
-                }
-            }
-            else if (sub.IsLive)
-            {
-                sub.IsLive = false;
-                changed = true;
-            }
+            live.TryGetValue(sub.TwitchUserId, out TwitchService.TwitchStream? stream);
+            changed |= await UpdateSubscriptionAsync(sub, stream, AnnounceAsync);
         }
 
         if (changed)
             await db.SaveChangesAsync();
     }
 
-    private async Task AnnounceAsync(TwitchSubscription sub, TwitchService.TwitchStream stream)
+    internal static async Task<bool> UpdateSubscriptionAsync(
+        TwitchSubscription sub,
+        TwitchService.TwitchStream? stream,
+        Func<TwitchSubscription, TwitchService.TwitchStream, Task<bool>> announceAsync)
+    {
+        bool changed = false;
+
+        if (stream != null)
+        {
+            // Record a stream only after Discord accepts the notification. A failed delivery is
+            // retried on the next poll instead of being silently treated as announced.
+            if (sub.LastAnnouncedStreamId != stream.Id && await announceAsync(sub, stream))
+            {
+                sub.LastAnnouncedStreamId = stream.Id;
+                changed = true;
+            }
+
+            if (!sub.IsLive)
+            {
+                sub.IsLive = true;
+                changed = true;
+            }
+        }
+        else if (sub.IsLive)
+        {
+            sub.IsLive = false;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private async Task<bool> AnnounceAsync(TwitchSubscription sub, TwitchService.TwitchStream stream)
     {
         if (sub.Webhook == null)
-            return;
+            return false;
 
         string title = string.IsNullOrWhiteSpace(stream.Title) ? string.Empty : $"\n{stream.Title}";
         string content = $"🔴 **{sub.TwitchDisplayName}** is now live!{title}\nhttps://www.twitch.tv/{sub.TwitchLogin}";
@@ -74,5 +85,7 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
         bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, content, sub.TwitchDisplayName, sub.AvatarUrl);
         if (!ok)
             logsService.Log($"TwitchLiveJob: failed to post go-live for {sub.TwitchLogin} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }
