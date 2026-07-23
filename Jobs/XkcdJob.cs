@@ -23,16 +23,19 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
 
     private record XkcdItem(string Title, string Link);
 
+    internal static bool ShouldFetchFeed(int subscriptionCount) => subscriptionCount > 0;
+
     public async Task Execute(IJobExecutionContext context)
     {
         List<XkcdSubscription> subscriptions = await db.XkcdSubscriptions
             .Include(s => s.Webhook)
             .ToListAsync();
 
-        // Nothing to post to and nothing seeded yet — cheap early exit until someone subscribes.
-        bool hasSeen = await db.XkcdSeen.AnyAsync();
-        if (subscriptions.Count == 0 && hasSeen)
+        // Leave the feed unseeded until there is somewhere to post the initial comic.
+        if (!ShouldFetchFeed(subscriptions.Count))
             return;
+
+        bool hasSeen = await db.XkcdSeen.AnyAsync();
 
         List<XkcdItem> items;
         try

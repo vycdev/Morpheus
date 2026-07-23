@@ -59,6 +59,23 @@ public class SlotsServiceTests
         Assert.Equal(-4_990_000m, result.VaultDelta);
     }
 
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(26, false)]
+    public void Spin_UnderfundedWinCannotOverdrawVault(int roll, bool jackpotDisabled)
+    {
+        const decimal vaultAmount = 1_000m;
+
+        SlotsSpinResult result = slotsService.Spin(10_000m, vaultAmount, roll);
+
+        Assert.Equal(jackpotDisabled, result.IsJackpotDisabled);
+        Assert.Equal(SlotsOutcomeKind.MegaWin, result.Outcome.Kind);
+        Assert.True(result.IsPayoutCapped);
+        Assert.Equal(11_000m, result.GrossWinnings);
+        Assert.Equal(-vaultAmount, result.VaultDelta);
+        Assert.Equal(0m, vaultAmount + result.VaultDelta);
+    }
+
     [Fact]
     public void Spin_PushReturnsBetWithoutTaxOrVaultMovement()
     {

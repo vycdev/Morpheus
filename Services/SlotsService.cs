@@ -59,6 +59,14 @@ public sealed class SlotsService
             grossWinnings = bet * selectedOutcome.Multiplier;
         }
 
+        decimal availablePayout = Math.Max(0m, vaultAmount + bet);
+        if (grossWinnings > availablePayout)
+        {
+            grossWinnings = availablePayout;
+            resultDescription += " (Capped)";
+            payoutCapped = true;
+        }
+
         decimal profit = grossWinnings - bet;
         decimal tax = profit > 0 ? profit * TaxRate : 0m;
         decimal netWinnings = grossWinnings - tax;
