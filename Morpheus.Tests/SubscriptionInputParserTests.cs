@@ -86,4 +86,35 @@ public class SubscriptionInputParserTests
             ["https://example.com/Feed.xml", "https://example.com/feed.xml"],
             parsed.Select(source => source.Url));
     }
+
+    [Theory]
+    [InlineData("https://example.com/feed.xml#news https://example.com/feed.xml#releases")]
+    [InlineData("https://example.com/feed.xml#news\nhttps://example.com/feed.xml#releases")]
+    public void ParseRssSources_IgnoresFragmentsWhenDeduplicating(string input)
+    {
+        SubscriptionInputParser.RssSource source = Assert.Single(SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal("https://example.com/feed.xml", source.Url);
+    }
+
+    [Fact]
+    public void ParseRssSources_PreservesQueryWhenRemovingFragments()
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            "https://example.com/feed.xml?category=news#top\nhttps://example.com/feed.xml?category=releases#top");
+
+        Assert.Equal(
+            ["https://example.com/feed.xml?category=news", "https://example.com/feed.xml?category=releases"],
+            parsed.Select(source => source.Url));
+    }
+
+    [Fact]
+    public void ParseRssSources_RemovesFragmentFromSingleFeedWithDisplayName()
+    {
+        SubscriptionInputParser.RssSource source = Assert.Single(
+            SubscriptionInputParser.ParseRssSources("https://example.com/feed.xml#news Example feed"));
+
+        Assert.Equal("https://example.com/feed.xml", source.Url);
+        Assert.Equal("Example feed", source.DisplayName);
+    }
 }
