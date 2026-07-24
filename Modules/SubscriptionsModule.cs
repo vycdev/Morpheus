@@ -306,10 +306,13 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        string normalized = Uri.TryCreate(feedUrl, UriKind.Absolute, out Uri? uri) ? uri.ToString() : feedUrl;
+        string fragmentlessFeedUrl = SubscriptionInputParser.RemoveRssFragment(feedUrl);
+        string normalized = Uri.TryCreate(fragmentlessFeedUrl, UriKind.Absolute, out Uri? uri) ? uri.ToString() : fragmentlessFeedUrl;
+        string legacyFeedPattern = EscapeLikePattern(normalized) + "#%";
 
         RssSubscription? existing = await db.RssSubscriptions
-            .FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id && (s.FeedUrl == normalized || s.FeedUrl == feedUrl));
+            .FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id &&
+                (s.FeedUrl == normalized || EF.Functions.Like(s.FeedUrl, legacyFeedPattern, "\\")));
         if (existing == null)
         {
             await ReplyAsync($"That feed isn't being posted in <#{target.Id}>.");
@@ -723,7 +726,8 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
         ITextChannel target,
         Webhook webhook)
     {
-        if (!Uri.TryCreate(source.Url, UriKind.Absolute, out Uri? uri) ||
+        string fragmentlessFeedUrl = SubscriptionInputParser.RemoveRssFragment(source.Url);
+        if (!Uri.TryCreate(fragmentlessFeedUrl, UriKind.Absolute, out Uri? uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             return BulkSubscribeResult.Failed(source.Url, "URL must start with http:// or https://.");
 
@@ -732,8 +736,10 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
         if (feedTitle == null && entries.Count == 0)
             return BulkSubscribeResult.Failed(source.Url, "Feed could not be read.");
 
+        string legacyFeedPattern = EscapeLikePattern(feedUrl) + "#%";
         bool exists = await db.RssSubscriptions
-            .AnyAsync(subscription => subscription.ChannelDiscordId == target.Id && subscription.FeedUrl == feedUrl);
+            .AnyAsync(subscription => subscription.ChannelDiscordId == target.Id &&
+                (subscription.FeedUrl == feedUrl || EF.Functions.Like(subscription.FeedUrl, legacyFeedPattern, "\\")));
         if (exists)
             return BulkSubscribeResult.Already(source.Url, feedTitle ?? uri.Host);
 
@@ -940,6 +946,11 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
 
         return input.ToLowerInvariant();
     }
+
+    internal static string EscapeLikePattern(string value) => value
+        .Replace("\\", "\\\\", StringComparison.Ordinal)
+        .Replace("%", "\\%", StringComparison.Ordinal)
+        .Replace("_", "\\_", StringComparison.Ordinal);
 
     private async Task SeedSeenVideosBestEffortAsync(string youtubeChannelId, IReadOnlyList<YoutubeFeedService.VideoEntry> entries)
     {

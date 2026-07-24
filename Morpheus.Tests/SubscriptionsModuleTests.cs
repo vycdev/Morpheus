@@ -11,4 +11,12 @@ public class SubscriptionsModuleTests
 
         Assert.Equal("streamer", login);
     }
+
+    [Fact]
+    public void EscapeLikePattern_EscapesWildcardsAndEscapeCharacters()
+    {
+        string escaped = SubscriptionsModule.EscapeLikePattern(@"https://example.com/feed?q=a%20_b\c");
+
+        Assert.Equal(@"https://example.com/feed?q=a\%20\_b\\c", escaped);
+    }
 }
