@@ -48,7 +48,8 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
             if (initialSeed)
             {
                 RssFeedService.FeedEntry latest = entries.OrderByDescending(e => e.Published).First();
-                await DispatchAsync(latest, subs);
+                if (!await DispatchAsync(latest, subs, SendAsync))
+                    continue;
 
                 foreach (RssFeedService.FeedEntry entry in entries)
                 {
@@ -64,7 +65,8 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
                 if (seen.Contains(entry.EntryId))
                     continue;
 
-                await DispatchAsync(entry, subs);
+                if (!await DispatchAsync(entry, subs, SendAsync))
+                    continue;
 
                 db.RssSeenEntries.Add(new RssSeenEntry { FeedUrl = feedUrl, EntryId = entry.EntryId, SeenAt = DateTime.UtcNow });
                 seen.Add(entry.EntryId);
@@ -76,20 +78,37 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
             await db.SaveChangesAsync();
     }
 
-    private async Task DispatchAsync(RssFeedService.FeedEntry entry, List<RssSubscription> subs)
+    internal static async Task<bool> DispatchAsync(
+        RssFeedService.FeedEntry entry,
+        IReadOnlyList<RssSubscription> subs,
+        Func<RssSubscription, string, Task<bool>> sendAsync)
     {
         string content = !string.IsNullOrWhiteSpace(entry.Link) ? entry.Link : entry.Title;
         if (string.IsNullOrWhiteSpace(content))
-            return;
+            return true;
 
+        bool allSucceeded = true;
         foreach (RssSubscription sub in subs)
         {
-            if (sub.Webhook == null)
-                continue;
-
-            bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, content, sub.DisplayName, sub.AvatarUrl);
-            if (!ok)
-                logsService.Log($"RssFeedJob: failed to post entry from {sub.FeedUrl} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            if (!await sendAsync(sub, content))
+                allSucceeded = false;
         }
+
+        return allSucceeded;
+    }
+
+    private async Task<bool> SendAsync(RssSubscription sub, string content)
+    {
+        if (sub.Webhook == null)
+        {
+            logsService.Log($"RssFeedJob: no webhook available for {sub.FeedUrl} in channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            return false;
+        }
+
+        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, content, sub.DisplayName, sub.AvatarUrl);
+        if (!ok)
+            logsService.Log($"RssFeedJob: failed to post entry from {sub.FeedUrl} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }
