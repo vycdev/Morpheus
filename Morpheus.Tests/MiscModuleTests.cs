@@ -12,4 +12,12 @@ public class MiscModuleTests
     {
         Assert.Equal(expected, MiscModule.NormalizeRockPaperScissorsChoice(choice));
     }
+
+    [Fact]
+    public void GenerateRandomNumber_SupportsIntMaxValueAsInclusiveUpperBound()
+    {
+        int result = MiscModule.GenerateRandomNumber(int.MaxValue, int.MaxValue);
+
+        Assert.Equal(int.MaxValue, result);
+    }
 }
