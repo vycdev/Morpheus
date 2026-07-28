@@ -71,7 +71,8 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
             if (initialSeed)
             {
                 YoutubeFeedService.VideoEntry latest = entries.OrderByDescending(e => e.Published).First();
-                await DispatchAsync(latest, subs, username, avatar);
+                if (!await DispatchAsync(subs, sub => SendAsync(sub, latest, username, avatar)))
+                    continue;
 
                 foreach (YoutubeFeedService.VideoEntry entry in entries)
                 {
@@ -87,7 +88,8 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
                 if (seen.Contains(entry.VideoId))
                     continue;
 
-                await DispatchAsync(entry, subs, username, avatar);
+                if (!await DispatchAsync(subs, sub => SendAsync(sub, entry, username, avatar)))
+                    continue;
 
                 db.YoutubeSeenVideos.Add(new YoutubeSeenVideo { YoutubeChannelId = youtubeChannelId, VideoId = entry.VideoId, SeenAt = DateTime.UtcNow });
                 seen.Add(entry.VideoId);
@@ -99,16 +101,36 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
             await db.SaveChangesAsync();
     }
 
-    private async Task DispatchAsync(YoutubeFeedService.VideoEntry entry, List<YoutubeSubscription> subs, string username, string? avatar)
+    internal static async Task<bool> DispatchAsync(
+        IReadOnlyList<YoutubeSubscription> subs,
+        Func<YoutubeSubscription, Task<bool>> sendAsync)
     {
+        bool allSucceeded = true;
         foreach (YoutubeSubscription sub in subs)
         {
-            if (sub.Webhook == null)
-                continue;
-
-            bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, entry.Link, username, avatar);
-            if (!ok)
-                logsService.Log($"YoutubeRssJob: failed to post {entry.VideoId} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            if (!await sendAsync(sub))
+                allSucceeded = false;
         }
+
+        return allSucceeded;
+    }
+
+    private async Task<bool> SendAsync(
+        YoutubeSubscription sub,
+        YoutubeFeedService.VideoEntry entry,
+        string username,
+        string? avatar)
+    {
+        if (sub.Webhook == null)
+        {
+            logsService.Log($"YoutubeRssJob: no webhook available for {sub.YoutubeChannelId} in channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            return false;
+        }
+
+        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, entry.Link, username, avatar);
+        if (!ok)
+            logsService.Log($"YoutubeRssJob: failed to post {entry.VideoId} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }
