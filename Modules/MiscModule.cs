@@ -241,12 +241,16 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task RandomNumber(int min, int max)
     {
-        if (min >= max)
+        int number = GenerateRandomNumber(min, max);
+        await ReplyAsync(number.ToString());
+    }
+
+    internal static int GenerateRandomNumber(int min, int max)
+    {
+        if (min > max)
             (min, max) = (max, min);
 
-        Random random = new();
-        int number = random.Next(min, max + 1);
-        await ReplyAsync(number.ToString());
+        return (int)Random.Shared.NextInt64(min, (long)max + 1);
     }
 
     [Name("8 Ball")]
