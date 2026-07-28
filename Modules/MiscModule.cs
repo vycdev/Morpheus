@@ -97,17 +97,17 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
                 break;
             case "christmas":
             case "xmas":
-                eventDate = new DateTime(now.Year, 12, 25);
+                eventDate = GetNextAnnualEventDate(now, 12, 25);
                 break;
             case "halloween":
             case "hw":
-                eventDate = new DateTime(now.Year, 10, 31);
+                eventDate = GetNextAnnualEventDate(now, 10, 31);
                 break;
             case "cc day":
             case "ccbday":
             case "cc bday":
             case "cc birthday":
-                eventDate = new DateTime(now.Year, 9, 2);
+                eventDate = GetNextAnnualEventDate(now, 9, 2);
                 break;
             default:
                 await ReplyAsync("Invalid event name.\nValid events are: `new year`, `xmas`, `halloween`, `cc bday`");
@@ -116,6 +116,12 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
 
         string timeUntil = now.GetAccurateTimeSpan(eventDate);
         await ReplyAsync($"Time until {eventName}: {timeUntil}");
+    }
+
+    internal static DateTime GetNextAnnualEventDate(DateTime now, int month, int day)
+    {
+        DateTime eventDate = new(now.Year, month, day, 0, 0, 0, now.Kind);
+        return eventDate < now ? eventDate.AddYears(1) : eventDate;
     }
 
     [Name("Coin Flip")]
