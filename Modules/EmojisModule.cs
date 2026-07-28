@@ -98,8 +98,8 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Get the message the user replied to
-
-        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage message)
+        if (!TryGetReferencedMessageId(Context.Message.ReferencedMessage?.Id, out ulong referencedMessageId) ||
+            await Context.Channel.GetMessageAsync(referencedMessageId) is not IUserMessage message)
         {
             await ReplyAsync("You need to reply to a message to react to it.");
             return;
@@ -116,6 +116,12 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         {
             logsService.Log($"Failed to delete user message after react: {ex}", LogSeverity.Warning);
         }
+    }
+
+    internal static bool TryGetReferencedMessageId(ulong? referencedMessageId, out ulong messageId)
+    {
+        messageId = referencedMessageId.GetValueOrDefault();
+        return referencedMessageId.HasValue;
     }
 
     [Name("List Emojis")]
