@@ -19,8 +19,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task DumpLogsAsync(int page = 1)
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Env.Variables["OWNER_ID"];
-        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        if (!TryParseOwnerId(Env.Variables.GetValueOrDefault("OWNER_ID"), out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
             return;
@@ -88,8 +87,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task GuildCountAsync()
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Env.Variables["OWNER_ID"];
-        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        if (!TryParseOwnerId(Env.Variables.GetValueOrDefault("OWNER_ID"), out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
             return;
@@ -114,8 +112,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task SendToChannelAsync(ulong channelId, [Remainder] string text)
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Env.Variables["OWNER_ID"];
-        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        if (!TryParseOwnerId(Env.Variables.GetValueOrDefault("OWNER_ID"), out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
             return;
@@ -163,5 +160,11 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
         {
             await ReplyAsync($"Failed to send message: {ex.Message}");
         }
+    }
+
+    internal static bool TryParseOwnerId(string? value, out ulong ownerId)
+    {
+        ownerId = 0;
+        return !string.IsNullOrWhiteSpace(value) && ulong.TryParse(value, out ownerId);
     }
 }
