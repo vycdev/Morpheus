@@ -11,8 +11,7 @@ internal static partial class SubscriptionInputParser
         string Host,
         int Port,
         string UserInfo,
-        string PathAndQuery,
-        string Fragment);
+        string PathAndQuery);
 
     public static SourceList ParseSources(string input)
     {
@@ -46,7 +45,7 @@ internal static partial class SubscriptionInputParser
             if (urls.Length > 1)
                 return urls
                     .GroupBy(GetRssUrlKey)
-                    .Select(group => new RssSource(group.First(), null))
+                    .Select(group => new RssSource(RemoveRssFragment(group.First()), null))
                     .ToArray();
         }
 
@@ -73,7 +72,11 @@ internal static partial class SubscriptionInputParser
 
         return sources
             .GroupBy(source => GetRssUrlKey(source.Url))
-            .Select(group => group.First())
+            .Select(group =>
+            {
+                RssSource source = group.First();
+                return source with { Url = RemoveRssFragment(source.Url) };
+            })
             .ToArray();
     }
 
@@ -85,8 +88,13 @@ internal static partial class SubscriptionInputParser
             uri.IdnHost.ToLowerInvariant(),
             uri.Port,
             uri.UserInfo,
-            uri.PathAndQuery,
-            uri.Fragment);
+            uri.PathAndQuery);
+    }
+
+    internal static string RemoveRssFragment(string value)
+    {
+        int fragmentIndex = value.IndexOf('#');
+        return fragmentIndex >= 0 ? value[..fragmentIndex] : value;
     }
 
     private static IEnumerable<string> SplitTokens(string input) => input
