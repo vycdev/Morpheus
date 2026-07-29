@@ -61,12 +61,14 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
         // First run ever: seed everything as seen so we don't backfill the whole archive.
         if (!hasSeen)
         {
+            // Post only the most recent comic to existing subscribers as a kick-off.
+            XkcdItem latest = items[0];
+            if (!await DispatchAsync(latest.Link, subscriptions, SendAsync))
+                return;
+
             foreach (XkcdItem item in items)
                 db.XkcdSeen.Add(new XkcdSeen { Link = item.Link, SeenAt = DateTime.UtcNow });
 
-            // Post only the most recent comic to existing subscribers as a kick-off.
-            XkcdItem latest = items[0];
-            await DispatchAsync(latest, subscriptions);
             await db.SaveChangesAsync();
             return;
         }
@@ -85,21 +87,42 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
 
         foreach (XkcdItem item in newItems)
         {
-            await DispatchAsync(item, subscriptions);
+            if (!await DispatchAsync(item.Link, subscriptions, SendAsync))
+                continue;
+
             db.XkcdSeen.Add(new XkcdSeen { Link = item.Link, SeenAt = DateTime.UtcNow });
         }
 
         await db.SaveChangesAsync();
     }
 
-    private async Task DispatchAsync(XkcdItem item, List<XkcdSubscription> subscriptions)
+    internal static async Task<bool> DispatchAsync(
+        string link,
+        IReadOnlyList<XkcdSubscription> subscriptions,
+        Func<XkcdSubscription, string, Task<bool>> sendAsync)
     {
+        bool allSucceeded = true;
         foreach (XkcdSubscription sub in subscriptions)
         {
-            if (sub.Webhook == null)
-                continue;
-
-            await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, item.Link, XkcdUsername, XkcdAvatarUrl);
+            if (!await sendAsync(sub, link))
+                allSucceeded = false;
         }
+
+        return allSucceeded;
+    }
+
+    private async Task<bool> SendAsync(XkcdSubscription sub, string link)
+    {
+        if (sub.Webhook == null)
+        {
+            logsService.Log($"XkcdJob: no webhook available in channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            return false;
+        }
+
+        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, link, XkcdUsername, XkcdAvatarUrl);
+        if (!ok)
+            logsService.Log($"XkcdJob: failed to post comic to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }
