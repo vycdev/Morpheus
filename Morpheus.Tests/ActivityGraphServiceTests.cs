@@ -55,6 +55,20 @@ public class ActivityGraphServiceTests
     }
 
     [Fact]
+    public void ParseDaysString_RejectsReversedDateRange()
+    {
+        ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(
+            "2026-05-02..2026-05-01",
+            isOwner: false,
+            maxDays: 90);
+
+        Assert.False(result.Success);
+        Assert.Equal(
+            "Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most 90 days and start <= end.",
+            result.ErrorMessage);
+    }
+
+    [Fact]
     public void ResolveRange_UsesTrailingInclusiveWindowWhenNoExplicitStartExists()
     {
         ActivityGraphParseResult parse = ActivityGraphParseResult.Valid(days: 7, explicitStart: null);

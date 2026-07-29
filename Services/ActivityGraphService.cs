@@ -146,7 +146,10 @@ public class ActivityGraphService(DB dbContext)
         start = start.Date;
         end = end.Date;
         if (end < start)
-            (start, end) = (end, start);
+        {
+            return ActivityGraphParseResult.Error(
+                $"Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most {maxDays} days and start <= end.");
+        }
 
         double span = (end - start).TotalDays + 1;
         if (span < 7)
