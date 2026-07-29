@@ -46,8 +46,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync($"Congratz you are the first one to press the button! You received the impossible score of {buttonPress.Score}.");
         else
         {
-            if (buttonPress.Score > buttonGamePress.Score)
-                await ReplyAsync($"You pressed the button! You received {buttonPress.Score} points. You beat the previous best score of {buttonGamePress.Score} points.");
+            if (IsNewBestScore(buttonPress.Score, bestButtonPress?.Score))
+                await ReplyAsync($"You pressed the button! You received {buttonPress.Score} points. You beat the previous best score of {bestButtonPress!.Score} points.");
             else
                 await ReplyAsync($"You pressed the button! You received {buttonPress.Score} points. The most recent score was {buttonGamePress.Score} points.");
         }
@@ -55,6 +55,9 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         // Save changes to database
         await dbContext.SaveChangesAsync();
     }
+
+    internal static bool IsNewBestScore(long score, long? bestScore) =>
+        bestScore.HasValue && score > bestScore.Value;
 
     // Top global 
     [Name("Top Button Global")]
