@@ -546,15 +546,20 @@ public class QuoteService(DB dbContext)
             .Where(score => score.QuoteId == quoteId)
             .SumAsync(score => (int?)score.Score) ?? 0;
 
-    private IQueryable<Quote> ApplySort(IQueryable<Quote> quotesQuery, string sort) =>
+    internal IQueryable<Quote> ApplySort(IQueryable<Quote> quotesQuery, string sort) =>
         sort.ToLowerInvariant() switch
         {
             "top" or "top-rated" or "toprated" => quotesQuery
                 .OrderByDescending(quote => dbContext.QuoteScores
                     .Where(score => score.QuoteId == quote.Id)
-                    .Sum(score => score.Score)),
-            "newest" => quotesQuery.OrderByDescending(quote => quote.InsertDate),
-            _ => quotesQuery.OrderBy(quote => quote.InsertDate)
+                    .Sum(score => score.Score))
+                .ThenBy(quote => quote.Id),
+            "newest" => quotesQuery
+                .OrderByDescending(quote => quote.InsertDate)
+                .ThenBy(quote => quote.Id),
+            _ => quotesQuery
+                .OrderBy(quote => quote.InsertDate)
+                .ThenBy(quote => quote.Id)
         };
 }
 
