@@ -81,25 +81,6 @@ public static class DashboardApiExtensions
         })
         .CacheOutput(ShortCachePolicyName);
 
-        api.MapGet("/global-overview", async (
-            int? days,
-            DateTime? startDate,
-            DateTime? endDate,
-            string? view,
-            DashboardStatsService statsService,
-            CancellationToken cancellationToken) =>
-        {
-            DashboardGlobalOverviewResponse overview = await statsService.GetGlobalOverviewAsync(
-                days ?? 30,
-                view,
-                startDate,
-                endDate,
-                cancellationToken);
-
-            return Results.Ok(overview);
-        })
-        .CacheOutput(ShortCachePolicyName);
-
         api.MapGet("/guilds", async (
             DashboardStatsService statsService,
             CancellationToken cancellationToken) =>
@@ -129,96 +110,6 @@ public static class DashboardApiExtensions
             return Results.Ok(guilds);
         })
         .CacheOutput(SelectorCachePolicyName);
-
-        api.MapGet("/activity", async (
-            int? guildId,
-            int? userId,
-            string? channelId,
-            int? days,
-            DateTime? startDate,
-            DateTime? endDate,
-            DashboardStatsService statsService,
-            CancellationToken cancellationToken) =>
-        {
-            if (HasInvalidDiscordId(channelId))
-                return Results.BadRequest(new { error = "channelId must be a positive numeric Discord id." });
-
-            DashboardActivitySeriesResponse series = await statsService.GetActivitySeriesAsync(
-                guildId,
-                days ?? 30,
-                userId,
-                channelId,
-                startDate,
-                endDate,
-                cancellationToken);
-
-            return Results.Ok(series);
-        })
-        .CacheOutput(ShortCachePolicyName);
-
-        api.MapGet("/leaderboard", async (
-            int? guildId,
-            int? userId,
-            string? channelId,
-            string? metric,
-            int? days,
-            DateTime? startDate,
-            DateTime? endDate,
-            int? limit,
-            DashboardStatsService statsService,
-            CancellationToken cancellationToken) =>
-        {
-            if (HasInvalidDiscordId(channelId))
-                return Results.BadRequest(new { error = "channelId must be a positive numeric Discord id." });
-
-            DashboardLeaderboardResponse leaderboard = await statsService.GetActivityLeaderboardAsync(
-                guildId,
-                metric ?? "xp",
-                days,
-                limit ?? 10,
-                userId,
-                channelId,
-                startDate,
-                endDate,
-                cancellationToken);
-
-            return Results.Ok(leaderboard);
-        })
-        .CacheOutput(ShortCachePolicyName);
-
-        api.MapGet("/insights", async (
-            int? guildId,
-            int? userId,
-            string? channelId,
-            int? days,
-            string? scope,
-            string? view,
-            string? sortDirection,
-            int? minActivity,
-            DateTime? startDate,
-            DateTime? endDate,
-            DashboardStatsService statsService,
-            CancellationToken cancellationToken) =>
-        {
-            if (HasInvalidDiscordId(channelId))
-                return Results.BadRequest(new { error = "channelId must be a positive numeric Discord id." });
-
-            DashboardInsightsResponse insights = await statsService.GetInsightsAsync(
-                guildId,
-                userId,
-                channelId,
-                days ?? 30,
-                scope,
-                sortDirection,
-                minActivity,
-                view,
-                startDate,
-                endDate,
-                cancellationToken);
-
-            return Results.Ok(insights);
-        })
-        .CacheOutput(ShortCachePolicyName);
 
         api.MapGet("/quotes", async (
             int? guildId,
@@ -286,10 +177,6 @@ public static class DashboardApiExtensions
             .Expire(duration)
             .SetVaryByQuery("*")
             .SetVaryByHeader("X-Dashboard-Key", "Origin");
-
-    private static bool HasInvalidDiscordId(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        (!ulong.TryParse(value.Trim(), out ulong parsed) || parsed == 0UL);
 
     private static async ValueTask<object?> RequireDashboardApiKey(
         EndpointFilterInvocationContext context,
