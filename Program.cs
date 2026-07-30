@@ -1,20 +1,28 @@
-using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Morpheus.Extensions;
+using Morpheus.MCP;
 using Morpheus.Utilities;
 
 Env.Load(".env");
 
-IHost host = Host.CreateDefaultBuilder(args)
-    .ConfigureServices((_, services) =>
-    {
-        services
-            .AddBotServices()
-            .AddBotJobs()
-            .AddBotHandlers()
-            .AddBotDatabase();
-    })
-    .Build();
+McpApiOptions mcpOptions = McpApiOptions.FromEnvironment();
 
-host.RunStartupMigrations();
-await host.StartBotAsync();
-await host.RunAsync();
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls(mcpOptions.Urls);
+
+builder.Services
+    .AddBotServices()
+    .AddBotJobs()
+    .AddBotHandlers()
+    .AddBotDatabase()
+    .AddMcpApi(mcpOptions);
+
+WebApplication app = builder.Build();
+
+app.UseCors();
+app.MapMcpApi();
+
+app.RunStartupMigrations();
+await app.StartBotAsync();
+await app.RunAsync();
