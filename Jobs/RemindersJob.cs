@@ -2,6 +2,7 @@ using Discord;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
+using Morpheus.Database.Models;
 using Morpheus.Services;
 using Quartz;
 
@@ -28,44 +29,44 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
 
         foreach (var reminder in dueReminders)
         {
-            try
-            {
-                // Find the channel in connected guilds
-                var channel = discordClient.GetChannel(reminder.ChannelId) as IMessageChannel;
+            // Find the channel in connected guilds
+            var channel = discordClient.GetChannel(reminder.ChannelId) as IMessageChannel;
+            Func<string, Task>? sendAsync = channel == null
+                ? null
+                : async content => await channel.SendMessageAsync(content);
 
-                if (channel == null)
-                {
-                    Log($"Channel {reminder.ChannelId} not found, deleting reminder {reminder.Id}.");
-                    dB.Reminders.Remove(reminder);
-                    continue;
-                }
-
-                string content = reminder.Text ?? string.Empty;
-
-                if (string.IsNullOrWhiteSpace(content))
-                {
-                    content = "Reminder!";
-                }
-
-                await channel.SendMessageAsync(content);
-
-                Log($"Sent reminder {reminder.Id} to channel {reminder.ChannelId}");
-
-                // Remove the reminder after sending
+            bool shouldDelete = await DeliverAsync(reminder, sendAsync, Log);
+            if (shouldDelete)
                 dB.Reminders.Remove(reminder);
-            }
-            catch (Exception ex)
-            {
-                Log($"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}. Deleting reminder.");
-                try { dB.Reminders.Remove(reminder); }
-                catch (Exception ex2)
-                {
-                    logsService.Log($"Failed to remove reminder {reminder.Id}: {ex2}", LogSeverity.Warning);
-                }
-            }
         }
 
         // Persist deletions
         await dB.SaveChangesAsync();
+    }
+
+    internal static async Task<bool> DeliverAsync(
+        Reminder reminder,
+        Func<string, Task>? sendAsync,
+        Action<string> log)
+    {
+        if (sendAsync == null)
+        {
+            log($"Channel {reminder.ChannelId} not found, deleting reminder {reminder.Id}.");
+            return true;
+        }
+
+        string content = string.IsNullOrWhiteSpace(reminder.Text) ? "Reminder!" : reminder.Text;
+
+        try
+        {
+            await sendAsync(content);
+            log($"Sent reminder {reminder.Id} to channel {reminder.ChannelId}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log($"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}. Keeping reminder for retry.");
+            return false;
+        }
     }
 }
