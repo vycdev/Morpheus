@@ -95,7 +95,468 @@ public sealed class DashboardStatsService(
             new DashboardLogStats(totalLogs, logsLast24Hours, lastLogAtUtc));
     }
 
-    
+    public async Task<DashboardGlobalOverviewResponse> GetGlobalOverviewAsync(
+        int days,
+        string? view = null,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        DashboardDateRange dateRange = ResolveDateRange(days, startDateUtc, endDateUtc);
+        int safeDays = dateRange.Days;
+        string safeView = NormalizeGlobalOverviewView(view);
+        DateTime now = DateTime.UtcNow;
+        DateTime startDate = dateRange.StartDateUtc;
+        DateTime endExclusiveDate = dateRange.EndExclusiveUtc;
+        DateTime today = now.Date;
+        DateTime last24Hours = now.AddDays(-1);
+        DateTime last7Days = now.AddDays(-7);
+        DateTime last30Days = now.AddDays(-30);
+
+        bool includeAll = safeView == "all";
+        bool includeSummary = safeView == "summary";
+        bool useLongRangeSummaryShortcuts = includeSummary && safeDays > 365;
+        bool includeSummaryExtras = includeSummary && !useLongRangeSummaryShortcuts;
+        bool includeServers = safeView == "servers" || includeSummary || includeAll;
+        bool includeUsers = safeView == "users" || includeSummary || includeAll;
+        bool includeEconomyWealth = safeView == "economy";
+        bool includeQuotes = safeView == "quotes" || includeSummaryExtras || includeAll;
+        bool includeStocks = safeView == "stocks" || includeSummaryExtras || includeAll;
+        bool includeActivity = safeView == "activity" || includeAll;
+        bool includeEconomy = safeView == "economy" || includeAll;
+        bool includeOperations = safeView == "operations" || includeAll;
+        int stockMoverLimit = safeView == "stocks" || includeAll ? 10 : 5;
+
+        DashboardGlobalTotals totals;
+        GlobalServerHighlights serverHighlights;
+        GlobalUserHighlights userHighlights;
+        IReadOnlyList<DashboardPopularQuote> mostPopularQuotes;
+        GlobalStockHighlights stockHighlights;
+        GlobalActivityVisuals activityVisuals;
+        GlobalEconomyVisuals economyVisuals;
+        IReadOnlyList<DashboardLogItem> recentBotHealthEvents;
+
+        if (dashboardQueryScopeFactory is null)
+        {
+            totals = await BuildGlobalTotalsAsync(last24Hours, dateRange.EndDateUtc, endExclusiveDate, cancellationToken);
+            serverHighlights = includeServers
+                ? await BuildGlobalServerHighlightsAsync(
+                    today,
+                    last7Days,
+                    last30Days,
+                    startDate,
+                    endExclusiveDate,
+                    useLongRangeSummaryShortcuts,
+                    cancellationToken)
+                : EmptyGlobalServerHighlights();
+            userHighlights = includeUsers
+                ? await BuildGlobalUserHighlightsAsync(
+                    startDate,
+                    endExclusiveDate,
+                    useLongRangeSummaryShortcuts,
+                    includeWealthRankings: !useLongRangeSummaryShortcuts,
+                    cancellationToken)
+                : includeEconomyWealth
+                    ? await BuildGlobalWealthHighlightsAsync(10, cancellationToken)
+                : EmptyGlobalUserHighlights();
+            mostPopularQuotes = includeQuotes
+                ? await GetPopularQuotesAsync(10, cancellationToken)
+                : [];
+            stockHighlights = includeStocks
+                ? await BuildGlobalStockHighlightsAsync(stockMoverLimit, cancellationToken)
+                : EmptyGlobalStockHighlights();
+            activityVisuals = includeActivity
+                ? await BuildGlobalActivityVisualsAsync(
+                    startDate,
+                    endExclusiveDate,
+                    safeDays,
+                    cancellationToken)
+                : EmptyGlobalActivityVisuals();
+            economyVisuals = includeEconomy
+                ? await BuildGlobalEconomyVisualsAsync(startDate, endExclusiveDate, cancellationToken)
+                : EmptyGlobalEconomyVisuals();
+            recentBotHealthEvents = includeOperations
+                ? await GetRecentBotHealthEventsAsync(10, cancellationToken)
+                : [];
+        }
+        else
+        {
+            Task<DashboardGlobalTotals> totalsTask = RunIsolatedDashboardQueryAsync(
+                service => service.BuildGlobalTotalsAsync(last24Hours, dateRange.EndDateUtc, endExclusiveDate, cancellationToken),
+                cancellationToken);
+            Task<GlobalServerHighlights> serverHighlightsTask = includeServers
+                ? RunIsolatedDashboardQueryAsync(
+                    service => service.BuildGlobalServerHighlightsAsync(
+                        today,
+                        last7Days,
+                        last30Days,
+                        startDate,
+                        endExclusiveDate,
+                        useLongRangeSummaryShortcuts,
+                        cancellationToken),
+                    cancellationToken)
+                : Task.FromResult(EmptyGlobalServerHighlights());
+            Task<GlobalUserHighlights> userHighlightsTask = includeUsers
+                ? RunIsolatedDashboardQueryAsync(
+                    service => service.BuildGlobalUserHighlightsAsync(
+                        startDate,
+                        endExclusiveDate,
+                        useLongRangeSummaryShortcuts,
+                        includeWealthRankings: !useLongRangeSummaryShortcuts,
+                        cancellationToken),
+                    cancellationToken)
+                : includeEconomyWealth
+                    ? RunIsolatedDashboardQueryAsync(
+                        service => service.BuildGlobalWealthHighlightsAsync(10, cancellationToken),
+                        cancellationToken)
+                : Task.FromResult(EmptyGlobalUserHighlights());
+            Task<IReadOnlyList<DashboardPopularQuote>> popularQuotesTask = includeQuotes
+                ? RunIsolatedDashboardQueryAsync(service => service.GetPopularQuotesAsync(10, cancellationToken), cancellationToken)
+                : Task.FromResult<IReadOnlyList<DashboardPopularQuote>>([]);
+            Task<GlobalStockHighlights> stockHighlightsTask = includeStocks
+                ? RunIsolatedDashboardQueryAsync(service => service.BuildGlobalStockHighlightsAsync(stockMoverLimit, cancellationToken), cancellationToken)
+                : Task.FromResult(EmptyGlobalStockHighlights());
+            Task<GlobalActivityVisuals> activityVisualsTask = includeActivity
+                ? RunIsolatedDashboardQueryAsync(
+                    service => service.BuildGlobalActivityVisualsAsync(
+                        startDate,
+                        endExclusiveDate,
+                        safeDays,
+                        cancellationToken),
+                    cancellationToken)
+                : Task.FromResult(EmptyGlobalActivityVisuals());
+            Task<GlobalEconomyVisuals> economyVisualsTask = includeEconomy
+                ? RunIsolatedDashboardQueryAsync(
+                    service => service.BuildGlobalEconomyVisualsAsync(startDate, endExclusiveDate, cancellationToken),
+                    cancellationToken)
+                : Task.FromResult(EmptyGlobalEconomyVisuals());
+            Task<IReadOnlyList<DashboardLogItem>> botHealthEventsTask = includeOperations
+                ? RunIsolatedDashboardQueryAsync(service => service.GetRecentBotHealthEventsAsync(10, cancellationToken), cancellationToken)
+                : Task.FromResult<IReadOnlyList<DashboardLogItem>>([]);
+
+            await Task.WhenAll(
+                totalsTask,
+                serverHighlightsTask,
+                userHighlightsTask,
+                popularQuotesTask,
+                stockHighlightsTask,
+                activityVisualsTask,
+                economyVisualsTask,
+                botHealthEventsTask);
+
+            totals = await totalsTask;
+            serverHighlights = await serverHighlightsTask;
+            userHighlights = await userHighlightsTask;
+            mostPopularQuotes = await popularQuotesTask;
+            stockHighlights = await stockHighlightsTask;
+            activityVisuals = await activityVisualsTask;
+            economyVisuals = await economyVisualsTask;
+            recentBotHealthEvents = await botHealthEventsTask;
+        }
+
+        return new DashboardGlobalOverviewResponse(
+            now,
+            safeDays,
+            totals,
+            new DashboardGlobalHighlights(
+                serverHighlights.Today,
+                serverHighlights.ThisWeek,
+                serverHighlights.ThisMonth,
+                serverHighlights.AllTime,
+                serverHighlights.SelectedWindow,
+                userHighlights.BiggestXpGainers,
+                userHighlights.RichestUsersByBalance,
+                userHighlights.RichestUsersByNetWorth,
+                stockHighlights.BiggestGainers,
+                stockHighlights.BiggestLosers,
+                mostPopularQuotes,
+                userHighlights.MostActiveChannels,
+                userHighlights.MostActiveUsers,
+                userHighlights.RecentlyCreatedUsers,
+                userHighlights.RecentlyCreatedServers,
+                userHighlights.RecentlyCreatedQuotes,
+                userHighlights.RecentlyCreatedStocks),
+            new DashboardGlobalVisuals(
+                activityVisuals.Activity,
+                activityVisuals.StackedServerActivity,
+                activityVisuals.CalendarActivity,
+                activityVisuals.HourByWeekdayActivity,
+                economyVisuals.TransactionTypes),
+            new DashboardGlobalFeeds(
+                economyVisuals.RecentEconomyEvents,
+                recentBotHealthEvents));
+    }
+
+    private async Task<T> RunIsolatedDashboardQueryAsync<T>(
+        Func<DashboardStatsService, Task<T>> query,
+        CancellationToken cancellationToken)
+    {
+        if (dashboardQueryScopeFactory is null)
+        {
+            return await query(this);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await using AsyncServiceScope scope = dashboardQueryScopeFactory.CreateAsyncScope();
+        DB scopedDb = scope.ServiceProvider.GetRequiredService<DB>();
+        DashboardStatsService scopedService = new(scopedDb, options);
+
+        return await query(scopedService);
+    }
+
+    private async Task<GlobalServerHighlights> BuildGlobalServerHighlightsAsync(
+        DateTime today,
+        DateTime last7Days,
+        DateTime last30Days,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        bool useLongRangeSummaryShortcuts,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<DashboardGlobalServerActivity> todayServers = await GetGlobalServerActivityAsync(today, 5, cancellationToken);
+        IReadOnlyList<DashboardGlobalServerActivity> weekServers = await GetGlobalServerActivityAsync(last7Days, 5, cancellationToken);
+        IReadOnlyList<DashboardGlobalServerActivity> monthServers = await GetGlobalServerActivityAsync(last30Days, 5, cancellationToken);
+        IReadOnlyList<DashboardGlobalServerActivity> allTimeServers = await GetGlobalServerActivityAsync(null, 8, cancellationToken);
+        IReadOnlyList<DashboardGlobalServerActivity> selectedWindowServers = useLongRangeSummaryShortcuts
+            ? allTimeServers
+            : await GetGlobalServerActivityAsync(startDate, 8, cancellationToken, endExclusiveDate);
+
+        return new GlobalServerHighlights(
+            todayServers,
+            weekServers,
+            monthServers,
+            allTimeServers,
+            selectedWindowServers);
+    }
+
+    private async Task<GlobalUserHighlights> BuildGlobalUserHighlightsAsync(
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        bool useLongRangeSummaryShortcuts,
+        bool includeWealthRankings,
+        CancellationToken cancellationToken)
+    {
+        GlobalUserActivityRankings userRankings = useLongRangeSummaryShortcuts
+            ? await GetAllTimeGlobalUserActivityRankingsAsync(10, cancellationToken)
+            : await GetGlobalUserActivityRankingsAsync(startDate, 10, cancellationToken, endExclusiveDate);
+        GlobalWealthRankings wealthRankings = includeWealthRankings
+            ? await GetGlobalWealthRankingsAsync(10, cancellationToken)
+            : new GlobalWealthRankings([], []);
+        IReadOnlyList<DashboardGlobalChannelActivity> mostActiveChannels = useLongRangeSummaryShortcuts
+            ? []
+            : await GetGlobalChannelActivityAsync(startDate, 10, cancellationToken, endExclusiveDate);
+
+        return new GlobalUserHighlights(
+            userRankings.BiggestXpGainers,
+            wealthRankings.RichestByBalance,
+            wealthRankings.RichestByNetWorth,
+            mostActiveChannels,
+            userRankings.MostActiveUsers,
+            await GetRecentUsersAsync(8, cancellationToken),
+            await GetRecentServersAsync(8, cancellationToken),
+            await GetRecentQuotesAsync(8, cancellationToken),
+            await GetRecentStocksAsync(8, cancellationToken));
+    }
+
+    private async Task<GlobalStockHighlights> BuildGlobalStockHighlightsAsync(
+        int limit,
+        CancellationToken cancellationToken) =>
+        new(
+            await GetStockMoversAsync(winners: true, limit, cancellationToken),
+            await GetStockMoversAsync(winners: false, limit, cancellationToken));
+
+    private async Task<GlobalUserHighlights> BuildGlobalWealthHighlightsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        GlobalWealthRankings wealthRankings = await GetGlobalWealthRankingsAsync(limit, cancellationToken);
+
+        return new GlobalUserHighlights(
+            [],
+            wealthRankings.RichestByBalance,
+            wealthRankings.RichestByNetWorth,
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+    }
+
+    private async Task<GlobalActivityVisuals> BuildGlobalActivityVisualsAsync(
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        int safeDays,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<UserActivity> activityQuery = BuildActivityQuery(startDate, null, null, null, endExclusiveDate);
+        DashboardActivityInsights activity = await BuildActivityInsightsAsync(
+            activityQuery,
+            startDate,
+            safeDays,
+            cancellationToken);
+
+        return new GlobalActivityVisuals(
+            activity.Points,
+            await BuildStackedServerActivityAsync(startDate, endExclusiveDate, safeDays, 6, cancellationToken),
+            BuildCalendarActivity(activity.Points),
+            await BuildHeatmapAsync(activityQuery, cancellationToken));
+    }
+
+    private async Task<GlobalEconomyVisuals> BuildGlobalEconomyVisualsAsync(
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        CancellationToken cancellationToken) =>
+        new(
+            await GetTransactionTypesAsync(startDate, endExclusiveDate, cancellationToken),
+            await GetRecentEconomyEventsAsync(10, cancellationToken));
+
+    private static GlobalServerHighlights EmptyGlobalServerHighlights() =>
+        new([], [], [], [], []);
+
+    private static GlobalUserHighlights EmptyGlobalUserHighlights() =>
+        new([], [], [], [], [], [], [], [], []);
+
+    private static GlobalStockHighlights EmptyGlobalStockHighlights() =>
+        new([], []);
+
+    private static GlobalActivityVisuals EmptyGlobalActivityVisuals() =>
+        new([], [], [], []);
+
+    private static GlobalEconomyVisuals EmptyGlobalEconomyVisuals() =>
+        new([], []);
+
+    private sealed record GlobalServerHighlights(
+        IReadOnlyList<DashboardGlobalServerActivity> Today,
+        IReadOnlyList<DashboardGlobalServerActivity> ThisWeek,
+        IReadOnlyList<DashboardGlobalServerActivity> ThisMonth,
+        IReadOnlyList<DashboardGlobalServerActivity> AllTime,
+        IReadOnlyList<DashboardGlobalServerActivity> SelectedWindow);
+
+    private sealed record GlobalUserHighlights(
+        IReadOnlyList<DashboardGlobalUserActivity> BiggestXpGainers,
+        IReadOnlyList<DashboardGlobalWealthUser> RichestUsersByBalance,
+        IReadOnlyList<DashboardGlobalWealthUser> RichestUsersByNetWorth,
+        IReadOnlyList<DashboardGlobalChannelActivity> MostActiveChannels,
+        IReadOnlyList<DashboardGlobalUserActivity> MostActiveUsers,
+        IReadOnlyList<DashboardRecentEntity> RecentlyCreatedUsers,
+        IReadOnlyList<DashboardRecentEntity> RecentlyCreatedServers,
+        IReadOnlyList<DashboardRecentQuote> RecentlyCreatedQuotes,
+        IReadOnlyList<DashboardRecentStock> RecentlyCreatedStocks);
+
+    private sealed record GlobalStockHighlights(
+        IReadOnlyList<DashboardStockMover> BiggestGainers,
+        IReadOnlyList<DashboardStockMover> BiggestLosers);
+
+    private sealed record GlobalActivityVisuals(
+        IReadOnlyList<DashboardActivityDerivedPoint> Activity,
+        IReadOnlyList<DashboardStackedServerActivityPoint> StackedServerActivity,
+        IReadOnlyList<DashboardCalendarActivityCell> CalendarActivity,
+        IReadOnlyList<DashboardHeatmapCell> HourByWeekdayActivity);
+
+    private sealed record GlobalEconomyVisuals(
+        IReadOnlyList<DashboardCategoryValue> TransactionTypes,
+        IReadOnlyList<DashboardEconomyEventItem> RecentEconomyEvents);
+
+    private async Task<DashboardGlobalTotals> BuildGlobalTotalsAsync(
+        DateTime last24Hours,
+        DateTime latestDayStart,
+        DateTime latestDayEndExclusive,
+        CancellationToken cancellationToken)
+    {
+        int totalServers = await dbContext.Guilds.AsNoTracking().CountAsync(cancellationToken);
+        int totalUsers = await dbContext.Users.AsNoTracking().CountAsync(cancellationToken);
+        var levelTotals = await dbContext.UserLevels
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                Messages = group.Sum(levels => (long)levels.UserMessageCount),
+                Xp = group.Sum(levels => (long)levels.TotalXp)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        long totalMessages = levelTotals?.Messages ?? 0L;
+        long totalXp = levelTotals?.Xp ?? 0L;
+        var latestDayActivity = await dbContext.UserActivity
+            .AsNoTracking()
+            .Where(activity => activity.InsertDate >= latestDayStart && activity.InsertDate < latestDayEndExclusive)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        long latestDayMessages = latestDayActivity?.Messages ?? 0L;
+        long latestDayXp = latestDayActivity?.Xp ?? 0L;
+        var quoteTotals = await dbContext.Quotes
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                Total = group.Count(),
+                Approved = group.Count(quote => quote.Approved && !quote.Removed),
+                Pending = group.Count(quote => !quote.Approved && !quote.Removed)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        int totalQuotes = quoteTotals?.Total ?? 0;
+        int approvedQuotes = quoteTotals?.Approved ?? 0;
+        int pendingQuotes = quoteTotals?.Pending ?? 0;
+        int pendingQuoteApprovals = await dbContext.QuoteApprovalMessages
+            .AsNoTracking()
+            .CountAsync(approval => !approval.Approved, cancellationToken);
+        decimal totalBalance = await GetTotalBalanceAsync(cancellationToken);
+        decimal portfolioValue = await GetStockPortfolioValueAsync(cancellationToken);
+        decimal ubiPoolSize = await GetMoneySettingAmountAsync(UbiPoolSettingKey, 0m, cancellationToken);
+        decimal slotsVaultSize = await GetMoneySettingAmountAsync(SlotsVaultSettingKey, SlotsVaultDefaultAmount, cancellationToken);
+        long totalTransactions = await dbContext.StockTransactions.AsNoTracking().LongCountAsync(cancellationToken);
+        long totalButtonPresses = await dbContext.ButtonGamePresses.AsNoTracking().LongCountAsync(cancellationToken);
+        int activeReminders = await dbContext.Reminders.AsNoTracking().CountAsync(cancellationToken);
+        int recentWarningsOrErrors = await dbContext.Logs
+            .AsNoTracking()
+            .CountAsync(log => log.InsertDate >= last24Hours && log.Severity <= 2, cancellationToken);
+
+        return new DashboardGlobalTotals(
+            totalServers,
+            totalUsers,
+            totalMessages,
+            totalXp,
+            latestDayMessages,
+            latestDayXp,
+            totalQuotes,
+            approvedQuotes,
+            pendingQuotes,
+            pendingQuoteApprovals,
+            totalBalance,
+            totalBalance + portfolioValue,
+            ubiPoolSize,
+            slotsVaultSize,
+            totalTransactions,
+            totalButtonPresses,
+            activeReminders,
+            recentWarningsOrErrors);
+    }
+
+    private static string NormalizeGlobalOverviewView(string? view)
+    {
+        if (string.IsNullOrWhiteSpace(view))
+            return "all";
+
+        return view is "all" or "activity" or "servers" or "users" or "quotes" or "economy" or "stocks" or "operations"
+            ? view
+            : "summary";
+    }
+
+    private static string NormalizeDashboardInsightView(string? view)
+    {
+        if (string.IsNullOrWhiteSpace(view))
+            return "all";
+
+        return view is "summary" or "activity" or "users" or "quotes" or "economy" or "stocks" or "operations" or "settings"
+            ? view
+            : "summary";
+    }
+
     public async Task<IReadOnlyList<DashboardGuildSummary>> GetGuildsAsync(CancellationToken cancellationToken = default) =>
         await GetGuildSummariesAsync(null, cancellationToken);
 
@@ -169,8 +630,3627 @@ public sealed class DashboardStatsService(
             0))];
     }
 
+    public async Task<DashboardActivitySeriesResponse> GetActivitySeriesAsync(
+        int? guildId,
+        int days,
+        int? userId = null,
+        string? channelId = null,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        DashboardDateRange dateRange = ResolveDateRange(days, startDateUtc, endDateUtc);
+        int safeDays = dateRange.Days;
+        DateTime startDate = dateRange.StartDateUtc;
+        DateTime endExclusiveDate = dateRange.EndExclusiveUtc;
+        if (!TryParseDiscordId(channelId, out ulong? channelDiscordId))
+        {
+            return new DashboardActivitySeriesResponse(
+                guildId,
+                safeDays,
+                BuildEmptyActivityPoints(startDate, safeDays));
+        }
 
+        IQueryable<UserActivity> query = BuildActivityQuery(startDate, guildId, userId, channelDiscordId, endExclusiveDate);
 
+        var rows = await query
+            .GroupBy(activity => activity.InsertDate.Date)
+            .Select(group => new
+            {
+                Date = group.Key,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count(),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0
+            })
+            .OrderBy(row => row.Date)
+            .ToListAsync(cancellationToken);
+
+        Dictionary<DateTime, DashboardActivityPoint> pointsByDate = rows.ToDictionary(
+            row => row.Date.Date,
+            row => new DashboardActivityPoint(
+                DateTime.SpecifyKind(row.Date.Date, DateTimeKind.Utc),
+                row.Messages,
+                row.Xp,
+                row.ActiveUsers,
+                Math.Round(row.AverageMessageLength, 1)));
+
+        List<DashboardActivityPoint> points = [];
+        for (int offset = 0; offset < safeDays; offset++)
+        {
+            DateTime date = startDate.AddDays(offset);
+            points.Add(pointsByDate.TryGetValue(date, out DashboardActivityPoint? point)
+                ? point
+                : new DashboardActivityPoint(DateTime.SpecifyKind(date, DateTimeKind.Utc), 0, 0, 0, 0.0));
+        }
+
+        return new DashboardActivitySeriesResponse(guildId, safeDays, points);
+    }
+
+    public async Task<DashboardLeaderboardResponse> GetActivityLeaderboardAsync(
+        int? guildId,
+        string metric,
+        int? days,
+        int limit,
+        int? userId = null,
+        string? channelId = null,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        string normalizedMetric = NormalizeMetric(metric);
+        int safeLimit = ClampLimit(limit);
+        DashboardDateRange? dateRange = days.HasValue || startDateUtc.HasValue || endDateUtc.HasValue
+            ? ResolveDateRange(days ?? options.MaxActivityDays, startDateUtc, endDateUtc)
+            : null;
+        int? safeDays = dateRange?.Days;
+        if (!TryParseDiscordId(channelId, out ulong? channelDiscordId))
+        {
+            return new DashboardLeaderboardResponse(guildId, normalizedMetric, safeDays, safeLimit, []);
+        }
+
+        List<DashboardLeaderboardRow> rows = dateRange is not null
+            ? await GetActivityLeaderboardRowsAsync(
+                guildId,
+                userId,
+                channelDiscordId,
+                normalizedMetric,
+                dateRange.StartDateUtc,
+                safeLimit,
+                cancellationToken,
+                dateRange.EndExclusiveUtc)
+            : channelDiscordId.HasValue
+                ? await GetActivityLeaderboardRowsAsync(guildId, userId, channelDiscordId, normalizedMetric, null, safeLimit, cancellationToken)
+                : await GetAllTimeLeaderboardRowsAsync(guildId, userId, normalizedMetric, safeLimit, cancellationToken);
+
+        Dictionary<int, (string DiscordId, string Username)> users = await GetUserLabelsAsync(
+            rows.Select(row => row.UserId),
+            cancellationToken);
+
+        List<DashboardLeaderboardItem> items =
+        [
+            .. rows.Select((row, index) =>
+            {
+                (string discordId, string username) = users.GetValueOrDefault(row.UserId, (string.Empty, "Unknown"));
+                int? level = normalizedMetric == "xp"
+                    ? ActivityLevelService.CalculateLevel(row.Value)
+                    : null;
+
+                return new DashboardLeaderboardItem(
+                    index + 1,
+                    row.UserId,
+                    discordId,
+                    username,
+                    row.Value,
+                    level,
+                    row.LastActivityAtUtc);
+            })
+        ];
+
+        return new DashboardLeaderboardResponse(guildId, normalizedMetric, safeDays, safeLimit, items);
+    }
+
+    public async Task<DashboardInsightsResponse> GetInsightsAsync(
+        int? guildId,
+        int? userId,
+        string? channelId,
+        int days,
+        string? scope,
+        string? sortDirection,
+        int? minActivity,
+        string? view = null,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        DashboardDateRange dateRange = ResolveDateRange(days, startDateUtc, endDateUtc);
+        int safeDays = dateRange.Days;
+        int safeMinActivity = Math.Max(0, minActivity ?? 1);
+        string normalizedSortDirection = NormalizeSortDirection(sortDirection);
+        string safeView = NormalizeDashboardInsightView(view);
+        DashboardScopeFilters filters = NormalizeScopeFilters(scope, guildId, userId, channelId);
+        bool includeAll = safeView == "all";
+        bool includeServerSummary = filters.Scope == "server" && filters.GuildId.HasValue && safeView == "summary";
+        bool includeActivity = includeAll || safeView is "summary" or "activity";
+        bool includeChannelTable = includeAll || safeView == "users" || includeServerSummary;
+        bool includeUserTable = includeAll || safeView == "users";
+        bool includeQuotes = includeAll || safeView == "quotes";
+        bool includeEconomy = includeAll || safeView == "economy";
+        bool includeStocks = includeAll || safeView == "stocks";
+        bool includeOperations = includeAll || safeView == "operations";
+        bool includeSettings = includeAll || safeView == "settings";
+        bool includeServer = filters.Scope == "server" && filters.GuildId.HasValue && (includeAll || safeView == "summary");
+        bool includeUserProfile = filters.Scope == "user" && filters.UserId.HasValue && (includeAll || safeView == "summary");
+        int? effectiveGuildId = filters.GuildId;
+        int? effectiveUserId = filters.UserId;
+        ulong? channelDiscordId = filters.ChannelDiscordId;
+        DateTime startDate = dateRange.StartDateUtc;
+        DateTime endExclusiveDate = dateRange.EndExclusiveUtc;
+
+        IQueryable<UserActivity> activityQuery = BuildActivityQuery(
+            startDate,
+            effectiveGuildId,
+            effectiveUserId,
+            channelDiscordId,
+            endExclusiveDate);
+
+        IReadOnlyList<ScopedUserRow> scopedUsers = includeEconomy || includeStocks || includeServer
+            ? await GetScopedUsersAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                channelDiscordId.HasValue ? activityQuery : null,
+                cancellationToken)
+            : [];
+        List<int> scopedUserIds = includeStocks
+            ? [.. scopedUsers.Select(user => user.UserId)]
+            : [];
+
+        DashboardActivityInsights activity = includeActivity
+            ? await BuildActivityInsightsAsync(
+                activityQuery,
+                startDate,
+                safeDays,
+                cancellationToken)
+            : EmptyActivityInsights();
+        DashboardActivityAnalytics activityAnalytics = safeView == "activity"
+            ? await BuildActivityAnalyticsAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                channelDiscordId,
+                activityQuery,
+                activity,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                safeMinActivity,
+                cancellationToken)
+            : EmptyActivityAnalytics();
+        IReadOnlyList<DashboardChannelActivity> channels = includeChannelTable
+            ? await BuildChannelActivityAsync(
+                activityQuery,
+                normalizedSortDirection,
+                safeMinActivity,
+                cancellationToken)
+            : [];
+
+        IReadOnlyList<DashboardUserActivitySummary> users = includeUserTable
+            ? await BuildUserActivitySummariesAsync(
+                activityQuery,
+                effectiveGuildId,
+                startDate,
+                endExclusiveDate,
+                normalizedSortDirection,
+                safeMinActivity,
+                cancellationToken)
+            : [];
+
+        IReadOnlyList<DashboardHeatmapCell> heatmap = safeView == "activity" || includeAll || includeServerSummary
+            ? await BuildHeatmapAsync(
+                activityQuery,
+                cancellationToken)
+            : [];
+        DashboardQuoteInsights quotes = includeQuotes
+            ? await BuildQuoteInsightsAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                startDate,
+                endExclusiveDate,
+                cancellationToken)
+            : EmptyQuoteInsights();
+        DashboardEconomyInsights economy = includeEconomy
+            ? await BuildEconomyInsightsAsync(
+                scopedUsers,
+                effectiveGuildId,
+                effectiveUserId,
+                effectiveGuildId.HasValue || channelDiscordId.HasValue,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                cancellationToken)
+            : EmptyEconomyInsights();
+        DashboardStockMarketInsights stocks = includeStocks
+            ? await BuildStockMarketInsightsAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                channelDiscordId,
+                scopedUserIds,
+                activityQuery,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                cancellationToken)
+            : EmptyStockMarketInsights();
+        DashboardButtonGameInsights buttonGame = includeOperations
+            ? await BuildButtonGameInsightsAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                cancellationToken)
+            : EmptyButtonGameInsights();
+        DashboardOperationsInsights operations = includeOperations
+            ? await BuildOperationsInsightsAsync(
+                effectiveGuildId,
+                effectiveUserId,
+                channelDiscordId,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                cancellationToken)
+            : EmptyOperationsInsights();
+        IReadOnlyList<DashboardGuildSettingsSummary> settings = includeSettings
+            ? await BuildSettingsInsightsAsync(
+                effectiveGuildId,
+                cancellationToken)
+            : [];
+        DashboardServerInsights? server = includeServer
+            ? await BuildServerInsightsAsync(
+                effectiveGuildId!.Value,
+                scopedUsers,
+                activityQuery,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                safeMinActivity,
+                cancellationToken)
+            : null;
+        DashboardUserProfileInsights? userProfile = includeUserProfile
+            ? await BuildUserProfileInsightsAsync(
+                effectiveUserId!.Value,
+                effectiveGuildId,
+                activityQuery,
+                activity,
+                startDate,
+                endExclusiveDate,
+                safeDays,
+                cancellationToken)
+            : null;
+        DashboardFilterOptions filterOptions =
+            filters.Scope == "server" && safeView == "settings"
+                ? await BuildServerSettingsNavigationOptionsAsync(effectiveGuildId!.Value, cancellationToken)
+                : await BuildFilterOptionsAsync(
+                    effectiveGuildId,
+                    effectiveUserId,
+                    channelDiscordId,
+                    cancellationToken);
+
+        return new DashboardInsightsResponse(
+            effectiveGuildId,
+            effectiveUserId,
+            channelDiscordId?.ToString(),
+            safeDays,
+            filters.Scope,
+            normalizedSortDirection,
+            safeMinActivity,
+            activity,
+            activityAnalytics,
+            channels,
+            users,
+            heatmap,
+            quotes,
+            economy,
+            stocks,
+            buttonGame,
+            operations,
+            settings,
+            server,
+            userProfile,
+            filterOptions);
+    }
+
+    private static DashboardActivityInsights EmptyActivityInsights()
+    {
+        return new DashboardActivityInsights(0, 0, 0, 0, 0.0, 0.0, 0.0, 0, 0.0, []);
+    }
+
+    private static DashboardActivityAnalytics EmptyActivityAnalytics()
+    {
+        return new DashboardActivityAnalytics(
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            new DashboardUserActivityStreaks(0, null, null, 0, null, null, 0, 0),
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+    }
+
+    private static DashboardQuoteInsights EmptyQuoteInsights()
+    {
+        return new DashboardQuoteInsights(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            0.0,
+            0.0,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+    }
+
+    private static DashboardEconomyInsights EmptyEconomyInsights()
+    {
+        return new DashboardEconomyInsights(
+            TotalMoneySupply: 0m,
+            CashBalance: 0m,
+            PortfolioValue: 0m,
+            NetWorth: 0m,
+            AverageBalance: 0m,
+            MedianBalance: 0m,
+            ActiveWallets: 0,
+            ActiveTraders: 0,
+            TransactionVolume: 0m,
+            TransactionCount: 0,
+            Fees: 0m,
+            TaxesCollected: 0m,
+            UbiPoolSize: 0m,
+            UbiDonations: 0m,
+            WealthTaxImpact: 0m,
+            TransfersVolume: 0m,
+            UserToUserTransferVolume: 0m,
+            Inflows: 0m,
+            Outflows: 0m,
+            RobberyWins: 0,
+            RobberyLosses: 0,
+            RobberySuccessRate: 0.0,
+            SlotsWins: 0,
+            SlotsLosses: 0,
+            SlotsVaultSize: 0m,
+            SlotsPayoutRatio: 0.0,
+            MoneySupplyTrend: [],
+            DailyFlow: [],
+            UbiPoolTrend: [],
+            SlotsVaultTrend: [],
+            SlotsProfitLoss: [],
+            TransactionVolumeTimeline: [],
+            TransactionTypes: [],
+            MoneyFlows: [],
+            CashLeaders: [],
+            WealthLeaders: [],
+            BalanceDistribution: [],
+            WealthInequality: [],
+            TopDonors: [],
+            BiggestRobberies: [],
+            MostRobbedUsers: [],
+            MostSuccessfulRobbers: [],
+            RobberyOutcomes: [],
+            BiggestSlotsWins: [],
+            BiggestSlotsLosses: [],
+            SlotsOutcomes: [],
+            EconomyHeatmap: []);
+    }
+
+    private static DashboardStockMarketInsights EmptyStockMarketInsights()
+    {
+        return new DashboardStockMarketInsights(
+            Stocks: 0,
+            UserStocks: 0,
+            ServerStocks: 0,
+            ChannelStocks: 0,
+            MarketValue: 0m,
+            AveragePrice: 0m,
+            AverageDailyChangePercent: 0.0,
+            BuyVolume: 0m,
+            SellVolume: 0m,
+            StockTransferVolume: 0m,
+            Winners: [],
+            Losers: [],
+            EntityTypes: [],
+            MostValuableStocks: [],
+            MostHeldStocks: [],
+            MostTradedStocks: [],
+            NewestStocks: [],
+            DailyChangeHistogram: [],
+            PriceMovement: [],
+            HoldingsByUser: [],
+            HoldingsTable: [],
+            TradeVolumeTimeline: [],
+            BuyVsSell: [],
+            OwnershipConcentration: [],
+            ActivityToPrice: []);
+    }
+
+    private static DashboardButtonGameInsights EmptyButtonGameInsights()
+    {
+        return new DashboardButtonGameInsights(
+            Presses: 0,
+            Score: 0,
+            AverageScore: 0.0,
+            MedianScore: 0.0,
+            HighestScoreEver: 0,
+            LastPressAtUtc: null,
+            Daily: [],
+            Leaders: [],
+            TopGlobalScores: [],
+            TopServerScores: [],
+            TopIndividualScores: [],
+            TopUsersByTotalScore: [],
+            TopUsersByPressCount: [],
+            ScoreDistribution: [],
+            PressesByServer: [],
+            PressesByHour: [],
+            PressesByWeekday: [],
+            HourByWeekdayHeatmap: [],
+            CalendarHeatmap: [],
+            LongestGaps: [],
+            CompetitiveServers: []);
+    }
+
+    private static DashboardOperationsInsights EmptyOperationsInsights()
+    {
+        DashboardLogInsights logs = new(
+            Total: 0,
+            Warnings: 0,
+            Errors: 0,
+            Critical: 0,
+            LatestAtUtc: null,
+            SeverityCounts: [],
+            Timeline: [],
+            Recent: [],
+            LogsByVersion: [],
+            CommonMessages: [],
+            RecentIncidents: [],
+            HealthIndicators: []);
+
+        return new DashboardOperationsInsights(
+            new DashboardReminderStats(0, 0, 0, 0.0, [], [], [], [], [], [], []),
+            new DashboardModerationStats(
+                PendingTemporaryBans: 0,
+                OverdueTemporaryBans: 0,
+                CompletedLast30Days: 0,
+                ReactionRoleMessages: 0,
+                ReactionRoleItems: 0,
+                Pending: [],
+                TemporaryBanTimeline: [],
+                BanStatus: [],
+                BanReasons: [],
+                ReactionRoleTypes: [],
+                ReactionRoleUsage: [],
+                ActivityRoleDistribution: [],
+                ServerScorecards: [],
+                IncompleteServerSetup: [],
+                RiskyConfiguration: []),
+            logs,
+            [],
+            [],
+            []);
+    }
+
+    private async Task<IReadOnlyList<ScopedUserRow>> GetScopedUsersAsync(
+        int? guildId,
+        int? userId,
+        IQueryable<UserActivity>? channelActivityQuery,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<User> query = dbContext.Users.AsNoTracking();
+
+        if (userId.HasValue)
+        {
+            query = query.Where(user => user.Id == userId.Value);
+        }
+        else if (channelActivityQuery is not null)
+        {
+            List<int> scopedUserIds = await channelActivityQuery
+                .Select(activity => activity.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            query = scopedUserIds.Count == 0
+                ? query.Where(_ => false)
+                : query.Where(user => scopedUserIds.Contains(user.Id));
+        }
+        else if (guildId.HasValue)
+        {
+            List<int> scopedUserIds = await dbContext.UserLevels
+                .AsNoTracking()
+                .Where(levels => levels.GuildId == guildId.Value)
+                .Select(levels => levels.UserId)
+                .Concat(dbContext.UserActivity
+                    .AsNoTracking()
+                    .Where(activity => activity.GuildId == guildId.Value)
+                    .Select(activity => activity.UserId))
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            query = scopedUserIds.Count == 0
+                ? query.Where(_ => false)
+                : query.Where(user => scopedUserIds.Contains(user.Id));
+        }
+
+        return await query
+            .OrderBy(user => user.Username)
+            .Select(user => new ScopedUserRow(
+                user.Id,
+                user.DiscordId.ToString(),
+                user.Username,
+                user.Balance))
+            .ToListAsync(cancellationToken);
+    }
+
+    private IQueryable<UserActivity> BuildActivityQuery(
+        DateTime? startDate,
+        int? guildId,
+        int? userId,
+        ulong? channelDiscordId,
+        DateTime? endExclusiveDate = null)
+    {
+        IQueryable<UserActivity> query = dbContext.UserActivity.AsNoTracking();
+
+        if (startDate.HasValue)
+            query = query.Where(activity => activity.InsertDate >= startDate.Value);
+
+        if (endExclusiveDate.HasValue)
+            query = query.Where(activity => activity.InsertDate < endExclusiveDate.Value);
+
+        if (guildId.HasValue)
+            query = query.Where(activity => activity.GuildId == guildId.Value);
+
+        if (userId.HasValue)
+            query = query.Where(activity => activity.UserId == userId.Value);
+
+        if (channelDiscordId.HasValue)
+            query = query.Where(activity => activity.DiscordChannelId == channelDiscordId.Value);
+
+        return query;
+    }
+
+    private async Task<IReadOnlyList<DashboardGlobalServerActivity>> GetGlobalServerActivityAsync(
+        DateTime? startDate,
+        int limit,
+        CancellationToken cancellationToken,
+        DateTime? endExclusiveDate = null)
+    {
+        if (!startDate.HasValue && !endExclusiveDate.HasValue)
+        {
+            return await GetAllTimeGlobalServerActivityAsync(limit, cancellationToken);
+        }
+
+        IQueryable<UserActivity> query = dbContext.UserActivity.AsNoTracking();
+        if (startDate.HasValue)
+            query = query.Where(activity => activity.InsertDate >= startDate.Value);
+        if (endExclusiveDate.HasValue)
+            query = query.Where(activity => activity.InsertDate < endExclusiveDate.Value);
+
+        var rows = await query
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new
+            {
+                GuildId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count(),
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .OrderByDescending(row => row.Messages)
+            .ThenByDescending(row => row.Xp)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        List<int> guildIds = [.. rows.Select(row => row.GuildId)];
+        Dictionary<int, (string DiscordId, string Name)> guildLabels = guildIds.Count == 0
+            ? []
+            : await dbContext.Guilds
+                .AsNoTracking()
+                .Where(guild => guildIds.Contains(guild.Id))
+                .Select(guild => new { guild.Id, guild.DiscordId, guild.Name })
+                .ToDictionaryAsync(
+                    guild => guild.Id,
+                    guild => (guild.DiscordId.ToString(), guild.Name),
+                    cancellationToken);
+
+        return
+        [
+            .. rows.Select((row, index) =>
+            {
+                (string discordId, string name) = guildLabels.GetValueOrDefault(
+                    row.GuildId,
+                    (string.Empty, $"Server #{row.GuildId}"));
+
+                return new DashboardGlobalServerActivity(
+                    index + 1,
+                    row.GuildId,
+                    discordId,
+                    name,
+                    row.Messages,
+                    row.Xp,
+                    row.ActiveUsers,
+                    row.LastActivityAtUtc);
+            })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardGlobalServerActivity>> GetAllTimeGlobalServerActivityAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.UserLevels
+            .AsNoTracking()
+            .GroupBy(levels => levels.GuildId)
+            .Select(group => new
+            {
+                GuildId = group.Key,
+                Messages = group.Sum(levels => (long)levels.UserMessageCount),
+                Xp = group.Sum(levels => (long)levels.TotalXp),
+                ActiveUsers = group.Select(levels => levels.UserId).Distinct().Count()
+            })
+            .Where(row => row.Messages > 0 || row.Xp > 0)
+            .OrderByDescending(row => row.Messages)
+            .ThenByDescending(row => row.Xp)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        List<int> guildIds = [.. rows.Select(row => row.GuildId)];
+        Dictionary<int, (string DiscordId, string Name)> guildLabels = guildIds.Count == 0
+            ? []
+            : await dbContext.Guilds
+                .AsNoTracking()
+                .Where(guild => guildIds.Contains(guild.Id))
+                .Select(guild => new { guild.Id, guild.DiscordId, guild.Name })
+                .ToDictionaryAsync(
+                    guild => guild.Id,
+                    guild => (guild.DiscordId.ToString(), guild.Name),
+                    cancellationToken);
+        Dictionary<int, DateTime?> lastActivityByGuild = guildIds.Count == 0
+            ? []
+            : await dbContext.UserActivity
+                .AsNoTracking()
+                .Where(activity => guildIds.Contains(activity.GuildId))
+                .GroupBy(activity => activity.GuildId)
+                .Select(group => new
+                {
+                    GuildId = group.Key,
+                    LastActivityAtUtc = (DateTime?)group.Max(activity => activity.InsertDate)
+                })
+                .ToDictionaryAsync(
+                    row => row.GuildId,
+                    row => row.LastActivityAtUtc,
+                    cancellationToken);
+
+        return
+        [
+            .. rows.Select((row, index) =>
+            {
+                (string discordId, string name) = guildLabels.GetValueOrDefault(
+                    row.GuildId,
+                    (string.Empty, $"Server #{row.GuildId}"));
+
+                return new DashboardGlobalServerActivity(
+                    index + 1,
+                    row.GuildId,
+                    discordId,
+                    name,
+                    row.Messages,
+                    row.Xp,
+                    row.ActiveUsers,
+                    lastActivityByGuild.GetValueOrDefault(row.GuildId));
+            })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardGlobalUserActivity>> GetGlobalUserActivityAsync(
+        DateTime? startDate,
+        string metric,
+        int limit,
+        CancellationToken cancellationToken,
+        DateTime? endExclusiveDate = null)
+    {
+        GlobalUserActivityRankings rankings = await GetGlobalUserActivityRankingsAsync(
+            startDate,
+            limit,
+            cancellationToken,
+            endExclusiveDate);
+
+        return metric == "messages"
+            ? rankings.MostActiveUsers
+            : rankings.BiggestXpGainers;
+    }
+
+    private async Task<GlobalUserActivityRankings> GetGlobalUserActivityRankingsAsync(
+        DateTime? startDate,
+        int limit,
+        CancellationToken cancellationToken,
+        DateTime? endExclusiveDate = null)
+    {
+        IQueryable<UserActivity> query = dbContext.UserActivity.AsNoTracking();
+        if (startDate.HasValue)
+            query = query.Where(activity => activity.InsertDate >= startDate.Value);
+        if (endExclusiveDate.HasValue)
+            query = query.Where(activity => activity.InsertDate < endExclusiveDate.Value);
+
+        var groupedUsers = query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            });
+
+        List<GlobalUserActivityAggregate> biggestXpRows = await groupedUsers
+            .OrderByDescending(row => row.Xp)
+            .ThenByDescending(row => row.Messages)
+            .Take(limit)
+            .Select(row => new GlobalUserActivityAggregate(
+                row.UserId,
+                row.Messages,
+                row.Xp,
+                row.LastActivityAtUtc))
+            .ToListAsync(cancellationToken);
+        List<GlobalUserActivityAggregate> mostActiveRows = await groupedUsers
+            .OrderByDescending(row => row.Messages)
+            .ThenByDescending(row => row.Xp)
+            .Take(limit)
+            .Select(row => new GlobalUserActivityAggregate(
+                row.UserId,
+                row.Messages,
+                row.Xp,
+                row.LastActivityAtUtc))
+            .ToListAsync(cancellationToken);
+
+        List<int> userIds =
+        [
+            .. biggestXpRows
+                .Select(row => row.UserId)
+                .Concat(mostActiveRows.Select(row => row.UserId))
+                .Distinct()
+        ];
+        Dictionary<int, (string DiscordId, string Username)> labels = await GetUserLabelsAsync(userIds, cancellationToken);
+        Dictionary<int, int> levels = await GetUserLevelsAsync(userIds, null, cancellationToken);
+
+        return new GlobalUserActivityRankings(
+            BuildGlobalUserActivityRanking(biggestXpRows, labels, levels),
+            BuildGlobalUserActivityRanking(mostActiveRows, labels, levels));
+    }
+
+    private async Task<GlobalUserActivityRankings> GetAllTimeGlobalUserActivityRankingsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var groupedLevels = dbContext.UserLevels
+            .AsNoTracking()
+            .GroupBy(levels => levels.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                Messages = group.Sum(levels => (long)levels.UserMessageCount),
+                Xp = group.Sum(levels => (long)levels.TotalXp)
+            })
+            .Where(row => row.Messages > 0 || row.Xp > 0);
+
+        List<GlobalUserActivityAggregate> biggestXpRows = await groupedLevels
+            .OrderByDescending(row => row.Xp)
+            .ThenByDescending(row => row.Messages)
+            .Take(limit)
+            .Select(row => new GlobalUserActivityAggregate(
+                row.UserId,
+                row.Messages,
+                row.Xp,
+                null))
+            .ToListAsync(cancellationToken);
+        List<GlobalUserActivityAggregate> mostActiveRows = await groupedLevels
+            .OrderByDescending(row => row.Messages)
+            .ThenByDescending(row => row.Xp)
+            .Take(limit)
+            .Select(row => new GlobalUserActivityAggregate(
+                row.UserId,
+                row.Messages,
+                row.Xp,
+                null))
+            .ToListAsync(cancellationToken);
+        List<int> userIds =
+        [
+            .. biggestXpRows
+                .Select(row => row.UserId)
+                .Concat(mostActiveRows.Select(row => row.UserId))
+                .Distinct()
+        ];
+        Dictionary<int, DateTime?> lastActivityByUser = userIds.Count == 0
+            ? []
+            : await dbContext.UserActivity
+                .AsNoTracking()
+                .Where(activity => userIds.Contains(activity.UserId))
+                .GroupBy(activity => activity.UserId)
+                .Select(group => new
+                {
+                    UserId = group.Key,
+                    LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+                })
+                .ToDictionaryAsync(
+                    row => row.UserId,
+                    row => (DateTime?)row.LastActivityAtUtc,
+                    cancellationToken);
+
+        biggestXpRows = [.. biggestXpRows.Select(row => row with
+        {
+            LastActivityAtUtc = lastActivityByUser.GetValueOrDefault(row.UserId)
+        })];
+        mostActiveRows = [.. mostActiveRows.Select(row => row with
+        {
+            LastActivityAtUtc = lastActivityByUser.GetValueOrDefault(row.UserId)
+        })];
+
+        Dictionary<int, (string DiscordId, string Username)> labels = await GetUserLabelsAsync(userIds, cancellationToken);
+        Dictionary<int, int> levels = await GetUserLevelsAsync(userIds, null, cancellationToken);
+
+        return new GlobalUserActivityRankings(
+            BuildGlobalUserActivityRanking(biggestXpRows, labels, levels),
+            BuildGlobalUserActivityRanking(mostActiveRows, labels, levels));
+    }
+
+    private static IReadOnlyList<DashboardGlobalUserActivity> BuildGlobalUserActivityRanking(
+        IReadOnlyList<GlobalUserActivityAggregate> rows,
+        IReadOnlyDictionary<int, (string DiscordId, string Username)> labels,
+        IReadOnlyDictionary<int, int> levels) =>
+        [
+            .. rows.Select((row, index) =>
+            {
+                (string discordId, string username) = labels.GetValueOrDefault(row.UserId, (string.Empty, "Unknown"));
+                return new DashboardGlobalUserActivity(
+                    index + 1,
+                    row.UserId,
+                    discordId,
+                    username,
+                    row.Messages,
+                    row.Xp,
+                    levels.GetValueOrDefault(row.UserId),
+                    row.LastActivityAtUtc);
+            })
+        ];
+
+    private sealed record GlobalUserActivityAggregate(
+        int UserId,
+        long Messages,
+        long Xp,
+        DateTime? LastActivityAtUtc);
+
+    private sealed record GlobalUserActivityRankings(
+        IReadOnlyList<DashboardGlobalUserActivity> BiggestXpGainers,
+        IReadOnlyList<DashboardGlobalUserActivity> MostActiveUsers);
+
+    private async Task<IReadOnlyList<DashboardGlobalWealthUser>> GetGlobalWealthUsersAsync(
+        bool orderByNetWorth,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        GlobalWealthRankings rankings = await GetGlobalWealthRankingsAsync(limit, cancellationToken);
+        return orderByNetWorth
+            ? rankings.RichestByNetWorth
+            : rankings.RichestByBalance;
+    }
+
+    private async Task<GlobalWealthRankings> GetGlobalWealthRankingsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        List<ScopedUserRow> users = await dbContext.Users
+            .AsNoTracking()
+            .Select(user => new ScopedUserRow(
+                user.Id,
+                user.DiscordId.ToString(),
+                user.Username,
+                user.Balance))
+            .ToListAsync(cancellationToken);
+
+        Dictionary<int, decimal> portfolios = await GetPortfolioValuesByUserAsync(
+            users.Select(user => user.UserId),
+            cancellationToken);
+
+        List<GlobalWealthAggregate> rankedUsers =
+        [
+            .. users
+            .Select(user =>
+            {
+                decimal portfolioValue = portfolios.GetValueOrDefault(user.UserId);
+                return new GlobalWealthAggregate(
+                    user,
+                    portfolioValue,
+                    user.Balance + portfolioValue);
+            })
+        ];
+
+        List<GlobalWealthAggregate> balanceRows =
+        [
+            .. rankedUsers
+                .OrderByDescending(user => user.User.Balance)
+                .ThenByDescending(user => user.NetWorth)
+                .Take(limit)
+        ];
+        List<GlobalWealthAggregate> netWorthRows =
+        [
+            .. rankedUsers
+                .OrderByDescending(user => user.NetWorth)
+                .ThenByDescending(user => user.User.Balance)
+                .Take(limit)
+        ];
+
+        return new GlobalWealthRankings(
+            BuildGlobalWealthRanking(balanceRows),
+            BuildGlobalWealthRanking(netWorthRows));
+    }
+
+    private static IReadOnlyList<DashboardGlobalWealthUser> BuildGlobalWealthRanking(
+        IReadOnlyList<GlobalWealthAggregate> rows) =>
+        [
+            .. rows.Select((user, index) => new DashboardGlobalWealthUser(
+                index + 1,
+                user.User.UserId,
+                user.User.DiscordId,
+                user.User.Username,
+                user.User.Balance,
+                user.PortfolioValue,
+                user.NetWorth))
+        ];
+
+    private sealed record GlobalWealthAggregate(
+        ScopedUserRow User,
+        decimal PortfolioValue,
+        decimal NetWorth);
+
+    private sealed record GlobalWealthRankings(
+        IReadOnlyList<DashboardGlobalWealthUser> RichestByBalance,
+        IReadOnlyList<DashboardGlobalWealthUser> RichestByNetWorth);
+
+    private async Task<IReadOnlyList<DashboardPopularQuote>> GetPopularQuotesAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.Quotes
+            .AsNoTracking()
+            .Where(quote => quote.Approved && !quote.Removed)
+            .Select(quote => new
+            {
+                quote.Id,
+                quote.GuildId,
+                quote.UserId,
+                Author = quote.User.Username,
+                quote.Content,
+                quote.InsertDate,
+                Score = dbContext.QuoteScores
+                    .Where(score => score.QuoteId == quote.Id)
+                    .Sum(score => (int?)score.Score) ?? 0
+            })
+            .OrderByDescending(quote => quote.Score)
+            .ThenByDescending(quote => quote.InsertDate)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. rows.Select((quote, index) => new DashboardPopularQuote(
+                index + 1,
+                quote.Id,
+                quote.GuildId,
+                quote.UserId,
+                quote.Author,
+                quote.Content,
+                quote.InsertDate,
+                quote.Score))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardGlobalChannelActivity>> GetGlobalChannelActivityAsync(
+        DateTime? startDate,
+        int limit,
+        CancellationToken cancellationToken,
+        DateTime? endExclusiveDate = null)
+    {
+        IQueryable<UserActivity> query = dbContext.UserActivity.AsNoTracking();
+        if (startDate.HasValue)
+            query = query.Where(activity => activity.InsertDate >= startDate.Value);
+        if (endExclusiveDate.HasValue)
+            query = query.Where(activity => activity.InsertDate < endExclusiveDate.Value);
+
+        var rows = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new
+            {
+                ChannelId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count(),
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .OrderByDescending(row => row.Messages)
+            .ThenByDescending(row => row.Xp)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        Dictionary<ulong, string> channelLabels = await GetChannelLabelsAsync(
+            rows.Select(row => row.ChannelId),
+            cancellationToken);
+
+        return
+        [
+            .. rows.Select((row, index) => new DashboardGlobalChannelActivity(
+                index + 1,
+                row.ChannelId.ToString(),
+                channelLabels.GetValueOrDefault(row.ChannelId, $"channel-{ShortDiscordId(row.ChannelId)}"),
+                row.Messages,
+                row.Xp,
+                row.ActiveUsers,
+                row.LastActivityAtUtc))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardRecentEntity>> GetRecentUsersAsync(
+        int limit,
+        CancellationToken cancellationToken) =>
+        await dbContext.Users
+            .AsNoTracking()
+            .OrderByDescending(user => user.InsertDate)
+            .Take(limit)
+            .Select(user => new DashboardRecentEntity(
+                user.Id,
+                user.DiscordId.ToString(),
+                user.Username,
+                user.InsertDate))
+            .ToListAsync(cancellationToken);
+
+    private async Task<IReadOnlyList<DashboardRecentEntity>> GetRecentServersAsync(
+        int limit,
+        CancellationToken cancellationToken) =>
+        await dbContext.Guilds
+            .AsNoTracking()
+            .OrderByDescending(guild => guild.InsertDate)
+            .Take(limit)
+            .Select(guild => new DashboardRecentEntity(
+                guild.Id,
+                guild.DiscordId.ToString(),
+                guild.Name,
+                guild.InsertDate))
+            .ToListAsync(cancellationToken);
+
+    private async Task<IReadOnlyList<DashboardRecentQuote>> GetRecentQuotesAsync(
+        int limit,
+        CancellationToken cancellationToken) =>
+        await dbContext.Quotes
+            .AsNoTracking()
+            .OrderByDescending(quote => quote.InsertDate)
+            .Take(limit)
+            .Select(quote => new DashboardRecentQuote(
+                quote.Id,
+                quote.GuildId,
+                quote.UserId,
+                quote.User.Username,
+                quote.Content,
+                quote.Approved,
+                quote.Removed,
+                quote.InsertDate))
+            .ToListAsync(cancellationToken);
+
+    private async Task<IReadOnlyList<DashboardRecentStock>> GetRecentStocksAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.Stocks
+            .AsNoTracking()
+            .OrderByDescending(stock => stock.InsertDate)
+            .Take(limit)
+            .Select(stock => new
+            {
+                stock.Id,
+                stock.EntityType,
+                stock.EntityId,
+                stock.Price,
+                stock.DailyChangePercent,
+                stock.InsertDate
+            })
+            .ToListAsync(cancellationToken);
+
+        List<StockInsightRow> stockRows =
+        [
+            .. rows.Select(stock => new StockInsightRow(
+                stock.Id,
+                stock.EntityType,
+                stock.EntityId,
+                stock.Price,
+                stock.DailyChangePercent))
+        ];
+        Dictionary<int, string> stockNames = await GetStockNamesAsync(stockRows, cancellationToken);
+
+        return
+        [
+            .. rows.Select(stock => new DashboardRecentStock(
+                stock.Id,
+                EntityTypeLabel(stock.EntityType),
+                stock.EntityId,
+                stockNames.GetValueOrDefault(stock.Id, $"{EntityTypeLabel(stock.EntityType)} #{stock.EntityId}"),
+                stock.Price,
+                stock.DailyChangePercent,
+                stock.InsertDate))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardStockMover>> GetStockMoversAsync(
+        bool winners,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Stock> orderedStocks = winners
+            ? dbContext.Stocks.AsNoTracking().OrderByDescending(stock => (double)stock.DailyChangePercent).ThenByDescending(stock => (double)stock.Price)
+            : dbContext.Stocks.AsNoTracking().OrderBy(stock => (double)stock.DailyChangePercent).ThenByDescending(stock => (double)stock.Price);
+
+        List<StockInsightRow> rows = await orderedStocks
+            .Take(limit)
+            .Select(stock => new StockInsightRow(
+                stock.Id,
+                stock.EntityType,
+                stock.EntityId,
+                stock.Price,
+                stock.DailyChangePercent,
+                stock.PreviousPrice,
+                stock.InsertDate,
+                stock.LastUpdatedDate))
+            .ToListAsync(cancellationToken);
+
+        Dictionary<int, string> stockNames = await GetStockNamesAsync(rows, cancellationToken);
+        Dictionary<int, decimal> holdingValues = await GetHoldingValuesByStockAsync(
+            rows.Select(stock => stock.StockId),
+            cancellationToken);
+
+        return
+        [
+            .. rows.Select(stock => new DashboardStockMover(
+                stock.StockId,
+                EntityTypeLabel(stock.EntityType),
+                stockNames.GetValueOrDefault(stock.StockId, $"{EntityTypeLabel(stock.EntityType)} #{stock.EntityId}"),
+                stock.Price,
+                stock.DailyChangePercent,
+                holdingValues.GetValueOrDefault(stock.StockId)))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardStackedServerActivityPoint>> BuildStackedServerActivityAsync(
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        int days,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var topServers = await dbContext.UserActivity
+            .AsNoTracking()
+            .Where(activity => activity.InsertDate >= startDate && activity.InsertDate < endExclusiveDate)
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new
+            {
+                GuildId = group.Key,
+                Messages = group.Count()
+            })
+            .OrderByDescending(row => row.Messages)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
+        List<int> guildIds = [.. topServers.Select(server => server.GuildId)];
+        if (guildIds.Count == 0)
+            return [];
+
+        Dictionary<int, string> guildNames = await dbContext.Guilds
+            .AsNoTracking()
+            .Where(guild => guildIds.Contains(guild.Id))
+            .Select(guild => new { guild.Id, guild.Name })
+            .ToDictionaryAsync(guild => guild.Id, guild => guild.Name, cancellationToken);
+
+        var dailyRows = await dbContext.UserActivity
+            .AsNoTracking()
+            .Where(activity =>
+                activity.InsertDate >= startDate &&
+                activity.InsertDate < endExclusiveDate &&
+                guildIds.Contains(activity.GuildId))
+            .GroupBy(activity => new
+            {
+                Date = activity.InsertDate.Date,
+                activity.GuildId
+            })
+            .Select(group => new
+            {
+                group.Key.Date,
+                group.Key.GuildId,
+                Messages = group.Count()
+            })
+            .ToListAsync(cancellationToken);
+
+        Dictionary<(DateTime Date, int GuildId), int> messagesByDateAndGuild = dailyRows
+            .ToDictionary(row => (row.Date.Date, row.GuildId), row => row.Messages);
+
+        List<DashboardStackedServerActivityPoint> points = [];
+        for (int offset = 0; offset < days; offset++)
+        {
+            DateTime date = startDate.AddDays(offset);
+            foreach (int guildId in guildIds)
+            {
+                points.Add(new DashboardStackedServerActivityPoint(
+                    DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
+                    guildId,
+                    guildNames.GetValueOrDefault(guildId, $"Server #{guildId}"),
+                    messagesByDateAndGuild.GetValueOrDefault((date.Date, guildId))));
+            }
+        }
+
+        return points;
+    }
+
+    private static IReadOnlyList<DashboardCalendarActivityCell> BuildCalendarActivity(
+        IReadOnlyList<DashboardActivityDerivedPoint> activityPoints) =>
+        [
+            .. activityPoints.Select(point => new DashboardCalendarActivityCell(
+                point.DateUtc,
+                point.Messages,
+                point.Xp,
+                point.ActiveUsers))
+        ];
+
+    private async Task<IReadOnlyList<DashboardCategoryValue>> GetTransactionTypesAsync(
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        CancellationToken cancellationToken)
+    {
+        if (dbContext.Database.ProviderName == SqliteProviderName)
+        {
+            var sqliteRows = await dbContext.StockTransactions
+                .AsNoTracking()
+                .Where(transaction => transaction.InsertDate >= startDate && transaction.InsertDate < endExclusiveDate)
+                .GroupBy(transaction => transaction.Type)
+                .Select(group => new
+                {
+                    Type = group.Key,
+                    Value = group.Sum(transaction => transaction.Amount < 0m
+                        ? -(double)transaction.Amount
+                        : (double)transaction.Amount)
+                })
+                .ToListAsync(cancellationToken);
+
+            return
+            [
+                .. sqliteRows
+                    .Select(group => new DashboardCategoryValue(
+                        TransactionTypeLabel(group.Type),
+                        (decimal)group.Value))
+                    .OrderByDescending(item => item.Value)
+            ];
+        }
+
+        var rows = await dbContext.StockTransactions
+            .AsNoTracking()
+            .Where(transaction => transaction.InsertDate >= startDate && transaction.InsertDate < endExclusiveDate)
+            .GroupBy(transaction => transaction.Type)
+            .Select(group => new
+            {
+                Type = group.Key,
+                Value = group.Sum(transaction => transaction.Amount < 0m ? -transaction.Amount : transaction.Amount)
+            })
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. rows
+                .Select(group => new DashboardCategoryValue(
+                    TransactionTypeLabel(group.Type),
+                    group.Value))
+                .OrderByDescending(item => item.Value)
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardEconomyEventItem>> GetRecentEconomyEventsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.StockTransactions
+            .AsNoTracking()
+            .OrderByDescending(transaction => transaction.InsertDate)
+            .Take(limit)
+            .Select(transaction => new
+            {
+                transaction.Id,
+                transaction.Type,
+                transaction.Amount,
+                transaction.Fee,
+                transaction.UserId,
+                User = transaction.User == null ? "Unknown" : transaction.User.Username,
+                transaction.TargetUserId,
+                TargetUser = transaction.TargetUser == null ? null : transaction.TargetUser.Username,
+                transaction.StockId,
+                transaction.InsertDate
+            })
+            .ToListAsync(cancellationToken);
+
+        List<int> stockIds =
+        [
+            .. rows
+                .Where(row => row.StockId.HasValue)
+                .Select(row => row.StockId!.Value)
+                .Distinct()
+        ];
+        List<StockInsightRow> stockRows = stockIds.Count == 0
+            ? []
+            : await dbContext.Stocks
+                .AsNoTracking()
+                .Where(stock => stockIds.Contains(stock.Id))
+                .Select(stock => new StockInsightRow(
+                    stock.Id,
+                    stock.EntityType,
+                    stock.EntityId,
+                    stock.Price,
+                    stock.DailyChangePercent))
+                .ToListAsync(cancellationToken);
+        Dictionary<int, string> stockNames = await GetStockNamesAsync(stockRows, cancellationToken);
+
+        return
+        [
+            .. rows.Select(row => new DashboardEconomyEventItem(
+                row.Id,
+                TransactionTypeLabel(row.Type),
+                row.Amount,
+                row.Fee,
+                row.UserId,
+                row.User,
+                row.TargetUserId,
+                row.TargetUser,
+                row.StockId,
+                row.StockId.HasValue ? stockNames.GetValueOrDefault(row.StockId.Value) : null,
+                row.InsertDate))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardLogItem>> GetRecentBotHealthEventsAsync(
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var logs = await dbContext.Logs
+            .AsNoTracking()
+            .Where(log => log.Severity <= 2)
+            .OrderByDescending(log => log.InsertDate)
+            .Take(limit)
+            .Select(log => new
+            {
+                log.Id,
+                log.Severity,
+                log.Message,
+                log.Version,
+                log.InsertDate
+            })
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. logs.Select(log => new DashboardLogItem(
+                log.Id,
+                LogSeverityLabel(log.Severity),
+                log.Message,
+                log.Version,
+                log.InsertDate))
+        ];
+    }
+
+    private async Task<decimal> GetMoneySettingAmountAsync(
+        string key,
+        decimal fallback,
+        CancellationToken cancellationToken)
+    {
+        List<string> values = await dbContext.BotSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == key)
+            .OrderBy(setting => setting.Id)
+            .Select(setting => setting.Value)
+            .ToListAsync(cancellationToken);
+
+        return values.Count == 0
+            ? fallback
+            : values.Sum(value => EconomyService.ParseMoneyFromStorage(value, fallback));
+    }
+
+    private async Task<DashboardFilterOptions> BuildFilterOptionsAsync(
+        int? guildId,
+        int? selectedUserId,
+        ulong? selectedChannelDiscordId,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<DashboardUserOption> users = await BuildUserFilterOptionsAsync(
+            guildId,
+            selectedUserId,
+            cancellationToken);
+        IReadOnlyList<DashboardChannelOption> channels = await BuildChannelFilterOptionsAsync(
+            guildId,
+            selectedChannelDiscordId,
+            cancellationToken);
+
+        return new DashboardFilterOptions(users, channels);
+    }
+
+    private async Task<DashboardFilterOptions> BuildServerSettingsNavigationOptionsAsync(
+        int guildId,
+        CancellationToken cancellationToken)
+    {
+        DashboardUserOption? user = await dbContext.UserLevels
+            .AsNoTracking()
+            .Where(levels => levels.GuildId == guildId)
+            .OrderByDescending(levels => levels.UserMessageCount)
+            .ThenByDescending(levels => levels.TotalXp)
+            .ThenBy(levels => levels.UserId)
+            .Select(levels => new DashboardUserOption(
+                levels.UserId,
+                levels.User!.DiscordId.ToString(),
+                levels.User.Username))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        ulong? channelDiscordId = await dbContext.UserActivity
+            .AsNoTracking()
+            .Where(activity => activity.GuildId == guildId)
+            .OrderByDescending(activity => activity.InsertDate)
+            .ThenByDescending(activity => activity.Id)
+            .Select(activity => (ulong?)activity.DiscordChannelId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        DashboardChannelOption? channel = null;
+        if (channelDiscordId.HasValue)
+        {
+            string? channelName = await dbContext.Channels
+                .AsNoTracking()
+                .Where(row => row.DiscordId == channelDiscordId.Value)
+                .Select(row => row.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            channel = new DashboardChannelOption(
+                channelDiscordId.Value.ToString(),
+                string.IsNullOrWhiteSpace(channelName)
+                    ? $"channel-{ShortDiscordId(channelDiscordId.Value)}"
+                    : channelName);
+        }
+
+        return new DashboardFilterOptions(
+            user is null ? [] : [user],
+            channel is null ? [] : [channel]);
+    }
+
+    private async Task<IReadOnlyList<DashboardUserOption>> BuildUserFilterOptionsAsync(
+        int? guildId,
+        int? selectedUserId,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<User> query = dbContext.Users.AsNoTracking();
+
+        if (guildId.HasValue)
+        {
+            List<int> userIdRows = await dbContext.UserLevels
+                .AsNoTracking()
+                .Where(levels => levels.GuildId == guildId.Value)
+                .Select(levels => levels.UserId)
+                .Concat(dbContext.UserActivity
+                    .AsNoTracking()
+                    .Where(activity => activity.GuildId == guildId.Value)
+                    .Select(activity => activity.UserId))
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            HashSet<int> userIds = [.. userIdRows];
+
+            if (selectedUserId.HasValue)
+                userIds.Add(selectedUserId.Value);
+
+            query = userIds.Count == 0
+                ? query.Where(_ => false)
+                : query.Where(user => userIds.Contains(user.Id));
+        }
+
+        return await query
+            .OrderBy(user => user.Username)
+            .ThenBy(user => user.Id)
+            .Select(user => new DashboardUserOption(
+                user.Id,
+                user.DiscordId.ToString(),
+                user.Username))
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<DashboardChannelOption>> BuildChannelFilterOptionsAsync(
+        int? guildId,
+        ulong? selectedChannelDiscordId,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Channel> query = dbContext.Channels.AsNoTracking();
+
+        if (guildId.HasValue)
+        {
+            List<ulong> channelDiscordIdRows = await dbContext.UserActivity
+                .AsNoTracking()
+                .Where(activity => activity.GuildId == guildId.Value)
+                .Select(activity => activity.DiscordChannelId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            HashSet<ulong> channelDiscordIds = [.. channelDiscordIdRows];
+
+            if (selectedChannelDiscordId.HasValue)
+                channelDiscordIds.Add(selectedChannelDiscordId.Value);
+
+            query = channelDiscordIds.Count == 0
+                ? query.Where(_ => false)
+                : query.Where(channel => channelDiscordIds.Contains(channel.DiscordId));
+        }
+
+        var channels = await query
+            .OrderBy(channel => channel.Name)
+            .Select(channel => new { channel.DiscordId, channel.Name })
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. channels
+                .OrderBy(channel => channel.Name)
+                .ThenBy(channel => channel.DiscordId)
+                .Select(channel => new DashboardChannelOption(
+                    channel.DiscordId.ToString(),
+                    string.IsNullOrWhiteSpace(channel.Name)
+                        ? $"channel-{ShortDiscordId(channel.DiscordId)}"
+                        : channel.Name))
+        ];
+    }
+
+    private async Task<DashboardActivityInsights> BuildActivityInsightsAsync(
+        IQueryable<UserActivity> query,
+        DateTime startDate,
+        int days,
+        CancellationToken cancellationToken)
+    {
+        List<DailyActivityAggregate> dailyRows = await query
+            .GroupBy(activity => activity.InsertDate.Date)
+            .Select(group => new
+            {
+                Date = group.Key,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count()
+            })
+            .Select(row => new DailyActivityAggregate(row.Date, row.Messages, row.Xp, row.ActiveUsers))
+            .ToListAsync(cancellationToken);
+
+        Dictionary<DateTime, DailyActivityAggregate> byDate = dailyRows
+            .ToDictionary(row => row.Date.Date);
+
+        List<int> dailyMessages = [];
+        List<DashboardActivityDerivedPoint> points = [];
+        long cumulativeMessages = 0;
+        long cumulativeXp = 0;
+        long messagesTotal = dailyRows.Sum(row => (long)row.Messages);
+        long xpTotal = dailyRows.Sum(row => row.Xp);
+
+        for (int offset = 0; offset < days; offset++)
+        {
+            DateTime date = startDate.AddDays(offset);
+            int messages = 0;
+            long xp = 0;
+            int activeUsers = 0;
+            if (byDate.TryGetValue(date, out DailyActivityAggregate? dayRow))
+            {
+                messages = dayRow.Messages;
+                xp = dayRow.Xp;
+                activeUsers = dayRow.ActiveUsers;
+            }
+
+            dailyMessages.Add(messages);
+            int rollingStart = Math.Max(0, dailyMessages.Count - 7);
+            double rollingMessages = dailyMessages
+                .Skip(rollingStart)
+                .Average();
+
+            cumulativeMessages += messages;
+            cumulativeXp += xp;
+
+            points.Add(new DashboardActivityDerivedPoint(
+                DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
+                messages,
+                xp,
+                activeUsers,
+                Math.Round(rollingMessages, 1),
+                cumulativeMessages,
+                cumulativeXp));
+        }
+
+        int activeUsersTotal = await query
+            .Select(activity => activity.UserId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+        int activeChannels = await query
+            .Select(activity => activity.DiscordChannelId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+        double averageMessageLength = await query
+            .AverageAsync(activity => (double?)activity.MessageLength, cancellationToken) ?? 0.0;
+        double messagesPerActiveUser = activeUsersTotal == 0
+            ? 0.0
+            : (double)messagesTotal / activeUsersTotal;
+        double xpPerMessage = messagesTotal == 0
+            ? 0.0
+            : (double)xpTotal / messagesTotal;
+        var peakHour = messagesTotal == 0
+            ? null
+            : await query
+                .GroupBy(activity => activity.InsertDate.Hour)
+                .Select(group => new { Hour = group.Key, Messages = group.Count() })
+                .OrderByDescending(group => group.Messages)
+                .ThenBy(group => group.Hour)
+                .FirstOrDefaultAsync(cancellationToken);
+        int peakHourUtc = peakHour?.Hour ?? 0;
+
+        double trendPercent = CalculateTrendPercent(dailyMessages);
+
+        return new DashboardActivityInsights(
+            messagesTotal,
+            xpTotal,
+            activeUsersTotal,
+            activeChannels,
+            Math.Round(averageMessageLength, 1),
+            Math.Round(messagesPerActiveUser, 1),
+            Math.Round(xpPerMessage, 1),
+            peakHourUtc,
+            trendPercent,
+            points);
+    }
+
+    private async Task<DashboardActivityAnalytics> BuildActivityAnalyticsAsync(
+        int? guildId,
+        int? userId,
+        ulong? channelDiscordId,
+        IQueryable<UserActivity> query,
+        DashboardActivityInsights activity,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        int days,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<DailyActivityAggregate> dailyActivity = await BuildDailyActivityAggregatesAsync(
+            query,
+            startDate,
+            days,
+            cancellationToken);
+        var userTrends = await BuildUserTrendInsightsAsync(
+            query,
+            startDate,
+            endExclusiveDate,
+            cancellationToken);
+
+        IReadOnlyList<DashboardActivityDistributionPoint> xpByUser =
+            await BuildUserActivityDistributionAsync(query, "xp", 12, cancellationToken);
+        IReadOnlyList<DashboardActivityDistributionPoint> xpByChannel =
+            await BuildChannelActivityDistributionAsync(query, "xp", 12, cancellationToken);
+        IReadOnlyList<DashboardActivityDistributionPoint> xpByServer =
+            await BuildServerActivityDistributionAsync(query, "xp", 12, cancellationToken);
+        IReadOnlyList<DashboardActivityDistributionPoint> messageShareByUser =
+            await BuildUserActivityDistributionAsync(query, "messages", 12, cancellationToken);
+        IReadOnlyList<DashboardActivityDistributionPoint> messageShareByChannel =
+            await BuildChannelActivityDistributionAsync(query, "messages", 12, cancellationToken);
+        IReadOnlyList<DashboardActivityDistributionPoint> messageShareByServer =
+            await BuildServerActivityDistributionAsync(query, "messages", 12, cancellationToken);
+
+        IReadOnlyList<DashboardActivityComparisonSeries> comparisonSeries =
+            await BuildActivityComparisonSeriesAsync(
+                guildId,
+                userId,
+                channelDiscordId,
+                query,
+                activity,
+                startDate,
+                endExclusiveDate,
+                days,
+                cancellationToken);
+
+        IReadOnlyList<DashboardActivityScatterPoint> userScatter =
+            await BuildUserActivityScatterPointsAsync(query, 12, cancellationToken);
+        IReadOnlyList<DashboardActivityScatterPoint> channelScatter =
+            await BuildChannelActivityScatterPointsAsync(query, 12, cancellationToken);
+        IReadOnlyList<DashboardActivityScatterPoint> serverScatter =
+            await BuildServerActivityScatterPointsAsync(query, 12, cancellationToken);
+        IReadOnlyList<DashboardActivityScatterPoint> scatterPoints =
+        [
+            .. userScatter,
+            .. channelScatter,
+            .. serverScatter
+        ];
+
+        IReadOnlyList<DashboardActivityLeaderboardSet> leaderboards =
+            await BuildActivityLeaderboardSetsAsync(
+                guildId,
+                userId,
+                query,
+                userTrends.FastestRising,
+                userTrends.Dropping,
+                startDate,
+                endExclusiveDate,
+                days,
+                minActivity,
+                cancellationToken);
+
+        return new DashboardActivityAnalytics(
+            BuildDailyActiveUserBuckets(dailyActivity),
+            await BuildPeriodActiveUserBucketsAsync(query, "week", cancellationToken),
+            await BuildPeriodActiveUserBucketsAsync(query, "month", cancellationToken),
+            BuildBestActivityDays(dailyActivity),
+            BuildWorstActivityDays(dailyActivity),
+            await BuildPeakHoursAsync(query, cancellationToken),
+            await BuildPeakWeekdaysAsync(query, cancellationToken),
+            BuildUserActivityStreaks(dailyActivity),
+            comparisonSeries,
+            xpByUser,
+            xpByChannel,
+            xpByServer,
+            messageShareByUser,
+            messageShareByChannel,
+            messageShareByServer,
+            await BuildMessageLengthHistogramAsync(query, cancellationToken),
+            await BuildMessageLengthTrendAsync(query, startDate, days, cancellationToken),
+            await BuildMessageLengthBoxPlotsAsync(query, cancellationToken),
+            scatterPoints,
+            scatterPoints,
+            await BuildChannelHourHeatmapAsync(query, cancellationToken),
+            await BuildServerDayHeatmapAsync(query, startDate, days, cancellationToken),
+            await BuildChannelHeatmapAsync(query, startDate, days, cancellationToken),
+            BuildParetoPoints(messageShareByUser),
+            leaderboards,
+            userTrends.RankMovement);
+    }
+
+    private static IReadOnlyList<DashboardTimeBucket> BuildDailyActiveUserBuckets(
+        IReadOnlyList<DailyActivityAggregate> dailyActivity) =>
+        [
+            .. dailyActivity.Select(day => new DashboardTimeBucket(
+                day.Date.ToString("yyyy-MM-dd"),
+                (int)(day.Date - DateTime.UnixEpoch).TotalDays,
+                day.Messages,
+                day.Xp,
+                day.ActiveUsers))
+        ];
+
+    private async Task<IReadOnlyList<DashboardTimeBucket>> BuildPeriodActiveUserBucketsAsync(
+        IQueryable<UserActivity> query,
+        string period,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .Select(activity => new
+            {
+                Date = activity.InsertDate.Date,
+                activity.UserId,
+                activity.XpGained
+            })
+            .ToListAsync(cancellationToken);
+
+        if (rows.Count == 0)
+            return [];
+
+        var groupedRows = rows
+            .GroupBy(row => period == "month"
+                ? new PeriodKey(row.Date.Year, row.Date.Month, 1, $"{row.Date:yyyy-MM}")
+                : BuildWeekPeriodKey(row.Date))
+            .OrderBy(group => group.Key.Year)
+            .ThenBy(group => group.Key.Period)
+            .ThenBy(group => group.Key.SubPeriod)
+            .Select(group => new DashboardTimeBucket(
+                group.Key.Label,
+                group.Key.Year * 10000 + group.Key.Period * 100 + group.Key.SubPeriod,
+                group.Count(),
+                group.Sum(row => (long)row.XpGained),
+                group.Select(row => row.UserId).Distinct().Count()))
+            .ToList();
+
+        return groupedRows;
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityComparisonSeries>> BuildActivityComparisonSeriesAsync(
+        int? guildId,
+        int? userId,
+        ulong? channelDiscordId,
+        IQueryable<UserActivity> query,
+        DashboardActivityInsights selectedActivity,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        int days,
+        CancellationToken cancellationToken)
+    {
+        List<DashboardActivityComparisonSeries> series =
+        [
+            new("selected-window", "Selected window", "time-range", selectedActivity.Points)
+        ];
+
+        DateTime previousStartDate = startDate.AddDays(-days);
+        DashboardActivityInsights previousActivity = await BuildActivityInsightsAsync(
+            BuildActivityQuery(previousStartDate, guildId, userId, channelDiscordId, startDate),
+            previousStartDate,
+            days,
+            cancellationToken);
+        series.Add(new DashboardActivityComparisonSeries(
+            "previous-window",
+            "Previous window",
+            "time-range",
+            previousActivity.Points));
+
+        series.AddRange(await BuildTopUserComparisonSeriesAsync(query, startDate, days, cancellationToken));
+        series.AddRange(await BuildTopChannelComparisonSeriesAsync(query, startDate, days, cancellationToken));
+        series.AddRange(await BuildTopServerComparisonSeriesAsync(query, startDate, days, cancellationToken));
+
+        return series;
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityComparisonSeries>> BuildTopUserComparisonSeriesAsync(
+        IQueryable<UserActivity> query,
+        DateTime startDate,
+        int days,
+        CancellationToken cancellationToken)
+    {
+        List<int> topUserIds = await query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new { UserId = group.Key, Messages = group.Count() })
+            .OrderByDescending(row => row.Messages)
+            .ThenBy(row => row.UserId)
+            .Take(4)
+            .Select(row => row.UserId)
+            .ToListAsync(cancellationToken);
+
+        if (topUserIds.Count == 0)
+            return [];
+
+        var rows = await query
+            .Where(activity => topUserIds.Contains(activity.UserId))
+            .GroupBy(activity => new { Date = activity.InsertDate.Date, activity.UserId })
+            .Select(group => new
+            {
+                group.Key.Date,
+                group.Key.UserId,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained)
+            })
+            .ToListAsync(cancellationToken);
+        Dictionary<int, (string DiscordId, string Username)> labels =
+            await GetUserLabelsAsync(topUserIds, cancellationToken);
+
+        return
+        [
+            .. topUserIds.Select(userId =>
+            {
+                (string _, string username) = labels.GetValueOrDefault(userId, (string.Empty, $"User #{userId}"));
+                IReadOnlyList<EntityDailyActivityRow> dailyRows =
+                [
+                    .. rows
+                        .Where(row => row.UserId == userId)
+                        .Select(row => new EntityDailyActivityRow(
+                            userId.ToString(),
+                            row.Date.Date,
+                            row.Messages,
+                            row.Xp,
+                            row.Messages > 0 ? 1 : 0))
+                ];
+
+                return new DashboardActivityComparisonSeries(
+                    $"user-{userId}",
+                    username,
+                    "user",
+                    BuildDerivedActivityPoints(dailyRows, startDate, days));
+            })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityComparisonSeries>> BuildTopChannelComparisonSeriesAsync(
+        IQueryable<UserActivity> query,
+        DateTime startDate,
+        int days,
+        CancellationToken cancellationToken)
+    {
+        List<ulong> topChannelIds = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new { ChannelId = group.Key, Messages = group.Count() })
+            .OrderByDescending(row => row.Messages)
+            .Take(4)
+            .Select(row => row.ChannelId)
+            .ToListAsync(cancellationToken);
+
+        if (topChannelIds.Count == 0)
+            return [];
+
+        var rows = await query
+            .Where(activity => topChannelIds.Contains(activity.DiscordChannelId))
+            .GroupBy(activity => new { Date = activity.InsertDate.Date, activity.DiscordChannelId })
+            .Select(group => new
+            {
+                group.Key.Date,
+                ChannelId = group.Key.DiscordChannelId,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count()
+            })
+            .ToListAsync(cancellationToken);
+        Dictionary<ulong, string> labels = await GetChannelLabelsAsync(topChannelIds, cancellationToken);
+
+        return
+        [
+            .. topChannelIds.Select(channelId =>
+            {
+                IReadOnlyList<EntityDailyActivityRow> dailyRows =
+                [
+                    .. rows
+                        .Where(row => row.ChannelId == channelId)
+                        .Select(row => new EntityDailyActivityRow(
+                            channelId.ToString(),
+                            row.Date.Date,
+                            row.Messages,
+                            row.Xp,
+                            row.ActiveUsers))
+                ];
+
+                return new DashboardActivityComparisonSeries(
+                    $"channel-{channelId}",
+                    labels.GetValueOrDefault(channelId, $"channel-{ShortDiscordId(channelId)}"),
+                    "channel",
+                    BuildDerivedActivityPoints(dailyRows, startDate, days));
+            })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityComparisonSeries>> BuildTopServerComparisonSeriesAsync(
+        IQueryable<UserActivity> query,
+        DateTime startDate,
+        int days,
+        CancellationToken cancellationToken)
+    {
+        List<int> topGuildIds = await query
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new { GuildId = group.Key, Messages = group.Count() })
+            .OrderByDescending(row => row.Messages)
+            .ThenBy(row => row.GuildId)
+            .Take(4)
+            .Select(row => row.GuildId)
+            .ToListAsync(cancellationToken);
+
+        if (topGuildIds.Count == 0)
+            return [];
+
+        var rows = await query
+            .Where(activity => topGuildIds.Contains(activity.GuildId))
+            .GroupBy(activity => new { Date = activity.InsertDate.Date, activity.GuildId })
+            .Select(group => new
+            {
+                group.Key.Date,
+                group.Key.GuildId,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count()
+            })
+            .ToListAsync(cancellationToken);
+        Dictionary<int, string> labels = await GetGuildLabelsAsync(topGuildIds, cancellationToken);
+
+        return
+        [
+            .. topGuildIds.Select(guildId =>
+            {
+                IReadOnlyList<EntityDailyActivityRow> dailyRows =
+                [
+                    .. rows
+                        .Where(row => row.GuildId == guildId)
+                        .Select(row => new EntityDailyActivityRow(
+                            guildId.ToString(),
+                            row.Date.Date,
+                            row.Messages,
+                            row.Xp,
+                            row.ActiveUsers))
+                ];
+
+                return new DashboardActivityComparisonSeries(
+                    $"server-{guildId}",
+                    labels.GetValueOrDefault(guildId, $"Server #{guildId}"),
+                    "server",
+                    BuildDerivedActivityPoints(dailyRows, startDate, days));
+            })
+        ];
+    }
+
+    private static IReadOnlyList<DashboardActivityDerivedPoint> BuildDerivedActivityPoints(
+        IReadOnlyList<EntityDailyActivityRow> rows,
+        DateTime startDate,
+        int days)
+    {
+        Dictionary<DateTime, EntityDailyActivityRow> byDate = rows.ToDictionary(row => row.Date.Date);
+        List<int> dailyMessages = [];
+        List<DashboardActivityDerivedPoint> points = [];
+        long cumulativeMessages = 0L;
+        long cumulativeXp = 0L;
+
+        for (int offset = 0; offset < days; offset++)
+        {
+            DateTime date = startDate.AddDays(offset).Date;
+            EntityDailyActivityRow? row = byDate.GetValueOrDefault(date);
+            int messages = row?.Messages ?? 0;
+            long xp = row?.Xp ?? 0L;
+            int activeUsers = row?.ActiveUsers ?? 0;
+
+            dailyMessages.Add(messages);
+            int rollingStart = Math.Max(0, dailyMessages.Count - 7);
+            double rollingMessages = dailyMessages.Skip(rollingStart).Average();
+            cumulativeMessages += messages;
+            cumulativeXp += xp;
+
+            points.Add(new DashboardActivityDerivedPoint(
+                DateTime.SpecifyKind(date, DateTimeKind.Utc),
+                messages,
+                xp,
+                activeUsers,
+                Math.Round(rollingMessages, 1),
+                cumulativeMessages,
+                cumulativeXp));
+        }
+
+        return points;
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityDistributionPoint>> BuildUserActivityDistributionAsync(
+        IQueryable<UserActivity> query,
+        string metric,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained)
+            })
+            .ToListAsync(cancellationToken);
+        long total = metric == "messages"
+            ? rows.Sum(row => row.Messages)
+            : rows.Sum(row => row.Xp);
+        Dictionary<int, (string DiscordId, string Username)> labels =
+            await GetUserLabelsAsync(rows.Select(row => row.UserId), cancellationToken);
+
+        return
+        [
+            .. rows
+                .OrderByDescending(row => metric == "messages" ? row.Messages : row.Xp)
+                .ThenBy(row => row.UserId)
+                .Take(limit)
+                .Select(row =>
+                {
+                    (string _, string username) = labels.GetValueOrDefault(row.UserId, (string.Empty, $"User #{row.UserId}"));
+                    long value = metric == "messages" ? row.Messages : row.Xp;
+                    return new DashboardActivityDistributionPoint(
+                        row.UserId.ToString(),
+                        username,
+                        "user",
+                        row.Messages,
+                        row.Xp,
+                        Percentage(value, total));
+                })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityDistributionPoint>> BuildChannelActivityDistributionAsync(
+        IQueryable<UserActivity> query,
+        string metric,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new
+            {
+                ChannelId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained)
+            })
+            .ToListAsync(cancellationToken);
+        long total = metric == "messages"
+            ? rows.Sum(row => row.Messages)
+            : rows.Sum(row => row.Xp);
+        Dictionary<ulong, string> labels = await GetChannelLabelsAsync(
+            rows.Select(row => row.ChannelId),
+            cancellationToken);
+
+        return
+        [
+            .. rows
+                .OrderByDescending(row => metric == "messages" ? row.Messages : row.Xp)
+                .ThenBy(row => row.ChannelId)
+                .Take(limit)
+                .Select(row =>
+                {
+                    long value = metric == "messages" ? row.Messages : row.Xp;
+                    return new DashboardActivityDistributionPoint(
+                        row.ChannelId.ToString(),
+                        labels.GetValueOrDefault(row.ChannelId, $"channel-{ShortDiscordId(row.ChannelId)}"),
+                        "channel",
+                        row.Messages,
+                        row.Xp,
+                        Percentage(value, total));
+                })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityDistributionPoint>> BuildServerActivityDistributionAsync(
+        IQueryable<UserActivity> query,
+        string metric,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new
+            {
+                GuildId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained)
+            })
+            .ToListAsync(cancellationToken);
+        long total = metric == "messages"
+            ? rows.Sum(row => row.Messages)
+            : rows.Sum(row => row.Xp);
+        Dictionary<int, string> labels = await GetGuildLabelsAsync(
+            rows.Select(row => row.GuildId),
+            cancellationToken);
+
+        return
+        [
+            .. rows
+                .OrderByDescending(row => metric == "messages" ? row.Messages : row.Xp)
+                .ThenBy(row => row.GuildId)
+                .Take(limit)
+                .Select(row =>
+                {
+                    long value = metric == "messages" ? row.Messages : row.Xp;
+                    return new DashboardActivityDistributionPoint(
+                        row.GuildId.ToString(),
+                        labels.GetValueOrDefault(row.GuildId, $"Server #{row.GuildId}"),
+                        "server",
+                        row.Messages,
+                        row.Xp,
+                        Percentage(value, total));
+                })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityScatterPoint>> BuildUserActivityScatterPointsAsync(
+        IQueryable<UserActivity> query,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0
+            })
+            .OrderByDescending(row => row.Xp)
+            .ThenByDescending(row => row.Messages)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        Dictionary<int, (string DiscordId, string Username)> labels =
+            await GetUserLabelsAsync(rows.Select(row => row.UserId), cancellationToken);
+
+        return
+        [
+            .. rows.Select(row =>
+            {
+                (string _, string username) = labels.GetValueOrDefault(row.UserId, (string.Empty, $"User #{row.UserId}"));
+                return new DashboardActivityScatterPoint(
+                    row.UserId.ToString(),
+                    username,
+                    "user",
+                    row.Messages,
+                    row.Xp,
+                    Math.Round(row.AverageMessageLength, 1),
+                    row.Messages == 0L ? 0.0 : Math.Round((double)row.Xp / row.Messages, 2));
+            })
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityScatterPoint>> BuildChannelActivityScatterPointsAsync(
+        IQueryable<UserActivity> query,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new
+            {
+                ChannelId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0
+            })
+            .OrderByDescending(row => row.Xp)
+            .ThenByDescending(row => row.Messages)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        Dictionary<ulong, string> labels = await GetChannelLabelsAsync(
+            rows.Select(row => row.ChannelId),
+            cancellationToken);
+
+        return
+        [
+            .. rows.Select(row => new DashboardActivityScatterPoint(
+                row.ChannelId.ToString(),
+                labels.GetValueOrDefault(row.ChannelId, $"channel-{ShortDiscordId(row.ChannelId)}"),
+                "channel",
+                row.Messages,
+                row.Xp,
+                Math.Round(row.AverageMessageLength, 1),
+                row.Messages == 0L ? 0.0 : Math.Round((double)row.Xp / row.Messages, 2)))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityScatterPoint>> BuildServerActivityScatterPointsAsync(
+        IQueryable<UserActivity> query,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new
+            {
+                GuildId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0
+            })
+            .OrderByDescending(row => row.Xp)
+            .ThenByDescending(row => row.Messages)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        Dictionary<int, string> labels = await GetGuildLabelsAsync(
+            rows.Select(row => row.GuildId),
+            cancellationToken);
+
+        return
+        [
+            .. rows.Select(row => new DashboardActivityScatterPoint(
+                row.GuildId.ToString(),
+                labels.GetValueOrDefault(row.GuildId, $"Server #{row.GuildId}"),
+                "server",
+                row.Messages,
+                row.Xp,
+                Math.Round(row.AverageMessageLength, 1),
+                row.Messages == 0L ? 0.0 : Math.Round((double)row.Xp / row.Messages, 2)))
+        ];
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityBoxPlotPoint>> BuildMessageLengthBoxPlotsAsync(
+        IQueryable<UserActivity> query,
+        CancellationToken cancellationToken)
+    {
+        List<int> allLengths = await query
+            .Select(activity => activity.MessageLength)
+            .ToListAsync(cancellationToken);
+        if (allLengths.Count == 0)
+            return [];
+
+        List<ulong> topChannelIds = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new { ChannelId = group.Key, Messages = group.Count() })
+            .OrderByDescending(row => row.Messages)
+            .Take(5)
+            .Select(row => row.ChannelId)
+            .ToListAsync(cancellationToken);
+        var channelRows = topChannelIds.Count == 0
+            ? []
+            : await query
+                .Where(activity => topChannelIds.Contains(activity.DiscordChannelId))
+                .Select(activity => new
+                {
+                    activity.DiscordChannelId,
+                    activity.MessageLength
+                })
+                .ToListAsync(cancellationToken);
+        Dictionary<ulong, string> labels = await GetChannelLabelsAsync(topChannelIds, cancellationToken);
+        List<DashboardActivityBoxPlotPoint> plots =
+        [
+            CreateBoxPlot("All messages", "all", allLengths)
+        ];
+
+        plots.AddRange(topChannelIds
+            .Select(channelId => CreateBoxPlot(
+                labels.GetValueOrDefault(channelId, $"channel-{ShortDiscordId(channelId)}"),
+                "channel",
+                [.. channelRows
+                    .Where(row => row.DiscordChannelId == channelId)
+                    .Select(row => row.MessageLength)]))
+            .Where(plot => plot.Count > 0));
+
+        return plots;
+    }
+
+    private async Task<IReadOnlyList<DashboardChannelHourHeatmapCell>> BuildChannelHourHeatmapAsync(
+        IQueryable<UserActivity> query,
+        CancellationToken cancellationToken)
+    {
+        List<ulong> topChannelIds = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new { ChannelId = group.Key, Messages = group.Count() })
+            .OrderByDescending(row => row.Messages)
+            .Take(8)
+            .Select(row => row.ChannelId)
+            .ToListAsync(cancellationToken);
+
+        if (topChannelIds.Count == 0)
+            return [];
+
+        var rows = await query
+            .Where(activity => topChannelIds.Contains(activity.DiscordChannelId))
+            .GroupBy(activity => new
+            {
+                activity.DiscordChannelId,
+                Hour = activity.InsertDate.Hour
+            })
+            .Select(group => new
+            {
+                ChannelId = group.Key.DiscordChannelId,
+                group.Key.Hour,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count()
+            })
+            .ToListAsync(cancellationToken);
+        Dictionary<ulong, string> labels = await GetChannelLabelsAsync(topChannelIds, cancellationToken);
+        Dictionary<(ulong ChannelId, int Hour), (int Messages, long Xp, int ActiveUsers)> byChannelHour = rows.ToDictionary(
+            row => (row.ChannelId, row.Hour),
+            row => (row.Messages, row.Xp, row.ActiveUsers));
+
+        List<DashboardChannelHourHeatmapCell> cells = [];
+        foreach (ulong channelId in topChannelIds)
+        {
+            for (int hour = 0; hour < 24; hour++)
+            {
+                var cell = byChannelHour.GetValueOrDefault((channelId, hour));
+                cells.Add(new DashboardChannelHourHeatmapCell(
+                    channelId.ToString(),
+                    labels.GetValueOrDefault(channelId, $"channel-{ShortDiscordId(channelId)}"),
+                    hour,
+                    cell.Messages,
+                    cell.Xp,
+                    cell.ActiveUsers));
+            }
+        }
+
+        return cells;
+    }
+
+    private async Task<IReadOnlyList<DashboardServerDayActivityCell>> BuildServerDayHeatmapAsync(
+        IQueryable<UserActivity> query,
+        DateTime startDate,
+        int days,
+        CancellationToken cancellationToken)
+    {
+        List<int> topGuildIds = await query
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new { GuildId = group.Key, Messages = group.Count() })
+            .OrderByDescending(row => row.Messages)
+            .Take(8)
+            .Select(row => row.GuildId)
+            .ToListAsync(cancellationToken);
+
+        if (topGuildIds.Count == 0)
+            return [];
+
+        var rows = await query
+            .Where(activity => topGuildIds.Contains(activity.GuildId))
+            .GroupBy(activity => new
+            {
+                Date = activity.InsertDate.Date,
+                activity.GuildId
+            })
+            .Select(group => new
+            {
+                group.Key.Date,
+                group.Key.GuildId,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count()
+            })
+            .ToListAsync(cancellationToken);
+        Dictionary<int, string> labels = await GetGuildLabelsAsync(topGuildIds, cancellationToken);
+        Dictionary<(DateTime Date, int GuildId), (int Messages, long Xp, int ActiveUsers)> byDateAndGuild = rows.ToDictionary(
+            row => (row.Date.Date, row.GuildId),
+            row => (row.Messages, row.Xp, row.ActiveUsers));
+
+        List<DashboardServerDayActivityCell> cells = [];
+        for (int offset = 0; offset < days; offset++)
+        {
+            DateTime date = startDate.AddDays(offset).Date;
+            foreach (int guildId in topGuildIds)
+            {
+                var cell = byDateAndGuild.GetValueOrDefault((date, guildId));
+                cells.Add(new DashboardServerDayActivityCell(
+                    DateTime.SpecifyKind(date, DateTimeKind.Utc),
+                    guildId,
+                    labels.GetValueOrDefault(guildId, $"Server #{guildId}"),
+                    cell.Messages,
+                    cell.Xp,
+                    cell.ActiveUsers));
+            }
+        }
+
+        return cells;
+    }
+
+    private static IReadOnlyList<DashboardActivityParetoPoint> BuildParetoPoints(
+        IReadOnlyList<DashboardActivityDistributionPoint> rows)
+    {
+        decimal cumulative = 0m;
+        List<DashboardActivityParetoPoint> points = [];
+
+        foreach (DashboardActivityDistributionPoint row in rows.OrderByDescending(row => row.Messages))
+        {
+            decimal share = row.SharePercent;
+            cumulative += share;
+            points.Add(new DashboardActivityParetoPoint(
+                row.Id,
+                row.Label,
+                row.Messages,
+                share,
+                Math.Min(100m, Math.Round(cumulative, 1))));
+        }
+
+        return points;
+    }
+
+    private async Task<IReadOnlyList<DashboardActivityLeaderboardSet>> BuildActivityLeaderboardSetsAsync(
+        int? guildId,
+        int? userId,
+        IQueryable<UserActivity> query,
+        IReadOnlyList<DashboardUserTrend> risingUsers,
+        IReadOnlyList<DashboardUserTrend> fallingUsers,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        int days,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        List<DashboardActivityLeaderboardSet> sets =
+        [
+            await BuildAllTimeUserLeaderboardSetAsync(
+                "global-xp",
+                "Global XP",
+                "xp",
+                "XP",
+                null,
+                userId,
+                minActivity,
+                cancellationToken),
+            await BuildServerScopedLeaderboardSetAsync(
+                "server-xp",
+                "Server XP",
+                "xp",
+                "XP",
+                guildId,
+                userId,
+                query,
+                minActivity,
+                cancellationToken),
+            await BuildRecentUserLeaderboardSetAsync(
+                "recent-xp",
+                $"XP in past {days} days",
+                "xp",
+                "XP",
+                guildId,
+                query,
+                minActivity,
+                cancellationToken),
+            await BuildAllTimeUserLeaderboardSetAsync(
+                "global-messages",
+                "Global messages",
+                "messages",
+                "messages",
+                null,
+                userId,
+                minActivity,
+                cancellationToken),
+            await BuildServerScopedLeaderboardSetAsync(
+                "server-messages",
+                "Server messages",
+                "messages",
+                "messages",
+                guildId,
+                userId,
+                query,
+                minActivity,
+                cancellationToken),
+            await BuildRecentUserLeaderboardSetAsync(
+                "recent-messages",
+                $"Messages in past {days} days",
+                "messages",
+                "messages",
+                guildId,
+                query,
+                minActivity,
+                cancellationToken),
+            await BuildRecentUserLeaderboardSetAsync(
+                "average-message-length",
+                "Average message length",
+                "average-message-length",
+                "chars",
+                guildId,
+                query,
+                minActivity,
+                cancellationToken),
+            await BuildAllTimeUserLeaderboardSetAsync(
+                "weighted-average-message-length",
+                "Weighted global average message length",
+                "average-message-length",
+                "chars",
+                null,
+                userId,
+                minActivity,
+                cancellationToken),
+            await BuildFastestLevelGainersLeaderboardSetAsync(
+                guildId,
+                userId,
+                query,
+                cancellationToken),
+            await BuildConsistentUsersLeaderboardSetAsync(
+                guildId,
+                query,
+                startDate,
+                endExclusiveDate,
+                cancellationToken),
+            await BuildActiveChannelsLeaderboardSetAsync(query, cancellationToken),
+            await BuildActiveServersLeaderboardSetAsync(query, cancellationToken),
+            BuildTrendLeaderboardSet(
+                "rising-users",
+                "Rising users",
+                risingUsers,
+                positive: true),
+            BuildTrendLeaderboardSet(
+                "falling-users",
+                "Falling users",
+                fallingUsers,
+                positive: false)
+        ];
+
+        return sets;
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildAllTimeUserLeaderboardSetAsync(
+        string key,
+        string title,
+        string metric,
+        string unit,
+        int? guildId,
+        int? userId,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<UserLevels> query = dbContext.UserLevels.AsNoTracking();
+        if (guildId.HasValue)
+            query = query.Where(levels => levels.GuildId == guildId.Value);
+        if (userId.HasValue)
+            query = query.Where(levels => levels.UserId == userId.Value);
+
+        var levelRows = await query
+            .Select(levels => new
+            {
+                levels.UserId,
+                Xp = (long)levels.TotalXp,
+                Messages = (long)levels.UserMessageCount,
+                levels.UserAverageMessageLength
+            })
+            .ToListAsync(cancellationToken);
+
+        List<ActivityLeaderboardCandidate> candidates =
+        [
+            .. levelRows
+                .GroupBy(row => row.UserId)
+                .Select(group =>
+                {
+                    long messages = group.Sum(row => row.Messages);
+                    long xp = group.Sum(row => row.Xp);
+                    double averageLength = messages == 0L
+                        ? 0.0
+                        : group.Sum(row => row.UserAverageMessageLength * row.Messages) / messages;
+                    decimal value = metric == "messages"
+                        ? messages
+                        : metric == "average-message-length"
+                            ? (decimal)Math.Round(averageLength, 1)
+                            : xp;
+
+                    return new ActivityLeaderboardCandidate(
+                        group.Key.ToString(),
+                        group.Key,
+                        null,
+                        "user",
+                        value,
+                        messages,
+                        xp,
+                        Math.Round(averageLength, 1),
+                        messages == 0L ? 0.0 : Math.Round((double)xp / messages, 2),
+                        null,
+                        null);
+                })
+                .Where(row => row.Messages >= minActivity || metric == "xp")
+        ];
+
+        return await MaterializeUserLeaderboardSetAsync(
+            key,
+            title,
+            metric,
+            unit,
+            candidates,
+            guildId,
+            cancellationToken);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildServerScopedLeaderboardSetAsync(
+        string key,
+        string title,
+        string metric,
+        string unit,
+        int? guildId,
+        int? userId,
+        IQueryable<UserActivity> query,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        if (guildId.HasValue)
+        {
+            return await BuildAllTimeUserLeaderboardSetAsync(
+                key,
+                title,
+                metric,
+                unit,
+                guildId,
+                userId,
+                minActivity,
+                cancellationToken);
+        }
+
+        return metric == "messages"
+            ? await BuildActiveServersLeaderboardSetAsync(query, key, title, "messages", "messages", cancellationToken)
+            : await BuildActiveServersLeaderboardSetAsync(query, key, title, "xp", "XP", cancellationToken);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildRecentUserLeaderboardSetAsync(
+        string key,
+        string title,
+        string metric,
+        string unit,
+        int? guildId,
+        IQueryable<UserActivity> query,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0,
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .ToListAsync(cancellationToken);
+
+        List<ActivityLeaderboardCandidate> candidates =
+        [
+            .. rows
+                .Where(row => row.Messages >= minActivity)
+                .Select(row =>
+                {
+                    decimal value = metric == "messages"
+                        ? row.Messages
+                        : metric == "average-message-length"
+                            ? (decimal)Math.Round(row.AverageMessageLength, 1)
+                            : row.Xp;
+
+                    return new ActivityLeaderboardCandidate(
+                        row.UserId.ToString(),
+                        row.UserId,
+                        null,
+                        "user",
+                        value,
+                        row.Messages,
+                        row.Xp,
+                        Math.Round(row.AverageMessageLength, 1),
+                        row.Messages == 0L ? 0.0 : Math.Round((double)row.Xp / row.Messages, 2),
+                        row.LastActivityAtUtc,
+                        null);
+                })
+        ];
+
+        return await MaterializeUserLeaderboardSetAsync(
+            key,
+            title,
+            metric,
+            unit,
+            candidates,
+            guildId,
+            cancellationToken);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildFastestLevelGainersLeaderboardSetAsync(
+        int? guildId,
+        int? userId,
+        IQueryable<UserActivity> query,
+        CancellationToken cancellationToken)
+    {
+        var recentRows = await query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                RecentXp = group.Sum(activity => (long)activity.XpGained),
+                Messages = group.LongCount(),
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .ToListAsync(cancellationToken);
+        List<int> userIds = [.. recentRows.Select(row => row.UserId)];
+        Dictionary<int, long> totalXp = await GetTotalXpByUserAsync(userIds, guildId, userId, cancellationToken);
+
+        List<ActivityLeaderboardCandidate> candidates =
+        [
+            .. recentRows.Select(row =>
+            {
+                long currentXp = totalXp.GetValueOrDefault(row.UserId, row.RecentXp);
+                long previousXp = Math.Max(0L, currentXp - row.RecentXp);
+                int currentLevel = ActivityLevelService.CalculateLevel(currentXp);
+                int previousLevel = ActivityLevelService.CalculateLevel(previousXp);
+                int gained = Math.Max(0, currentLevel - previousLevel);
+
+                return new ActivityLeaderboardCandidate(
+                    row.UserId.ToString(),
+                    row.UserId,
+                    null,
+                    "user",
+                    gained,
+                    row.Messages,
+                    row.RecentXp,
+                    0.0,
+                    row.Messages == 0L ? 0.0 : Math.Round((double)row.RecentXp / row.Messages, 2),
+                    row.LastActivityAtUtc,
+                    null);
+            })
+        ];
+
+        return await MaterializeUserLeaderboardSetAsync(
+            "fastest-level-gainers",
+            "Fastest level gainers",
+            "levels",
+            "levels",
+            candidates,
+            guildId,
+            cancellationToken);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildConsistentUsersLeaderboardSetAsync(
+        int? guildId,
+        IQueryable<UserActivity> query,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .Select(activity => new
+            {
+                activity.UserId,
+                Date = activity.InsertDate.Date,
+                activity.XpGained
+            })
+            .ToListAsync(cancellationToken);
+        int totalDays = Math.Max(1, (endExclusiveDate.Date - startDate.Date).Days);
+
+        List<ActivityLeaderboardCandidate> candidates =
+        [
+            .. rows
+                .GroupBy(row => row.UserId)
+                .Select(group =>
+                {
+                    List<DateTime> dates = [.. group.Select(row => row.Date.Date).Distinct().OrderBy(date => date)];
+                    int longestStreak = CalculateLongestStreak(dates);
+                    long messages = group.LongCount();
+                    long xp = group.Sum(row => (long)row.XpGained);
+                    double consistency = Math.Round((double)dates.Count / totalDays * 100.0, 1);
+
+                    return new ActivityLeaderboardCandidate(
+                        group.Key.ToString(),
+                        group.Key,
+                        null,
+                        "user",
+                        (decimal)consistency,
+                        messages,
+                        xp,
+                        longestStreak,
+                        messages == 0L ? 0.0 : Math.Round((double)xp / messages, 2),
+                        dates.Count == 0 ? null : dates[^1],
+                        null);
+                })
+        ];
+
+        return await MaterializeUserLeaderboardSetAsync(
+            "most-consistent-users",
+            "Most consistent users",
+            "consistency",
+            "%",
+            candidates,
+            guildId,
+            cancellationToken);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildActiveChannelsLeaderboardSetAsync(
+        IQueryable<UserActivity> query,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new
+            {
+                ChannelId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0,
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .OrderByDescending(row => row.Messages)
+            .Take(10)
+            .ToListAsync(cancellationToken);
+        Dictionary<ulong, string> labels = await GetChannelLabelsAsync(
+            rows.Select(row => row.ChannelId),
+            cancellationToken);
+        List<DashboardActivityLeaderboardItem> items =
+        [
+            .. rows.Select((row, index) => new DashboardActivityLeaderboardItem(
+                index + 1,
+                row.ChannelId.ToString(),
+                labels.GetValueOrDefault(row.ChannelId, $"channel-{ShortDiscordId(row.ChannelId)}"),
+                "channel",
+                row.Messages,
+                "messages",
+                row.Messages,
+                row.Xp,
+                null,
+                Math.Round(row.AverageMessageLength, 1),
+                row.Messages == 0L ? 0.0 : Math.Round((double)row.Xp / row.Messages, 2),
+                row.LastActivityAtUtc,
+                null))
+        ];
+
+        return new DashboardActivityLeaderboardSet(
+            "most-active-channels",
+            "Most active channels",
+            "messages",
+            "messages",
+            items);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> BuildActiveServersLeaderboardSetAsync(
+        IQueryable<UserActivity> query,
+        CancellationToken cancellationToken) =>
+        await BuildActiveServersLeaderboardSetAsync(
+            query,
+            "most-active-servers",
+            "Most active servers",
+            "messages",
+            "messages",
+            cancellationToken);
+
+    private async Task<DashboardActivityLeaderboardSet> BuildActiveServersLeaderboardSetAsync(
+        IQueryable<UserActivity> query,
+        string key,
+        string title,
+        string metric,
+        string unit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .GroupBy(activity => activity.GuildId)
+            .Select(group => new
+            {
+                GuildId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0,
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .ToListAsync(cancellationToken);
+        Dictionary<int, string> labels = await GetGuildLabelsAsync(
+            rows.Select(row => row.GuildId),
+            cancellationToken);
+        List<DashboardActivityLeaderboardItem> items =
+        [
+            .. rows
+                .OrderByDescending(row => metric == "xp" ? row.Xp : row.Messages)
+                .ThenBy(row => row.GuildId)
+                .Take(10)
+                .Select((row, index) => new DashboardActivityLeaderboardItem(
+                    index + 1,
+                    row.GuildId.ToString(),
+                    labels.GetValueOrDefault(row.GuildId, $"Server #{row.GuildId}"),
+                    "server",
+                    metric == "xp" ? row.Xp : row.Messages,
+                    unit,
+                    row.Messages,
+                    row.Xp,
+                    null,
+                    Math.Round(row.AverageMessageLength, 1),
+                    row.Messages == 0L ? 0.0 : Math.Round((double)row.Xp / row.Messages, 2),
+                    row.LastActivityAtUtc,
+                    null))
+        ];
+
+        return new DashboardActivityLeaderboardSet(key, title, metric, unit, items);
+    }
+
+    private static DashboardActivityLeaderboardSet BuildTrendLeaderboardSet(
+        string key,
+        string title,
+        IReadOnlyList<DashboardUserTrend> trends,
+        bool positive)
+    {
+        IReadOnlyList<DashboardActivityLeaderboardItem> items =
+        [
+            .. trends.Select(trend => new DashboardActivityLeaderboardItem(
+                trend.Rank,
+                trend.UserId.ToString(),
+                trend.Username,
+                "user",
+                trend.Delta,
+                "messages",
+                trend.RecentMessages,
+                0,
+                null,
+                0.0,
+                0.0,
+                null,
+                trend.DeltaPercent))
+        ];
+
+        return new DashboardActivityLeaderboardSet(
+            key,
+            title,
+            positive ? "rising" : "falling",
+            "messages",
+            items);
+    }
+
+    private async Task<DashboardActivityLeaderboardSet> MaterializeUserLeaderboardSetAsync(
+        string key,
+        string title,
+        string metric,
+        string unit,
+        IReadOnlyList<ActivityLeaderboardCandidate> candidates,
+        int? guildId,
+        CancellationToken cancellationToken)
+    {
+        List<ActivityLeaderboardCandidate> ordered =
+        [
+            .. candidates
+                .OrderByDescending(row => row.Value)
+                .ThenByDescending(row => row.Xp)
+                .ThenByDescending(row => row.Messages)
+                .Take(10)
+        ];
+        List<int> userIds = [.. ordered
+            .Where(row => row.UserId.HasValue)
+            .Select(row => row.UserId!.Value)];
+        Dictionary<int, (string DiscordId, string Username)> labels =
+            await GetUserLabelsAsync(userIds, cancellationToken);
+        Dictionary<int, int> levels = await GetUserLevelsAsync(userIds, guildId, cancellationToken);
+
+        IReadOnlyList<DashboardActivityLeaderboardItem> items =
+        [
+            .. ordered.Select((row, index) =>
+            {
+                string label = row.Label ?? row.EntityId;
+                if (row.UserId.HasValue)
+                {
+                    (string _, string username) = labels.GetValueOrDefault(row.UserId.Value, (string.Empty, $"User #{row.UserId.Value}"));
+                    label = username;
+                }
+
+                return new DashboardActivityLeaderboardItem(
+                    index + 1,
+                    row.EntityId,
+                    label,
+                    row.EntityType,
+                    row.Value,
+                    unit,
+                    row.Messages,
+                    row.Xp,
+                    row.UserId.HasValue ? levels.GetValueOrDefault(row.UserId.Value) : null,
+                    row.AverageMessageLength,
+                    row.XpPerMessage,
+                    row.LastActivityAtUtc,
+                    row.DeltaPercent);
+            })
+        ];
+
+        return new DashboardActivityLeaderboardSet(key, title, metric, unit, items);
+    }
+
+    private async Task<IReadOnlyList<DashboardChannelActivity>> BuildChannelActivityAsync(
+        IQueryable<UserActivity> query,
+        string sortDirection,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        var channels = query
+            .GroupBy(activity => activity.DiscordChannelId)
+            .Select(group => new
+            {
+                ChannelId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                ActiveUsers = group.Select(activity => activity.UserId).Distinct().Count(),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0,
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .Where(channel => channel.Messages >= minActivity);
+
+        var orderedChannels = sortDirection == "asc"
+            ? channels.OrderBy(channel => channel.Messages)
+            : channels.OrderByDescending(channel => channel.Messages);
+
+        var channelRows = await orderedChannels
+            .Take(12)
+            .ToListAsync(cancellationToken);
+        Dictionary<ulong, string> channelLabels = await GetChannelLabelsAsync(
+            channelRows.Select(row => row.ChannelId),
+            cancellationToken);
+        var finalChannels = sortDirection == "asc"
+            ? channelRows.OrderBy(channel => channel.Messages).ThenBy(channel => channel.ChannelId)
+            : channelRows.OrderByDescending(channel => channel.Messages).ThenBy(channel => channel.ChannelId);
+
+        return [.. finalChannels
+            .Take(12)
+            .Select((channel, index) => new DashboardChannelActivity(
+                index + 1,
+                channel.ChannelId.ToString(),
+                channelLabels.GetValueOrDefault(channel.ChannelId, $"channel-{ShortDiscordId(channel.ChannelId)}"),
+                channel.Messages,
+                channel.Xp,
+                channel.ActiveUsers,
+                Math.Round(channel.AverageMessageLength, 1),
+                channel.LastActivityAtUtc))];
+    }
+
+    private async Task<IReadOnlyList<DashboardUserActivitySummary>> BuildUserActivitySummariesAsync(
+        IQueryable<UserActivity> query,
+        int? guildId,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        string sortDirection,
+        int minActivity,
+        CancellationToken cancellationToken)
+    {
+        var userGroups = query
+            .GroupBy(activity => activity.UserId)
+            .Select(group => new
+            {
+                UserId = group.Key,
+                Messages = group.LongCount(),
+                Xp = group.Sum(activity => (long)activity.XpGained),
+                AverageMessageLength = group.Average(activity => (double?)activity.MessageLength) ?? 0.0,
+                LastActivityAtUtc = group.Max(activity => activity.InsertDate)
+            })
+            .Where(user => user.Messages >= minActivity);
+
+        var orderedUsers = sortDirection == "asc"
+            ? userGroups.OrderBy(user => user.Xp).ThenBy(user => user.UserId)
+            : userGroups.OrderByDescending(user => user.Xp).ThenBy(user => user.UserId);
+
+        var rankedUsers = await orderedUsers
+            .Take(12)
+            .ToListAsync(cancellationToken);
+        List<int> userIds = [.. rankedUsers.Select(user => user.UserId)];
+
+        Dictionary<int, (string DiscordId, string Username)> userLabels = await GetUserLabelsAsync(userIds, cancellationToken);
+        Dictionary<int, int> levels = await GetUserLevelsAsync(userIds, guildId, cancellationToken);
+        Dictionary<int, decimal> balances = await GetUserBalancesAsync(userIds, cancellationToken);
+        Dictionary<int, decimal> portfolios = await GetPortfolioValuesByUserAsync(userIds, cancellationToken);
+        Dictionary<int, int> quotes = await GetQuoteCountsByUserAsync(userIds, guildId, startDate, endExclusiveDate, cancellationToken);
+        Dictionary<int, long> buttonScores = await GetButtonScoresByUserAsync(userIds, guildId, startDate, endExclusiveDate, cancellationToken);
+
+        return [.. rankedUsers.Select((user, index) =>
+        {
+            (string discordId, string username) = userLabels.GetValueOrDefault(user.UserId, (string.Empty, "Unknown"));
+            return new DashboardUserActivitySummary(
+                index + 1,
+                user.UserId,
+                discordId,
+                username,
+                user.Messages,
+                user.Xp,
+                levels.GetValueOrDefault(user.UserId),
+                quotes.GetValueOrDefault(user.UserId),
+                balances.GetValueOrDefault(user.UserId),
+                portfolios.GetValueOrDefault(user.UserId),
+                buttonScores.GetValueOrDefault(user.UserId),
+                Math.Round(user.AverageMessageLength, 1),
+                user.LastActivityAtUtc);
+        })];
+    }
+
+    private async Task<IReadOnlyList<DashboardHeatmapCell>> BuildHeatmapAsync(
+        IQueryable<UserActivity> query,
+        CancellationToken cancellationToken)
+    {
+        var hourlyRows = await query
+            .GroupBy(activity => new
+            {
+                Date = activity.InsertDate.Date,
+                Hour = activity.InsertDate.Hour,
+                activity.UserId
+            })
+            .Select(group => new
+            {
+                group.Key.Date,
+                group.Key.Hour,
+                group.Key.UserId,
+                Messages = group.Count(),
+                Xp = group.Sum(activity => (long)activity.XpGained)
+            })
+            .ToListAsync(cancellationToken);
+
+        Dictionary<(int DayOfWeek, int Hour), (int Messages, long Xp, int ActiveUsers)> groupedRows = hourlyRows
+            .GroupBy(row => ((int)row.Date.DayOfWeek, row.Hour))
+            .ToDictionary(
+                group => group.Key,
+                group => (
+                    group.Sum(row => row.Messages),
+                    group.Sum(row => row.Xp),
+                    group.Select(row => row.UserId).Distinct().Count()));
+
+        List<DashboardHeatmapCell> cells = [];
+        for (int day = 0; day < 7; day++)
+        {
+            for (int hour = 0; hour < 24; hour++)
+            {
+                var cell = groupedRows.GetValueOrDefault((day, hour));
+                cells.Add(new DashboardHeatmapCell(
+                    day,
+                    DayLabels[day],
+                    hour,
+                    cell.Messages,
+                    cell.Xp,
+                    cell.ActiveUsers));
+            }
+        }
+
+        return cells;
+    }
+
+    private async Task<DashboardQuoteInsights> BuildQuoteInsightsAsync(
+        int? guildId,
+        int? userId,
+        DateTime startDate,
+        DateTime endExclusiveDate,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Quote> query = dbContext.Quotes
+            .AsNoTracking()
+            .Where(quote => quote.InsertDate >= startDate && quote.InsertDate < endExclusiveDate);
+
+        if (guildId.HasValue)
+            query = query.Where(quote => quote.GuildId == guildId.Value);
+
+        if (userId.HasValue)
+            query = query.Where(quote => quote.UserId == userId.Value);
+
+        List<QuoteInsightRow> quoteRows = await query
+            .Select(quote => new QuoteInsightRow(
+                quote.Id,
+                quote.GuildId,
+                quote.UserId,
+                quote.User.DiscordId.ToString(),
+                quote.User.Username,
+                quote.Content,
+                quote.InsertDate,
+                quote.Approved,
+                quote.Removed))
+            .ToListAsync(cancellationToken);
+
+        List<int> quoteIds = [.. quoteRows.Select(quote => quote.Id)];
+        List<QuoteScoreInsightRow> scoreRows = quoteIds.Count == 0
+            ? []
+            : await dbContext.QuoteScores
+                .AsNoTracking()
+                .Where(score => quoteIds.Contains(score.QuoteId))
+                .Select(score => new QuoteScoreInsightRow(
+                    score.QuoteId,
+                    score.UserId,
+                    score.User.DiscordId.ToString(),
+                    score.User.Username,
+                    score.Score,
+                    score.InsertDate,
+                    score.UpdateDate))
+                .ToListAsync(cancellationToken);
+        Dictionary<int, QuoteScoreStats> scoreStatsByQuote = BuildQuoteScoreStats(scoreRows);
+
+        IQueryable<QuoteApprovalMessage> approvalQuery = dbContext.QuoteApprovalMessages
+            .AsNoTracking()
+            .Where(approval => approval.InsertDate >= startDate && approval.InsertDate < endExclusiveDate);
+
+        if (guildId.HasValue)
+            approvalQuery = approvalQuery.Where(approval => approval.Quote!.GuildId == guildId.Value);
+
+        if (userId.HasValue)
+            approvalQuery = approvalQuery.Where(approval => approval.Quote!.UserId == userId.Value);
+
+        var approvalRows = await approvalQuery
+            .Select(approval => new
+            {
+                Approval = new QuoteApprovalInsightRow(
+                    approval.Id,
+                    approval.QuoteId,
+                    approval.ApprovalMessageId,
+                    approval.Score,
+                    approval.InsertDate,
+                    approval.Type,
+                    approval.Approved),
+                Quote = new QuoteInsightRow(
+                    approval.Quote!.Id,
+                    approval.Quote.GuildId,
+                    approval.Quote.UserId,
+                    approval.Quote.User.DiscordId.ToString(),
+                    approval.Quote.User.Username,
+                    approval.Quote.Content,
+                    approval.Quote.InsertDate,
+                    approval.Quote.Approved,
+                    approval.Quote.Removed)
+            })
+            .ToListAsync(cancellationToken);
+
+        List<QuoteApprovalInsightRow> approvalMessages = [.. approvalRows.Select(row => row.Approval)];
+        List<QuoteInsightRow> approvalQuoteRows =
+        [
+            .. approvalRows
+                .Select(row => row.Quote)
+                .GroupBy(quote => quote.Id)
+                .Select(group => group.First())
+        ];
+        List<int> approvalIds = [.. approvalMessages.Select(approval => approval.Id)];
+        List<QuoteApprovalVoteInsightRow> approvalVotes = approvalIds.Count == 0
+            ? []
+            : [.. (await dbContext.QuoteApprovals
+                .AsNoTracking()
+                .Where(vote => approvalIds.Contains(vote.QuoteApprovalMessageId))
+                .Select(vote => new { vote.QuoteApprovalMessageId, vote.UserId, vote.InsertDate })
+                .ToListAsync(cancellationToken))
+                .Select(vote => new QuoteApprovalVoteInsightRow(
+                    vote.QuoteApprovalMessageId,
+                    vote.UserId,
+                    vote.InsertDate))];
+
+        List<QuoteInsightRow> approvalContextQuoteRows =
+        [
+            .. quoteRows
+                .Concat(approvalQuoteRows)
+                .GroupBy(quote => quote.Id)
+                .Select(group => group.First())
+        ];
+        List<int> quoteGuildIds = [.. approvalContextQuoteRows.Select(quote => quote.GuildId).Distinct()];
+        List<GuildQuoteConfigRow> guildConfigs = await GetQuoteGuildConfigsAsync(
+            guildId,
+            userId.HasValue ? quoteGuildIds : null,
+            cancellationToken);
+        Dictionary<int, GuildQuoteConfigRow> guildConfigById = guildConfigs.ToDictionary(guild => guild.GuildId);
+        DateTime now = DateTime.UtcNow;
+        int approvalExpiryDays = Env.Get<int>("QUOTE_APPROVAL_EXPIRY_DAYS", 5);
+        List<DashboardQuoteApprovalRequestItem> approvalRequestItems = BuildQuoteApprovalRequestItems(
+            approvalMessages,
+            approvalVotes,
+            approvalContextQuoteRows,
+            guildConfigById,
+            approvalExpiryDays,
+            now);
+
+        int approved = quoteRows.Count(quote => quote.Approved && !quote.Removed);
+        int pending = quoteRows.Count(quote => !quote.Approved && !quote.Removed);
+        int removed = quoteRows.Count(quote => quote.Removed);
+        int expiredApprovalRequests = approvalRequestItems.Count(request => request.Expired);
+        int completedApprovalRequests = approvalMessages.Count(approval => approval.Approved);
+        int pendingApprovalRequests = approvalRequestItems.Count(request => request.Status == "Pending");
+        double approvalCompletionRate = approvalMessages.Count == 0
+            ? 0.0
+            : Math.Round((double)completedApprovalRequests / approvalMessages.Count * 100.0, 1);
+        List<double> approvalDurations =
+        [
+            .. approvalRequestItems
+                .Where(request => request.CompletedAtUtc.HasValue)
+                .Select(request => Math.Max(0.0, (request.CompletedAtUtc!.Value - request.InsertedAtUtc).TotalHours))
+        ];
+        double averageApprovalTimeHours = approvalDurations.Count == 0
+            ? 0.0
+            : Math.Round(approvalDurations.Average(), 1);
+        double averageScore = quoteRows.Count == 0
+            ? 0.0
+            : quoteRows.Average(quote => scoreStatsByQuote.GetValueOrDefault(quote.Id)?.Total ?? 0);
+
+        IReadOnlyList<DashboardQuoteStatusSlice> statuses =
+        [
+            new("Approved", approved),
+            new("Pending", pending),
+            new("Removed", removed)
+        ];
+
+        IReadOnlyList<DashboardQuoteAuthorSummary> authors =
+        [
+            .. quoteRows
+                .Where(quote => quote.Approved && !quote.Removed)
+                .GroupBy(quote => quote.UserId)
+                .Select(group =>
+                {
+                    QuoteInsightRow first = group.First();
+                    return new DashboardQuoteAuthorSummary(
+                        first.UserId,
+                        first.DiscordId,
+                        first.Username,
+                        group.Count(),
+                        group.Sum(quote => scoreStatsByQuote.GetValueOrDefault(quote.Id)?.Total ?? 0));
+                })
+                .OrderByDescending(author => author.Quotes)
+                .ThenByDescending(author => author.Score)
+                .Take(8)
+        ];
+
+        IReadOnlyList<DashboardQuoteTimelinePoint> creationTimeline = BuildQuoteTimeline(
+            quoteRows,
+            scoreRows,
+            approvalVotes,
+            startDate,
+            endExclusiveDate);
+        IReadOnlyList<DashboardQuoteTimelinePoint> scoreTrend = BuildQuoteScoreTrend(
+            scoreRows,
+            startDate,
+            endExclusiveDate);
+        IReadOnlyList<DashboardCategoryValue> approvalFunnel =
+        [
+            new("Created", quoteRows.Count),
+            new("Approved", approved),
+            new("Pending", pending),
+            new("Removed", removed),
+            new("Approval requests", approvalMessages.Count),
+            new("Completed", completedApprovalRequests),
+            new("Expired", expiredApprovalRequests)
+        ];
+        IReadOnlyList<DashboardHistogramBucket> approvalTimeHistogram = BuildApprovalTimeHistogram(approvalDurations);
+        IReadOnlyList<DashboardHistogramBucket> scoreHistogram = BuildQuoteScoreHistogram(
+            quoteRows.Select(quote => scoreStatsByQuote.GetValueOrDefault(quote.Id)?.Total ?? 0));
+        IReadOnlyList<DashboardCalendarActivityCell> approvalActivityCalendar = BuildQuoteApprovalCalendar(
+            approvalVotes,
+            startDate,
+            endExclusiveDate);
+        IReadOnlyList<DashboardQuoteServerSummary> serverSummaries = BuildQuoteServerSummaries(
+            quoteRows,
+            approvalRequestItems,
+            scoreStatsByQuote,
+            guildConfigById);
+        IReadOnlyList<DashboardCategoryValue> globalVsServerUsage = BuildGlobalVsServerQuoteUsage(
+            quoteRows,
+            guildConfigs);
+        IReadOnlyList<DashboardQuoteSetupSummary> setupSummaries =
+        [
+            .. guildConfigs
+                .Select(config => BuildQuoteSetupSummary(config))
+                .OrderBy(summary => summary.Health)
+                .ThenBy(summary => summary.Name)
+                .Take(12)
+        ];
+        IReadOnlyList<DashboardQuoteRankedItem> rankedQuotes = BuildRankedQuotes(
+            quoteRows,
+            scoreStatsByQuote,
+            guildConfigById);
+        IReadOnlyList<DashboardQuoteRankedItem> highestScoringQuotes =
+        [
+            .. rankedQuotes
+                .Where(quote => quote.Approved && !quote.Removed)
+                .OrderByDescending(quote => quote.Score)
+                .ThenByDescending(quote => quote.TotalVotes)
+                .Take(10)
+                .Select((quote, index) => quote with { Rank = index + 1 })
+        ];
+        IReadOnlyList<DashboardQuoteRankedItem> lowestScoringQuotes =
+        [
+            .. rankedQuotes
+                .Where(quote => quote.Approved && !quote.Removed)
+                .OrderBy(quote => quote.Score)
+                .ThenByDescending(quote => quote.TotalVotes)
+                .Take(10)
+                .Select((quote, index) => quote with { Rank = index + 1 })
+        ];
+        IReadOnlyList<DashboardQuoteRankedItem> mostControversialQuotes =
+        [
+            .. rankedQuotes
+                .Where(quote => quote.TotalVotes > 0)
+                .OrderByDescending(quote => quote.ControversyScore)
+                .ThenByDescending(quote => quote.TotalVotes)
+                .Take(10)
+                .Select((quote, index) => quote with { Rank = index + 1 })
+        ];
+        IReadOnlyList<DashboardQuoteRankedItem> mostRemovedQuotes =
+        [
+            .. rankedQuotes
+                .Where(quote => quote.Removed)
+                .OrderByDescending(quote => quote.TotalVotes)
+                .ThenBy(quote => quote.Score)
+                .ThenByDescending(quote => quote.InsertedAtUtc)
+                .Take(10)
+                .Select((quote, index) => quote with { Rank = index + 1 })
+        ];
+        IReadOnlyList<DashboardQuoteCandidate> quoteOfTheDayCandidates = BuildQuoteCandidates(
+            "Day",
+            quoteRows,
+            scoreStatsByQuote,
+            guildConfigById,
+            endExclusiveDate.AddDays(-1));
+        IReadOnlyList<DashboardQuoteCandidate> quoteOfTheWeekCandidates = BuildQuoteCandidates(
+            "Week",
+            quoteRows,
+            scoreStatsByQuote,
+            guildConfigById,
+            endExclusiveDate.AddDays(-7));
+        IReadOnlyList<DashboardQuoteCandidate> quoteOfTheMonthCandidates = BuildQuoteCandidates(
+            "Month",
+            quoteRows,
+            scoreStatsByQuote,
+            guildConfigById,
+            endExclusiveDate.AddDays(-30));
+        IReadOnlyList<DashboardQuoteVoteItem> topVoters = BuildQuoteVoteItems(scoreRows);
+        IReadOnlyList<DashboardQuoteVoteItem> approvalVoters = await BuildQuoteApprovalVoteItemsAsync(
+            approvalVotes,
+            cancellationToken);
+        IReadOnlyList<DashboardQuoteManagementItem> quoteList = BuildQuoteManagementItems(
+            quoteRows,
+            scoreStatsByQuote,
+            approvalRequestItems,
+            guildConfigById,
+            includeRemoved: true,
+            limit: 50);
+        IReadOnlyList<DashboardQuoteApprovalRequestItem> pendingApprovalQueue =
+        [
+            .. approvalRequestItems
+                .Where(request => request.Status == "Pending")
+                .OrderBy(request => request.ExpiresAtUtc)
+                .ThenByDescending(request => request.InsertedAtUtc)
+                .Take(20)
+        ];
+        IReadOnlyList<DashboardQuoteApprovalRequestItem> expiredApprovalQueue =
+        [
+            .. approvalRequestItems
+                .Where(request => request.Expired)
+                .OrderByDescending(request => request.InsertedAtUtc)
+                .Take(20)
+        ];
+        IReadOnlyList<DashboardQuoteManagementItem> removedQuoteList = BuildQuoteManagementItems(
+            quoteRows.Where(quote => quote.Removed),
+            scoreStatsByQuote,
+            approvalRequestItems,
+            guildConfigById,
+            includeRemoved: true,
+            limit: 20);
+
+        IReadOnlyList<DashboardQuoteItem> recentPending =
+        [
+            .. quoteRows
+                .Where(quote => !quote.Approved && !quote.Removed)
+                .OrderByDescending(quote => quote.InsertedAtUtc)
+                .Take(6)
+                .Select(quote => new DashboardQuoteItem(
+                    quote.Id,
+                    quote.GuildId,
+                    quote.UserId,
+                    quote.Username,
+                    quote.Content,
+                    quote.InsertedAtUtc,
+                    quote.Approved,
+                    quote.Removed,
+                    scoreStatsByQuote.GetValueOrDefault(quote.Id)?.Total ?? 0))
+        ];
+
+        return new DashboardQuoteInsights(
+            quoteRows.Count,
+            approved,
+            pending,
+            removed,
+            approvalMessages.Count,
+            pendingApprovalRequests,
+            expiredApprovalRequests,
+            completedApprovalRequests,
+            approvalCompletionRate,
+            averageApprovalTimeHours,
+            Math.Round(averageScore, 1),
+            statuses,
+            authors,
+            creationTimeline,
+            scoreTrend,
+            approvalFunnel,
+            approvalTimeHistogram,
+            scoreHistogram,
+            approvalActivityCalendar,
+            serverSummaries,
+            globalVsServerUsage,
+            setupSummaries,
+            highestScoringQuotes,
+            lowestScoringQuotes,
+            mostControversialQuotes,
+            mostRemovedQuotes,
+            quoteOfTheDayCandidates,
+            quoteOfTheWeekCandidates,
+            quoteOfTheMonthCandidates,
+            topVoters,
+            approvalVoters,
+            quoteList,
+            [.. approvalRequestItems.OrderByDescending(request => request.InsertedAtUtc).Take(50)],
+            pendingApprovalQueue,
+            expiredApprovalQueue,
+            removedQuoteList,
+            recentPending);
+    }
 
     public async Task<DashboardQuoteDetailsResponse?> GetQuoteDetailsAsync(
         int quoteId,

@@ -111,6 +111,9 @@ public static class DashboardApiExtensions
         })
         .CacheOutput(SelectorCachePolicyName);
 
+
+
+
         api.MapGet("/quotes", async (
             int? guildId,
             int? page,
@@ -177,6 +180,10 @@ public static class DashboardApiExtensions
             .Expire(duration)
             .SetVaryByQuery("*")
             .SetVaryByHeader("X-Dashboard-Key", "Origin");
+
+    private static bool HasInvalidDiscordId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        (!ulong.TryParse(value.Trim(), out ulong parsed) || parsed == 0UL);
 
     private static async ValueTask<object?> RequireDashboardApiKey(
         EndpointFilterInvocationContext context,
