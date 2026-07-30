@@ -68,7 +68,7 @@ public class ActivityLevelService(DB dbContext)
 
     public static int CalculateLevel(long xp)
     {
-        return (int)Math.Pow(Math.Log10((xp + 111) / 111), 5.0243);
+        return (int)Math.Pow(Math.Log10((xp + 111d) / 111d), 5.0243);
     }
 
     public static int CalculateXp(int level)
