@@ -27,6 +27,14 @@ public class MiscModuleTests
     }
 
     [Theory]
+    [InlineData("CHRISTMAS", "christmas")]
+    [InlineData("CC BIRTHDAY", "cc birthday")]
+    public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
+    {
+        Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
+    }
+
+    [Theory]
     [InlineData("ROCK", "rock")]
     [InlineData("PaPeR", "paper")]
     [InlineData("ScIsSoRs", "scissors")]
