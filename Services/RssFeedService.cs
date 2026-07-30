@@ -24,7 +24,7 @@ public class RssFeedService(LogsService logsService)
 
     /// <summary>
     /// Fetches a feed and returns its title + icon (if any) plus the parsed entries. Returns
-    /// (null, null, empty) on any error, and null title when the feed has no title element.
+    /// (null, null, empty) on errors other than caller cancellation, and null title when the feed has no title element.
     /// </summary>
     public async Task<(string? FeedTitle, string? FeedImageUrl, IReadOnlyList<FeedEntry> Entries)> FetchAsync(string feedUrl, CancellationToken ct = default)
     {
@@ -84,6 +84,10 @@ public class RssFeedService(LogsService logsService)
                 string.IsNullOrWhiteSpace(feedTitle) ? null : feedTitle.Trim(),
                 string.IsNullOrWhiteSpace(feedImage) ? null : feedImage.Trim(),
                 entries);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
