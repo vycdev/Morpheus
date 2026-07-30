@@ -21,6 +21,9 @@ public static partial class YoutubeUtils
     [GeneratedRegex("/channel/(UC[0-9A-Za-z_-]{22})")]
     private static partial Regex ChannelIdInUrlRegex();
 
+    [GeneratedRegex("^[0-9A-Za-z_-]{11}$")]
+    private static partial Regex VideoIdRegex();
+
     /// <summary>
     /// Resolves a user-supplied reference to a canonical YouTube channel id.
     /// Accepts: a raw channel id ("UC..."), a /channel/UC... URL, or a handle / custom / user
@@ -40,17 +43,19 @@ public static partial class YoutubeUtils
         if (ChannelIdRegex().IsMatch(input))
             return input;
 
-        // /channel/UC... anywhere in the string
-        Match urlMatch = ChannelIdInUrlRegex().Match(input);
+        // Normalize supported references before inspecting or fetching them. This prevents
+        // URL-shaped user input from selecting an arbitrary host or YouTube redirect path.
+        Uri? scrapeUri = BuildScrapeUri(input);
+        if (scrapeUri == null)
+            return null;
+
+        Match urlMatch = ChannelIdInUrlRegex().Match(scrapeUri.AbsolutePath);
         if (urlMatch.Success)
             return urlMatch.Groups[1].Value;
 
-        // Build a URL to scrape for handles / custom names / bare "@handle"
-        string url = BuildScrapeUrl(input);
-
         try
         {
-            using HttpRequestMessage req = new(HttpMethod.Get, url);
+            using HttpRequestMessage req = new(HttpMethod.Get, scrapeUri);
             req.Headers.UserAgent.ParseAdd(BrowserUserAgent);
             using HttpResponseMessage resp = await httpClient.SendAsync(req).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
@@ -77,25 +82,73 @@ public static partial class YoutubeUtils
         }
     }
 
-    private static string BuildScrapeUrl(string input)
+    private static Uri? BuildScrapeUri(string input)
     {
-        // Already an http(s) URL — scrape it directly.
-        if (input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return input;
-
         // Bare handle: "@name"
         if (input.StartsWith('@'))
-            return $"https://www.youtube.com/{input}";
+            return BuildHandleUri(input[1..]);
 
-        // Something like "youtube.com/@name" without scheme
-        if (input.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
-            input.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
-            return $"https://{input.TrimStart('/')}";
+        // Relative YouTube channel paths are unambiguous and safe to normalize.
+        if (input.StartsWith('/') && !input.StartsWith("//", StringComparison.Ordinal))
+        {
+            if (!Uri.TryCreate($"https://www.youtube.com{input}", UriKind.Absolute, out Uri? relativeUri))
+                return null;
+
+            return BuildCanonicalYoutubeUri(relativeUri);
+        }
+
+        if (Uri.TryCreate(input, UriKind.Absolute, out Uri? absoluteUri))
+            return BuildCanonicalYoutubeUri(absoluteUri);
+
+        // Something like "youtube.com/@name" without a scheme. Other slash-containing
+        // values are rejected by the host check instead of being treated as handles.
+        if (input.Contains('/'))
+        {
+            if (!Uri.TryCreate($"https://{input.TrimStart('/')}", UriKind.Absolute, out Uri? schemelessUri))
+                return null;
+
+            return BuildCanonicalYoutubeUri(schemelessUri);
+        }
 
         // Otherwise treat it as a handle
-        return $"https://www.youtube.com/@{input}";
+        return BuildHandleUri(input);
     }
+
+    private static Uri? BuildCanonicalYoutubeUri(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return null;
+
+        if (uri.Host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase))
+        {
+            string videoId = uri.AbsolutePath.Trim('/');
+            return VideoIdRegex().IsMatch(videoId)
+                ? new Uri($"https://www.youtube.com/watch?v={videoId}")
+                : null;
+        }
+
+        if (!IsYoutubeHost(uri.Host) || !IsSupportedYoutubePath(uri.AbsolutePath))
+            return null;
+
+        // Canonicalize the host and discard user-controlled query/fragment values. The
+        // resolver only needs the channel path to scrape the corresponding YouTube page.
+        return new Uri($"https://www.youtube.com{uri.AbsolutePath}");
+    }
+
+    private static Uri? BuildHandleUri(string handle) =>
+        string.IsNullOrWhiteSpace(handle) || handle.Contains('/')
+            ? null
+            : new Uri($"https://www.youtube.com/@{Uri.EscapeDataString(handle)}");
+
+    private static bool IsYoutubeHost(string host) =>
+        host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedYoutubePath(string path) =>
+        path.StartsWith("/@", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/c/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/user/", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/channel/", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Uses the Innertube (youtubei) browse API to fetch a channel's avatar URL.
