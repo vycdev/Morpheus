@@ -1,3 +1,4 @@
+using System.Globalization;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
@@ -31,7 +32,18 @@ public class MiscModuleTests
     [InlineData("CC BIRTHDAY", "cc birthday")]
     public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
     {
-        Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+            Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Theory]
