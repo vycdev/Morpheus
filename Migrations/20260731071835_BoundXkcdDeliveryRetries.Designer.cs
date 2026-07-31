@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Morpheus.Database;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Morpheus.Migrations
 {
     [DbContext(typeof(DB))]
-    partial class DBModelSnapshot : ModelSnapshot
+    [Migration("20260731071835_BoundXkcdDeliveryRetries")]
+    partial class BoundXkcdDeliveryRetries
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -415,22 +418,13 @@ namespace Morpheus.Migrations
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("numeric(20,0)");
 
-                    b.Property<int>("DeliveryFailureCount")
-                        .HasColumnType("integer");
-
                     b.Property<DateTime>("DueDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("FirstDeliveryFailureAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("GuildId")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("InsertDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("NextDeliveryAttemptAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Text")

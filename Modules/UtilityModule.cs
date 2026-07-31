@@ -44,7 +44,8 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         }
 
         // Get the message the user replied to
-        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage message)
+        if (!TryGetReferencedMessageId(Context.Message.ReferencedMessage?.Id, out ulong referencedMessageId) ||
+            await Context.Channel.GetMessageAsync(referencedMessageId) is not IUserMessage message)
         {
             await ReplyAsync("Couldn't find the message you want to pin.");
             return;
@@ -78,8 +79,14 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         return;
     }
 
+    internal static bool TryGetReferencedMessageId(ulong? referencedMessageId, out ulong messageId)
+    {
+        messageId = referencedMessageId.GetValueOrDefault();
+        return referencedMessageId.HasValue;
+    }
+
     [Name("Reminder")]
-    [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 5 seconds, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: reminder 5 days and 3 hours @User Take a break. Reminders are executed once a minute.")]
+    [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 1 minute, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: reminder 5 days and 3 hours @User Take a break. Reminders are executed once a minute.")]
     [Command("reminder")]
     [Alias("settimer", "remindme")]
     [RateLimit(3, 10)]

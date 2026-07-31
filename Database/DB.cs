@@ -87,6 +87,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         // xkcd: one subscription per channel, global "seen" set keyed by comic link
         modelBuilder.Entity<XkcdSubscription>().HasIndex(s => s.ChannelDiscordId).IsUnique();
         modelBuilder.Entity<XkcdSeen>().HasIndex(s => s.Link).IsUnique();
+        modelBuilder.Entity<XkcdDeliveryRetry>().HasIndex(r => r.Link).IsUnique();
         modelBuilder.Entity<XkcdSubscription>()
             .HasOne(s => s.Webhook)
             .WithMany()
@@ -146,6 +147,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
     public DbSet<Webhook> Webhooks { get; set; }
     public DbSet<XkcdSubscription> XkcdSubscriptions { get; set; }
     public DbSet<XkcdSeen> XkcdSeen { get; set; }
+    public DbSet<XkcdDeliveryRetry> XkcdDeliveryRetries { get; set; }
     public DbSet<YoutubeSubscription> YoutubeSubscriptions { get; set; }
     public DbSet<YoutubeSeenVideo> YoutubeSeenVideos { get; set; }
     public DbSet<RssSubscription> RssSubscriptions { get; set; }

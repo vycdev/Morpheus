@@ -21,6 +21,12 @@ public class Reminder
     [Required]
     public DateTime DueDate { get; set; }
 
+    public int DeliveryFailureCount { get; set; }
+
+    public DateTime? FirstDeliveryFailureAt { get; set; }
+
+    public DateTime? NextDeliveryAttemptAt { get; set; }
+
     public int? GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))]

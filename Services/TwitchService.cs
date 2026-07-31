@@ -13,16 +13,34 @@ namespace Morpheus.Services;
 /// those are absent, <see cref="IsConfigured"/> is false and all calls no-op. Uses the
 /// client-credentials (app access token) flow, caching the token until shortly before it expires.
 /// </summary>
-public class TwitchService(LogsService logsService)
+public class TwitchService
 {
-    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient SharedHttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly LogsService logsService;
+    private readonly HttpClient httpClient;
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
-    private readonly string? _clientId = Env.Get<string?>("TWITCH_CLIENT_ID");
-    private readonly string? _clientSecret = Env.Get<string?>("TWITCH_CLIENT_SECRET");
+    private readonly string? _clientId;
+    private readonly string? _clientSecret;
 
     private string? _accessToken;
     private DateTime _tokenExpiresAt = DateTime.MinValue;
+
+    public TwitchService(LogsService logsService) : this(
+        logsService,
+        SharedHttpClient,
+        Env.Get<string?>("TWITCH_CLIENT_ID"),
+        Env.Get<string?>("TWITCH_CLIENT_SECRET"))
+    {
+    }
+
+    internal TwitchService(LogsService logsService, HttpClient httpClient, string? clientId, string? clientSecret)
+    {
+        this.logsService = logsService;
+        this.httpClient = httpClient;
+        _clientId = clientId;
+        _clientSecret = clientSecret;
+    }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_clientId) && !string.IsNullOrWhiteSpace(_clientSecret);
 
@@ -87,7 +105,7 @@ public class TwitchService(LogsService logsService)
 
             try
             {
-                using HttpResponseMessage resp = await HttpClient.SendAsync(req, ct).ConfigureAwait(false);
+                using HttpResponseMessage resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
 
                 if (resp.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
                     continue; // token likely expired early — refresh and retry once
@@ -100,6 +118,10 @@ public class TwitchService(LogsService logsService)
                 }
 
                 return await resp.Content.ReadFromJsonAsync<T>(cancellationToken: ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -134,7 +156,7 @@ public class TwitchService(LogsService logsService)
             };
 
             using FormUrlEncodedContent content = new(form);
-            using HttpResponseMessage resp = await HttpClient.PostAsync(url, content, ct).ConfigureAwait(false);
+            using HttpResponseMessage resp = await httpClient.PostAsync(url, content, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
                 string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -150,6 +172,10 @@ public class TwitchService(LogsService logsService)
             // Refresh a minute early to avoid using an about-to-expire token.
             _tokenExpiresAt = DateTime.UtcNow.Add(CalculateTokenCacheDuration(token.ExpiresIn));
             return _accessToken;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
