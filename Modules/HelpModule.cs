@@ -118,7 +118,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
     [Command("help")]
     [Alias("commands", "cmds", "h")]
     [RateLimit(1, 30)]
-    public async Task Help(string? command = null)
+    public async Task Help([Remainder] string? command = null)
     {
         // Determine command prefix for this guild
         Guild? guild = null;
