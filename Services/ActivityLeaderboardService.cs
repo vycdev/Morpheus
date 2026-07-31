@@ -198,6 +198,7 @@ public class ActivityLeaderboardService(DB dbContext)
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
             .Select(g => new { UserId = g.Key, Value = g.Sum(ul => ul.UserMessageCount) })
+            .Where(x => x.Value > 0)
             .OrderByDescending(x => x.Value);
 
         int totalUsers = await query.CountAsync();
