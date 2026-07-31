@@ -44,7 +44,8 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         }
 
         // Get the message the user replied to
-        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage message)
+        if (!TryGetReferencedMessageId(Context.Message.ReferencedMessage?.Id, out ulong referencedMessageId) ||
+            await Context.Channel.GetMessageAsync(referencedMessageId) is not IUserMessage message)
         {
             await ReplyAsync("Couldn't find the message you want to pin.");
             return;
@@ -76,6 +77,12 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         await ReplyAsync("Message pinned successfully.");
 
         return;
+    }
+
+    internal static bool TryGetReferencedMessageId(ulong? referencedMessageId, out ulong messageId)
+    {
+        messageId = referencedMessageId.GetValueOrDefault();
+        return referencedMessageId.HasValue;
     }
 
     [Name("Reminder")]
