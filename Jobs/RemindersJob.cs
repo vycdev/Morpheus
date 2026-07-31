@@ -10,6 +10,9 @@ namespace Morpheus.Jobs;
 
 public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient discordClient) : IJob
 {
+    internal static readonly TimeSpan MaximumRetryAge = TimeSpan.FromDays(7);
+    internal static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromHours(24);
+
     private void Log(string message) => logsService.Log($"Quartz Job - {message}");
 
     public async Task Execute(IJobExecutionContext context)
@@ -18,8 +21,8 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
 
         // Find reminders that are due (due date <= now)
         var dueReminders = await dB.Reminders
-            .Where(r => r.DueDate <= now)
-            .OrderBy(r => r.DueDate)
+            .Where(r => (r.NextDeliveryAttemptAt ?? r.DueDate) <= now)
+            .OrderBy(r => r.NextDeliveryAttemptAt ?? r.DueDate)
             .ToListAsync();
 
         if (!dueReminders.Any())
@@ -35,7 +38,7 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
                 ? null
                 : async content => await channel.SendMessageAsync(content);
 
-            bool shouldDelete = await DeliverAsync(reminder, sendAsync, Log);
+            bool shouldDelete = await DeliverAsync(reminder, sendAsync, Log, now);
             if (shouldDelete)
                 dB.Reminders.Remove(reminder);
         }
@@ -47,11 +50,21 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
     internal static async Task<bool> DeliverAsync(
         Reminder reminder,
         Func<string, Task>? sendAsync,
-        Action<string> log)
+        Action<string> log,
+        DateTime now)
     {
         if (sendAsync == null)
         {
             log($"Channel {reminder.ChannelId} not found, deleting reminder {reminder.Id}.");
+            return true;
+        }
+
+        if (reminder.FirstDeliveryFailureAt.HasValue &&
+            now >= reminder.FirstDeliveryFailureAt.Value.Add(MaximumRetryAge))
+        {
+            log(
+                $"Reminder {reminder.Id} to channel {reminder.ChannelId} permanently failed " +
+                $"after {reminder.DeliveryFailureCount} delivery attempts over one week. Deleting reminder.");
             return true;
         }
 
@@ -65,8 +78,30 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
         }
         catch (Exception ex)
         {
-            log($"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}. Keeping reminder for retry.");
+            reminder.FirstDeliveryFailureAt ??= now;
+            reminder.DeliveryFailureCount++;
+
+            DateTime retryDeadline = reminder.FirstDeliveryFailureAt.Value.Add(MaximumRetryAge);
+            DateTime nextAttempt = now.Add(CalculateRetryDelay(reminder.DeliveryFailureCount));
+            reminder.NextDeliveryAttemptAt = nextAttempt < retryDeadline ? nextAttempt : retryDeadline;
+
+            log(
+                $"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}. " +
+                $"Retry {reminder.DeliveryFailureCount} scheduled for {reminder.NextDeliveryAttemptAt:u}.");
             return false;
         }
+    }
+
+    internal static TimeSpan CalculateRetryDelay(int failureCount)
+    {
+        if (failureCount <= 1)
+            return TimeSpan.FromMinutes(1);
+
+        // Attempt 12 would exceed 24 hours (2^11 minutes), so cap it and every
+        // subsequent delay at one day.
+        if (failureCount >= 12)
+            return MaximumRetryDelay;
+
+        return TimeSpan.FromMinutes(1 << (failureCount - 1));
     }
 }
