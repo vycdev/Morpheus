@@ -1,3 +1,6 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Jobs;
 using Morpheus.Services;
@@ -6,6 +9,28 @@ namespace Morpheus.Tests;
 
 public class RssFeedJobTests
 {
+    [Fact]
+    public async Task HasFeedHistoryAsync_WhenOlderEntryRolledOutOfFeed_ReturnsTrue()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+        db.RssSeenEntries.Add(new RssSeenEntry
+        {
+            FeedUrl = "https://example.com/feed",
+            EntryId = "entry-that-is-no-longer-in-the-feed"
+        });
+        await db.SaveChangesAsync();
+
+        bool hasHistory = await RssFeedJob.HasFeedHistoryAsync(db, "https://example.com/feed");
+
+        Assert.True(hasHistory);
+    }
+
     [Fact]
     public async Task DispatchAsync_WhenOneDeliveryFails_ReportsFailureAndAttemptsEverySubscriber()
     {
