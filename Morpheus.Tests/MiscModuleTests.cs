@@ -1,3 +1,7 @@
+using Discord.Commands;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Morpheus.Database;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
@@ -41,5 +45,27 @@ public class MiscModuleTests
         int result = MiscModule.GenerateRandomNumber(int.MaxValue, int.MaxValue);
 
         Assert.Equal(int.MaxValue, result);
+    }
+
+    [Fact]
+    public async Task LoveCompatibilityCommand_AllowsComparingWithInvoker()
+    {
+        CommandService commands = new();
+        await using DB db = new(
+            new DbContextOptionsBuilder<DB>()
+                .UseSqlite("Data Source=:memory:")
+                .Options);
+        using ServiceProvider services = new ServiceCollection()
+            .AddSingleton(commands)
+            .AddSingleton(db)
+            .BuildServiceProvider();
+        await commands.AddModuleAsync<MiscModule>(services);
+        CommandInfo command = Assert.Single(
+            commands.Commands,
+            command => command.Aliases.Contains("love"));
+        Discord.Commands.ParameterInfo secondUser = command.Parameters[1];
+
+        Assert.True(secondUser.IsOptional);
+        Assert.Null(secondUser.DefaultValue);
     }
 }
