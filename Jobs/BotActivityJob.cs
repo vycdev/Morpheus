@@ -84,7 +84,7 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
         // Pride Day (June): Jun 1, 00:00 → Jul 1, 00:00
         new AnnualActivity(
             startMonth: 6, startDay: 1, startTime: TimeSpan.Zero,
-            endMonth:   6, endDay:   2,  endTime:   TimeSpan.Zero,
+            endMonth:   7, endDay:   1,  endTime:   TimeSpan.Zero,
             description: "chanting LGBTQ+ anthems 🌈"
         ),
 
@@ -253,20 +253,23 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
 
     private static readonly Random _rng = new();
 
+    internal static string? GetAnnualActivityDescription(DateTime now) =>
+        Schedule.FirstOrDefault(activity => activity.IsActive(now))?.Description;
+
     public async Task Execute(IJobExecutionContext context)
     {
         DateTime now = DateTime.Now;
 
         // 3) Find an annual event matching today
-        AnnualActivity? evt = Schedule.FirstOrDefault(e => e.IsActive(now));
+        string? annualDescription = GetAnnualActivityDescription(now);
 
         ActivityType type;
         string description;
 
-        if (evt != null)
+        if (annualDescription != null)
         {
             // keep the annual description but ignore its stored type
-            description = evt.Description;
+            description = annualDescription;
         }
         else
         {
