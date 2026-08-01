@@ -42,4 +42,27 @@ public class MiscModuleTests
 
         Assert.Equal(int.MaxValue, result);
     }
+
+    [Theory]
+    [InlineData("1d6", 1, 6)]
+    [InlineData("2D20", 2, 20)]
+    public void TryParseDiceInput_AcceptsEitherSeparatorCase(string input, int expectedCount, int expectedSides)
+    {
+        bool parsed = MiscModule.TryParseDiceInput(input, out int count, out int sides);
+
+        Assert.True(parsed);
+        Assert.Equal(expectedCount, count);
+        Assert.Equal(expectedSides, sides);
+    }
+
+    [Theory]
+    [InlineData("1d6D8")]
+    [InlineData("1D")]
+    [InlineData("D6")]
+    [InlineData("0D6")]
+    [InlineData("1D1")]
+    public void TryParseDiceInput_RejectsMalformedOrOutOfRangeInput(string input)
+    {
+        Assert.False(MiscModule.TryParseDiceInput(input, out _, out _));
+    }
 }
