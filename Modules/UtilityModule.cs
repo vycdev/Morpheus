@@ -13,6 +13,17 @@ namespace Morpheus.Modules;
 public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
+    private const string ReminderDurationTokenPatternText =
+        "(\\d+)\\s*(years?|yrs?|y|months?|mos?|mo|weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b";
+    private static readonly Regex ReminderDurationTokenPattern = new(
+        ReminderDurationTokenPatternText,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex ReminderDurationSequencePattern = new(
+        $"{ReminderDurationTokenPatternText}(?:\\s*(?:(?:,\\s*)?and|[,;])\\s*{ReminderDurationTokenPatternText})*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex LeadingReminderSeparatorPattern = new(
+        "^[,;:\\-]\\s*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     // DB is provided by primary-constructor style parameter
     // (accessible as 'dbContext' directly)
 
@@ -102,8 +113,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         // No separate ping field — users can include mentions in the reminder text if desired.
 
         // Find all number+unit tokens
-        var tokenPattern = new Regex("(\\d+)\\s*(years?|yrs?|y|months?|mos?|mo|weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b", RegexOptions.IgnoreCase);
-        var matches = tokenPattern.Matches(input);
+        MatchCollection matches = ReminderDurationTokenPattern.Matches(input);
 
         if (matches.Count == 0)
         {
@@ -177,10 +187,8 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         }
 
         // Remove the duration tokens from input to get optional text
-        input = tokenPattern.Replace(input, "").Trim();
-
-        // After removing tokens and mention, remaining text is the reminder text
-        string? text = string.IsNullOrWhiteSpace(input) ? null : input.Trim();
+        // After removing duration tokens and their leading separators, the remainder is the reminder text.
+        string? text = ExtractReminderText(input);
 
         // Require some text for the reminder
         if (string.IsNullOrWhiteSpace(text))
@@ -206,6 +214,16 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         await dbContext.SaveChangesAsync();
 
         await ReplyAsync($"Reminder scheduled for {due:yyyy-MM-dd HH:mm:ss} UTC.");
+    }
+
+    internal static string? ExtractReminderText(string input)
+    {
+        string text = ReminderDurationSequencePattern.Replace(input, "").Trim();
+
+        while (LeadingReminderSeparatorPattern.IsMatch(text))
+            text = LeadingReminderSeparatorPattern.Replace(text, "").TrimStart();
+
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
 }
