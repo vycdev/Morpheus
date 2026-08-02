@@ -228,7 +228,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task Choose([Remainder] string options)
     {
-        string[] parts = options.Split('\n');
+        string[] parts = ParseChoices(options);
         if (parts.Length < 2)
         {
             await ReplyAsync("Please provide at least two options, one on each line.");
@@ -236,8 +236,15 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         }
 
         Random random = new();
-        string choice = parts[random.Next(parts.Length)].Trim();
+        string choice = parts[random.Next(parts.Length)];
         await ReplyAsync($"Hmmm I choose: {choice}");
+    }
+
+    internal static string[] ParseChoices(string options)
+    {
+        return options.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     [Name("Random Number")]
