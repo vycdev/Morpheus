@@ -51,7 +51,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     }
 
     [Name("Set Commands Prefix")]
-    [Summary("Sets the welcome channel where new join messages will appear.")]
+    [Summary("Sets the command prefix for this guild.")]
     [Command("setprefix")]
     [Alias("setcommandsprefix", "setcp")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
