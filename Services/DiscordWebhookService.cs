@@ -59,6 +59,10 @@ public class DiscordWebhookService(LogsService logsService)
                 logsService.Log($"Webhook execute failed ({webhookId}): {(int)resp.StatusCode} {resp.StatusCode} - {respBody}", LogSeverity.Warning);
                 return false;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 logsService.Log($"Webhook execute exception ({webhookId}): {ex.Message}", LogSeverity.Warning);
@@ -91,6 +95,10 @@ public class DiscordWebhookService(LogsService logsService)
                 return false;
 
             return null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
