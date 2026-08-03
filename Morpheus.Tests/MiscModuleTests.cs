@@ -1,3 +1,4 @@
+using System.Globalization;
 using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +29,25 @@ public class MiscModuleTests
         DateTime result = MiscModule.GetNextAnnualEventDate(now, eventMonth, eventDay);
 
         Assert.Equal(new DateTime(expectedYear, eventMonth, eventDay, 0, 0, 0, DateTimeKind.Utc), result);
+    }
+
+    [Theory]
+    [InlineData("CHRISTMAS", "christmas")]
+    [InlineData("CC BIRTHDAY", "cc birthday")]
+    public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+            Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Theory]

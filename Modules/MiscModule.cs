@@ -88,7 +88,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     {
         DateTime now = DateTime.UtcNow;
         DateTime eventDate;
-        switch (eventName.ToLower())
+        switch (NormalizeTimeUntilEventName(eventName))
         {
             case "new year":
             case "new years":
@@ -123,6 +123,8 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         DateTime eventDate = new(now.Year, month, day, 0, 0, 0, now.Kind);
         return eventDate < now ? eventDate.AddYears(1) : eventDate;
     }
+
+    internal static string NormalizeTimeUntilEventName(string eventName) => eventName.ToLowerInvariant();
 
     [Name("Coin Flip")]
     [Summary("Flips a coin, or multiple coins.")]
