@@ -108,4 +108,58 @@ public class ActivityLeaderboardServiceTests
         Assert.Equal(["[1] | active: Messages 5"], result.Page.Lines);
         Assert.Equal(1, result.Page.TotalPages);
     }
+
+    [Fact]
+    public async Task GetGuildXpLeaderboardAsync_OrdersTiesByUserIdAcrossPages()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Guild guild = new() { DiscordId = 1, Name = "Test guild" };
+        List<User> users = [.. Enumerable.Range(1, 12)
+            .Select(index => new User { DiscordId = (ulong)index, Username = $"user{index:00}" })];
+        db.Add(guild);
+        db.AddRange(users);
+        await db.SaveChangesAsync();
+
+        db.UserLevels.AddRange(users.AsEnumerable().Reverse().Select(user => new UserLevels
+        {
+            UserId = user.Id,
+            GuildId = guild.Id,
+            TotalXp = 100
+        }));
+        await db.SaveChangesAsync();
+
+        ActivityLeaderboardService service = new(db);
+        ActivityLeaderboardQueryResult firstPage = await service.GetGuildXpLeaderboardAsync(
+            guild.Id,
+            guild.Name,
+            viewerUserId: null,
+            page: 1);
+        ActivityLeaderboardQueryResult secondPage = await service.GetGuildXpLeaderboardAsync(
+            guild.Id,
+            guild.Name,
+            viewerUserId: null,
+            page: 2);
+
+        Assert.True(firstPage.Success);
+        Assert.NotNull(firstPage.Page);
+        Assert.Equal(
+            users.Take(ActivityLeaderboardService.PageSize).Select((user, index) =>
+                $"[{index + 1}] | {user.Username}: Level 0 with 100 XP"),
+            firstPage.Page.Lines);
+
+        Assert.True(secondPage.Success);
+        Assert.NotNull(secondPage.Page);
+        Assert.Equal(
+            users.Skip(ActivityLeaderboardService.PageSize).Select((user, index) =>
+                $"[{ActivityLeaderboardService.PageSize + index + 1}] | {user.Username}: Level 0 with 100 XP"),
+            secondPage.Page.Lines);
+    }
 }

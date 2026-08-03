@@ -933,10 +933,20 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
     {
         input = input.Trim();
 
-        // Accept a full channel URL like https://twitch.tv/name or twitch.tv/name
-        int idx = input.IndexOf("twitch.tv/", StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
-            input = input[(idx + "twitch.tv/".Length)..];
+        // Accept a full channel URL like https://twitch.tv/name or twitch.tv/name,
+        // but do not mistake an unrelated host or path containing "twitch.tv/" for Twitch.
+        bool containsScheme = input.Contains("://", StringComparison.Ordinal);
+        bool containsTwitchPath = input.Contains("twitch.tv/", StringComparison.OrdinalIgnoreCase);
+        if (containsScheme || containsTwitchPath)
+        {
+            string url = containsScheme ? input : $"https://{input}";
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
+                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+                || !IsTwitchHost(uri.Host))
+                return string.Empty;
+
+            input = uri.AbsolutePath;
+        }
 
         // Strip any leading @, trailing slash, query, or fragment, and lowercase.
         input = input.TrimStart('@').Trim('/');
@@ -944,8 +954,16 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
         if (delimiter >= 0)
             input = input[..delimiter];
 
-        return input.ToLowerInvariant();
+        return IsValidTwitchLogin(input) ? input.ToLowerInvariant() : string.Empty;
     }
+
+    private static bool IsTwitchHost(string host) =>
+        host.Equals("twitch.tv", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".twitch.tv", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsValidTwitchLogin(string login) =>
+        login.Length is > 0 and <= 25
+        && login.All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_');
 
     internal static string EscapeLikePattern(string value) => value
         .Replace("\\", "\\\\", StringComparison.Ordinal)

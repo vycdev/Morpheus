@@ -177,14 +177,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task RollDice([Remainder] string input = "1d6")
     {
-        if (input.AsSpan().Count('d') != 1)
-        {
-            await ReplyAsync("Invalid input. Please provide input in the format of `xdy` where x is the number of dice and y is the number of sides.");
-            return;
-        }
-
-        string[] parts = input.Split('d');
-        if (parts.Length != 2 || !int.TryParse(parts[0], out int count) || !int.TryParse(parts[1], out int sides) || count < 1 || sides < 2)
+        if (!TryParseDiceInput(input, out int count, out int sides))
         {
             await ReplyAsync("Invalid input. Please provide input in the format of `xdy` where x is the number of dice and y is the number of sides.");
             return;
@@ -221,6 +214,22 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         await ReplyAsync(sb.ToString());
     }
 
+    internal static bool TryParseDiceInput(string input, out int count, out int sides)
+    {
+        ReadOnlySpan<char> inputSpan = input.AsSpan();
+        int separatorIndex = inputSpan.IndexOfAny('d', 'D');
+
+        count = 0;
+        sides = 0;
+
+        return separatorIndex >= 0
+            && inputSpan[(separatorIndex + 1)..].IndexOfAny('d', 'D') < 0
+            && int.TryParse(inputSpan[..separatorIndex], out count)
+            && int.TryParse(inputSpan[(separatorIndex + 1)..], out sides)
+            && count >= 1
+            && sides >= 2;
+    }
+
     [Name("Choose")]
     [Summary("Randomly chooses between multiple options.")]
     [Command("choose")]
@@ -228,7 +237,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task Choose([Remainder] string options)
     {
-        string[] parts = options.Split('\n');
+        string[] parts = ParseChoices(options);
         if (parts.Length < 2)
         {
             await ReplyAsync("Please provide at least two options, one on each line.");
@@ -236,8 +245,15 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         }
 
         Random random = new();
-        string choice = parts[random.Next(parts.Length)].Trim();
+        string choice = parts[random.Next(parts.Length)];
         await ReplyAsync($"Hmmm I choose: {choice}");
+    }
+
+    internal static string[] ParseChoices(string options)
+    {
+        return options.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     [Name("Random Number")]
