@@ -63,6 +63,23 @@ public class MiscModuleTests
         Assert.Equal(int.MaxValue, result);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void BuildUrbanDictionaryUrl_UsesRandomEndpointForMissingTerms(string? word)
+    {
+        Assert.Equal("https://api.urbandictionary.com/v0/random", MiscModule.BuildUrbanDictionaryUrl(word));
+    }
+
+    [Fact]
+    public void BuildUrbanDictionaryUrl_EncodesReservedQueryCharacters()
+    {
+        string result = MiscModule.BuildUrbanDictionaryUrl("C# & tea");
+
+        Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
+    }
+
     [Fact]
     public async Task LoveCompatibilityCommand_AllowsComparingWithInvoker()
     {

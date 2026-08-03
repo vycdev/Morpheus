@@ -536,12 +536,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(5, 30)]
     public async Task UrbanDictionary(string? word = null)
     {
-        string url;
-
-        if (!string.IsNullOrWhiteSpace(word))
-            url = $"https://api.urbandictionary.com/v0/define?term={word}";
-        else
-            url = "https://api.urbandictionary.com/v0/random";
+        string url = BuildUrbanDictionaryUrl(word);
 
         HttpResponseMessage response = await httpClient.GetAsync(url);
 
@@ -581,6 +576,14 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             .WithFooter("Powered by Urban Dictionary");
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static string BuildUrbanDictionaryUrl(string? word)
+    {
+        if (string.IsNullOrWhiteSpace(word))
+            return "https://api.urbandictionary.com/v0/random";
+
+        return $"https://api.urbandictionary.com/v0/define?term={Uri.EscapeDataString(word)}";
     }
 
     [Name("Ping Minecraft Server")]
