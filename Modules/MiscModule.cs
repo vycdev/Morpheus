@@ -714,7 +714,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [Alias("lovecompatibility", "lovecalc", "lovecouple")]
     [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
-    public async Task LoveCompatibility(SocketGuildUser user1, SocketGuildUser? user2)
+    public async Task LoveCompatibility(SocketGuildUser user1, SocketGuildUser? user2 = null)
     {
         user2 ??= Context.User as SocketGuildUser;
         if (user2 == null)
