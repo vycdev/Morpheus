@@ -32,8 +32,7 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
                 var guild = discordClient.GetGuild(ban.GuildId);
                 if (guild == null)
                 {
-                    Log($"Guild {ban.GuildId} not found for temp ban {ban.Id}. Marking as unbanned.", LogSeverity.Warning);
-                    ban.UnbannedAt = now;
+                    Log($"Guild {ban.GuildId} not found for temp ban {ban.Id}. Will retry later.", LogSeverity.Warning);
                     continue;
                 }
 
