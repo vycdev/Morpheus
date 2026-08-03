@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using Discord;
 
@@ -47,7 +48,7 @@ public class RssFeedService(LogsService logsService)
                     string id = e.Element(Atom + "id")?.Value ?? link;
                     string title = e.Element(Atom + "title")?.Value ?? string.Empty;
                     string pubRaw = e.Element(Atom + "published")?.Value ?? e.Element(Atom + "updated")?.Value ?? string.Empty;
-                    DateTime.TryParse(pubRaw, out DateTime published);
+                    DateTime published = ParsePublished(pubRaw);
 
                     if (!string.IsNullOrWhiteSpace(id))
                         entries.Add(new FeedEntry(id, title, link, published));
@@ -63,7 +64,7 @@ public class RssFeedService(LogsService logsService)
                     string id = it.Element("guid")?.Value ?? it.Element("id")?.Value ?? link;
                     string title = it.Element("title")?.Value ?? string.Empty;
                     string pubRaw = it.Element("pubDate")?.Value ?? it.Element("published")?.Value ?? string.Empty;
-                    DateTime.TryParse(pubRaw, out DateTime published);
+                    DateTime published = ParsePublished(pubRaw);
 
                     if (!string.IsNullOrWhiteSpace(id))
                         entries.Add(new FeedEntry(id, title, link, published));
@@ -95,4 +96,13 @@ public class RssFeedService(LogsService logsService)
             return (null, null, []);
         }
     }
+
+    internal static DateTime ParsePublished(string value) =>
+        DateTime.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out DateTime published)
+            ? published
+            : DateTime.MinValue;
 }

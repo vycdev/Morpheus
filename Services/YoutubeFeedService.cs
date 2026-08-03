@@ -43,6 +43,10 @@ public class YoutubeFeedService(LogsService logsService)
 
             return (channelTitle, entries);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logsService.Log($"Failed to fetch YouTube feed for {channelId}: {ex.Message}", LogSeverity.Warning);

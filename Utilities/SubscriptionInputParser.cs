@@ -40,7 +40,7 @@ internal static partial class SubscriptionInputParser
 
         if (lines.Length == 1)
         {
-            string[] tokens = SplitTokens(lines[0]).ToArray();
+            string[] tokens = SplitRssTokens(lines[0]).ToArray();
             string[] urls = tokens.Where(IsHttpUrl).ToArray();
             if (urls.Length > 1)
                 return urls
@@ -56,7 +56,10 @@ internal static partial class SubscriptionInputParser
             if (separatorIndex < 0)
             {
                 int commaIndex = line.IndexOf(',');
-                if (commaIndex > 0 && IsHttpUrl(line[..commaIndex].Trim()))
+                int queryIndex = line.IndexOf('?');
+                if (commaIndex > 0 &&
+                    (queryIndex < 0 || commaIndex < queryIndex) &&
+                    IsHttpUrl(line[..commaIndex].Trim()))
                     separatorIndex = commaIndex;
             }
 
@@ -100,6 +103,10 @@ internal static partial class SubscriptionInputParser
     private static IEnumerable<string> SplitTokens(string input) => input
         .Split([' ', '\t', '\r', '\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    private static IEnumerable<string> SplitRssTokens(string input) => RssUrlSeparatorRegex()
+        .Split(input)
+        .Where(token => !string.IsNullOrWhiteSpace(token));
+
     private static IReadOnlyList<string> Deduplicate(IEnumerable<string> values) => values
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
@@ -112,4 +119,7 @@ internal static partial class SubscriptionInputParser
 
     [GeneratedRegex("^<#(\\d+)>$")]
     private static partial Regex ChannelMentionRegex();
+
+    [GeneratedRegex(@"(?:\s*[,;]\s*|\s+)(?=https?://)", RegexOptions.IgnoreCase)]
+    private static partial Regex RssUrlSeparatorRegex();
 }
