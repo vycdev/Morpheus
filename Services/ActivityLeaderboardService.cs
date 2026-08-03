@@ -18,7 +18,8 @@ public class ActivityLeaderboardService(DB dbContext)
         IQueryable<UserLevels> query = dbContext.UserLevels
             .AsNoTracking()
             .Where(ul => ul.GuildId == guildId)
-            .OrderByDescending(ul => ul.TotalXp);
+            .OrderByDescending(ul => ul.TotalXp)
+            .ThenBy(ul => ul.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No level data found for this guild.");
@@ -53,7 +54,8 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Value = (long)g.Sum(x => x.XpGained) })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No activity data found for the past {days} days.");
@@ -78,7 +80,8 @@ public class ActivityLeaderboardService(DB dbContext)
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
             .Select(g => new { UserId = g.Key, Value = (long)g.Sum(ul => ul.TotalXp) })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No level data found globally.");
@@ -110,7 +113,8 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Value = (long)g.Sum(x => x.XpGained) })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No activity data found globally for the past {days} days.");
@@ -138,7 +142,8 @@ public class ActivityLeaderboardService(DB dbContext)
         IQueryable<UserLevels> query = dbContext.UserLevels
             .AsNoTracking()
             .Where(ul => ul.GuildId == guildId && ul.UserMessageCount > 0)
-            .OrderByDescending(ul => ul.UserMessageCount);
+            .OrderByDescending(ul => ul.UserMessageCount)
+            .ThenBy(ul => ul.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found for this guild.");
@@ -173,7 +178,8 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Value = g.Count() })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No message data found for the past {days} days.");
@@ -198,7 +204,9 @@ public class ActivityLeaderboardService(DB dbContext)
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
             .Select(g => new { UserId = g.Key, Value = g.Sum(ul => ul.UserMessageCount) })
-            .OrderByDescending(x => x.Value);
+            .Where(x => x.Value > 0)
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found globally.");
@@ -230,7 +238,8 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Value = g.Count() })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No message data found globally for the past {days} days.");
@@ -258,7 +267,8 @@ public class ActivityLeaderboardService(DB dbContext)
         IQueryable<UserLevels> query = dbContext.UserLevels
             .AsNoTracking()
             .Where(ul => ul.GuildId == guildId && ul.UserMessageCount > 0)
-            .OrderByDescending(ul => ul.UserAverageMessageLength);
+            .OrderByDescending(ul => ul.UserAverageMessageLength)
+            .ThenBy(ul => ul.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found for this guild.");
@@ -300,7 +310,8 @@ public class ActivityLeaderboardService(DB dbContext)
             })
             .Where(x => x.SumCount > 0)
             .Select(x => new { x.UserId, AverageLength = x.SumLen / x.SumCount })
-            .OrderByDescending(x => x.AverageLength);
+            .OrderByDescending(x => x.AverageLength)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found globally.");

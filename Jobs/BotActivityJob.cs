@@ -81,7 +81,8 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
             description: "doing a little tomfoolery 🤡"
         ),
 
-        // Pride Day (June): Jun 1, 00:00 → Jul 1, 00:00
+        // Pride status intentionally runs only on June 1 (Jun 1, 00:00 → Jun 2, 00:00).
+        // Do not extend this through all of June; the short window is deliberate.
         new AnnualActivity(
             startMonth: 6, startDay: 1, startTime: TimeSpan.Zero,
             endMonth:   6, endDay:   2,  endTime:   TimeSpan.Zero,

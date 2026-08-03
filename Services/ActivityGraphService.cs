@@ -300,18 +300,21 @@ public class ActivityGraphService(DB dbContext)
             baselineMap = baseList.ToDictionary(x => x.UserId, x => x.Baseline);
         }
 
-        Dictionary<int, string> names = await dbContext.Users
+        var users = await dbContext.Users
             .AsNoTracking()
             .Where(user => userIds.Contains(user.Id))
-            .Select(user => new { user.Id, user.Username })
-            .ToDictionaryAsync(user => user.Id, user => user.Username);
+            .Select(user => new { user.Id, user.Username, user.DiscordId })
+            .ToListAsync();
+        Dictionary<int, (string Username, ulong DiscordId)> userLabels = users
+            .ToDictionary(user => user.Id, user => (user.Username, user.DiscordId));
 
         Dictionary<string, List<int>> series = [];
+        HashSet<string> usedLabels = [];
         foreach (UserActivityAggregate userAgg in perUser)
         {
-            string label = names.TryGetValue(userAgg.UserId, out string? username)
-                ? username
-                : userAgg.UserId.ToString();
+            string label = userLabels.TryGetValue(userAgg.UserId, out (string Username, ulong DiscordId) user)
+                ? GetUniqueUserLabel(user.Username, user.DiscordId, usedLabels)
+                : GetUniqueUserLabel(userAgg.UserId.ToString(), (ulong)userAgg.UserId, usedLabels);
 
             List<int> daily = BuildDailyValues(userAgg.ByDay, start, days);
             series[label] = cumulative
@@ -320,6 +323,20 @@ public class ActivityGraphService(DB dbContext)
         }
 
         return series;
+    }
+
+    private static string GetUniqueUserLabel(string username, ulong discordId, HashSet<string> usedLabels)
+    {
+        string baseLabel = string.IsNullOrWhiteSpace(username) ? discordId.ToString() : username;
+        if (usedLabels.Add(baseLabel))
+            return baseLabel;
+
+        string label = $"{baseLabel} ({discordId})";
+        int suffix = 2;
+        while (!usedLabels.Add(label))
+            label = $"{baseLabel} ({discordId}, {suffix++})";
+
+        return label;
     }
 
     private async Task<Dictionary<DateTime, int>> GetGuildAggregateByDayAsync(DateTime start, int days, int guildId)

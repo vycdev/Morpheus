@@ -1,9 +1,67 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
+using Morpheus.Database.Models;
 using Morpheus.Services;
 
 namespace Morpheus.Tests;
 
 public class ActivityGraphServiceTests
 {
+    [Fact]
+    public async Task BuildUserActivityGraphAsync_PreservesUsersWithMatchingNames()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Guild guild = new() { DiscordId = 100, Name = "Test guild" };
+        User firstUser = new() { DiscordId = 1001, Username = "matching-name" };
+        User secondUser = new() { DiscordId = 1002, Username = "matching-name" };
+        db.AddRange(guild, firstUser, secondUser);
+        await db.SaveChangesAsync();
+
+        DateTime start = new(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc);
+        db.UserActivity.AddRange(
+            new UserActivity
+            {
+                UserId = firstUser.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = 3001,
+                XpGained = 20,
+                InsertDate = start
+            },
+            new UserActivity
+            {
+                UserId = secondUser.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = 3002,
+                XpGained = 10,
+                InsertDate = start
+            });
+        await db.SaveChangesAsync();
+
+        ActivityGraphService service = new(db);
+        ActivityGraphBuildResult result = await service.BuildUserActivityGraphAsync(
+            new ActivityGraphRange(Days: 7, Start: start, ExplicitStart: start),
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: [],
+            cumulative: false,
+            rollingWindowDays: null);
+
+        Assert.Equal(2, result.Series.Count);
+        Assert.Equal(20, result.Series["matching-name"][0]);
+        Assert.Equal(10, result.Series["matching-name (1002)"][0]);
+    }
+
     [Fact]
     public void ParseDaysString_ClampsPresetDaysForNonOwner()
     {

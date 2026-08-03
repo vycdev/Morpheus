@@ -44,7 +44,9 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
 
             // If nothing from this feed has ever been seen, this is an initial run: mark
             // everything seen and only post the latest entry to avoid backfilling history.
-            bool initialSeed = !entries.Any(e => seen.Contains(e.EntryId));
+            // Check all history for the feed because older seen entries may have rolled out of
+            // the feed's current response.
+            bool initialSeed = !await HasFeedHistoryAsync(db, feedUrl);
             if (initialSeed)
             {
                 RssFeedService.FeedEntry latest = entries.OrderByDescending(e => e.Published).First();
@@ -96,6 +98,9 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
 
         return allSucceeded;
     }
+
+    internal static Task<bool> HasFeedHistoryAsync(DB db, string feedUrl) =>
+        db.RssSeenEntries.AnyAsync(entry => entry.FeedUrl == feedUrl);
 
     private async Task<bool> SendAsync(RssSubscription sub, string content)
     {

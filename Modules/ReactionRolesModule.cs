@@ -105,7 +105,7 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
             for (int i = 0; i < roles.Count; i++)
             {
                 int row = i / 5;
-                componentBuilder.WithButton(roles[i].Name, customId: $"{CustomIdPrefix}{roles[i].Id}", style: ButtonStyle.Secondary, row: row);
+                componentBuilder.WithButton(FormatButtonLabel(roles[i].Name), customId: $"{CustomIdPrefix}{roles[i].Id}", style: ButtonStyle.Secondary, row: row);
             }
         }
         else
@@ -152,6 +152,18 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
 
         dbContext.ReactionRoleItems.AddRange(items);
         await dbContext.SaveChangesAsync();
+    }
+
+    internal static string FormatButtonLabel(string roleName)
+    {
+        if (roleName.Length <= ButtonBuilder.MaxButtonLabelLength)
+            return roleName;
+
+        int prefixLength = ButtonBuilder.MaxButtonLabelLength - 1;
+        if (char.IsHighSurrogate(roleName[prefixLength - 1]) && char.IsLowSurrogate(roleName[prefixLength]))
+            prefixLength--;
+
+        return string.Concat(roleName.AsSpan(0, prefixLength), "…");
     }
 
     private async Task HandleReactionRoleInteraction(SocketInteraction interaction)

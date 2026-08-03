@@ -11,7 +11,15 @@ public class ChannelService(DB dbContext, LogsService logsService)
         Channel? channel = await dbContext.Channels.FirstOrDefaultAsync(c => c.DiscordId == discordId);
 
         if (channel != null)
+        {
+            if (channel.Name != name)
+            {
+                channel.Name = name;
+                await dbContext.SaveChangesAsync();
+            }
+
             return channel;
+        }
 
         channel = new Channel
         {

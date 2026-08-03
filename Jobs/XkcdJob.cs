@@ -18,6 +18,7 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     private const string XkcdUsername = "xkcd";
+    internal const int MaxDeliveryAttempts = 24 * 7;
     // Public square avatar for the xkcd identity (data: URLs are rejected by Discord's avatar_url).
     private const string XkcdAvatarUrl = "https://pbs.twimg.com/profile_images/1488600831377252354/hEpPeSu0_400x400.jpg";
 
@@ -61,12 +62,32 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
         // First run ever: seed everything as seen so we don't backfill the whole archive.
         if (!hasSeen)
         {
+            // Post only the most recent comic to existing subscribers as a kick-off. If an
+            // earlier attempt is pending, keep retrying that same comic even if it has rotated
+            // out of the RSS feed.
+            string latestLink = await db.XkcdDeliveryRetries
+                .OrderBy(r => r.LastAttemptAt)
+                .Select(r => r.Link)
+                .FirstOrDefaultAsync() ?? items[0].Link;
+            bool delivered = await DispatchAsync(latestLink, subscriptions, SendAsync);
+            if (!delivered)
+            {
+                int attempts = await RecordFailedDeliveryAsync(db, latestLink, DateTime.UtcNow);
+                if (ShouldRetryDelivery(attempts))
+                    return;
+
+                logsService.Log(
+                    $"XkcdJob: giving up on {latestLink} after {attempts} hourly delivery attempts",
+                    LogSeverity.Warning);
+            }
+
+            await ClearDeliveryRetryAsync(latestLink);
+
             foreach (XkcdItem item in items)
                 db.XkcdSeen.Add(new XkcdSeen { Link = item.Link, SeenAt = DateTime.UtcNow });
+            if (items.All(item => item.Link != latestLink))
+                db.XkcdSeen.Add(new XkcdSeen { Link = latestLink, SeenAt = DateTime.UtcNow });
 
-            // Post only the most recent comic to existing subscribers as a kick-off.
-            XkcdItem latest = items[0];
-            await DispatchAsync(latest, subscriptions);
             await db.SaveChangesAsync();
             return;
         }
@@ -78,28 +99,104 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
                 .ToListAsync())
             .ToHashSet();
 
-        // RSS is newest-first; post new comics oldest-first so they read chronologically.
-        List<XkcdItem> newItems = items.Where(i => !seen.Contains(i.Link)).Reverse().ToList();
-        if (newItems.Count == 0)
+        // Retry pending comics first, including links that have rotated out of the RSS feed.
+        // RSS is newest-first; post other new comics oldest-first so they read chronologically.
+        List<string> pendingLinks = await db.XkcdDeliveryRetries
+            .OrderBy(r => r.LastAttemptAt)
+            .Select(r => r.Link)
+            .ToListAsync();
+        HashSet<string> pendingLinkSet = pendingLinks.ToHashSet();
+        List<string> deliveryLinks =
+        [
+            .. pendingLinks,
+            .. items
+                .Where(i => !seen.Contains(i.Link) && !pendingLinkSet.Contains(i.Link))
+                .Reverse()
+                .Select(i => i.Link)
+        ];
+        if (deliveryLinks.Count == 0)
             return;
 
-        foreach (XkcdItem item in newItems)
+        foreach (string link in deliveryLinks)
         {
-            await DispatchAsync(item, subscriptions);
-            db.XkcdSeen.Add(new XkcdSeen { Link = item.Link, SeenAt = DateTime.UtcNow });
+            bool delivered = await DispatchAsync(link, subscriptions, SendAsync);
+            if (!delivered)
+            {
+                int attempts = await RecordFailedDeliveryAsync(db, link, DateTime.UtcNow);
+                if (ShouldRetryDelivery(attempts))
+                    continue;
+
+                logsService.Log(
+                    $"XkcdJob: giving up on {link} after {attempts} hourly delivery attempts",
+                    LogSeverity.Warning);
+            }
+
+            await ClearDeliveryRetryAsync(link);
+            db.XkcdSeen.Add(new XkcdSeen { Link = link, SeenAt = DateTime.UtcNow });
         }
 
         await db.SaveChangesAsync();
     }
 
-    private async Task DispatchAsync(XkcdItem item, List<XkcdSubscription> subscriptions)
+    internal static async Task<bool> DispatchAsync(
+        string link,
+        IReadOnlyList<XkcdSubscription> subscriptions,
+        Func<XkcdSubscription, string, Task<bool>> sendAsync)
     {
+        bool allSucceeded = true;
         foreach (XkcdSubscription sub in subscriptions)
         {
-            if (sub.Webhook == null)
-                continue;
-
-            await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, item.Link, XkcdUsername, XkcdAvatarUrl);
+            if (!await sendAsync(sub, link))
+                allSucceeded = false;
         }
+
+        return allSucceeded;
+    }
+
+    internal static bool ShouldRetryDelivery(int attemptCount) => attemptCount < MaxDeliveryAttempts;
+
+    internal static async Task<int> RecordFailedDeliveryAsync(DB db, string link, DateTime attemptedAt)
+    {
+        XkcdDeliveryRetry? retry = await db.XkcdDeliveryRetries.SingleOrDefaultAsync(r => r.Link == link);
+        if (retry == null)
+        {
+            retry = new XkcdDeliveryRetry
+            {
+                Link = link,
+                AttemptCount = 1,
+                LastAttemptAt = attemptedAt
+            };
+            db.XkcdDeliveryRetries.Add(retry);
+        }
+        else
+        {
+            retry.AttemptCount++;
+            retry.LastAttemptAt = attemptedAt;
+        }
+
+        await db.SaveChangesAsync();
+        return retry.AttemptCount;
+    }
+
+    private async Task ClearDeliveryRetryAsync(string link)
+    {
+        XkcdDeliveryRetry? retry = await db.XkcdDeliveryRetries.SingleOrDefaultAsync(r => r.Link == link);
+        if (retry != null)
+            db.XkcdDeliveryRetries.Remove(retry);
+    }
+
+    private async Task<bool> SendAsync(XkcdSubscription sub, string link)
+    {
+        if (sub.Webhook == null)
+        {
+            logsService.Log($"XkcdJob: no webhook available in channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            return false;
+        }
+
+        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, link, XkcdUsername, XkcdAvatarUrl);
+        if (!ok)
+            logsService.Log($"XkcdJob: failed to post comic to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }
