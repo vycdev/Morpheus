@@ -55,8 +55,8 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     }
 
     /// <summary>
-    /// Buy shares of a stock. Deducts amount from user balance, applies 5% fee,
-    /// and purchases shares with the remaining 95%.
+    /// Buy shares of a stock. Deducts amount from user balance, applies a 0.05% fee,
+    /// and purchases shares with the remaining 99.95%.
     /// </summary>
     public async Task<(bool success, string message, decimal sharesBought)> BuyStock(int userId, int stockId, decimal amount)
     {
@@ -127,7 +127,8 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     }
 
     /// <summary>
-    /// Sell shares of a stock. Applies 5% fee on proceeds and credits the net to balance.
+    /// Sell shares of a stock. Taxes profits at 10%, or 35% when sold within 48 hours,
+    /// and credits the net proceeds to the user's balance.
     /// Pass null for sharesToSell to sell all shares.
     /// </summary>
     public async Task<(bool success, string message, decimal proceeds)> SellStock(int userId, int stockId, decimal? sharesToSell)
