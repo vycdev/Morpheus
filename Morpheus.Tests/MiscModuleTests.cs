@@ -36,6 +36,22 @@ public class MiscModuleTests
     }
 
     [Fact]
+    public void ParseChoices_IgnoresBlankLinesAndTrimsOptions()
+    {
+        string[] result = MiscModule.ParseChoices("  red  \n\n \t\nblue\r\n");
+
+        Assert.Equal(["red", "blue"], result);
+    }
+
+    [Fact]
+    public void ParseChoices_ReturnsOnlyNonBlankOptions()
+    {
+        string[] result = MiscModule.ParseChoices("\n \n only choice \n\t");
+
+        Assert.Equal(["only choice"], result);
+    }
+
+    [Fact]
     public void GenerateRandomNumber_SupportsIntMaxValueAsInclusiveUpperBound()
     {
         int result = MiscModule.GenerateRandomNumber(int.MaxValue, int.MaxValue);
