@@ -9,7 +9,7 @@ Env.Load(".env");
 McpApiOptions mcpOptions = McpApiOptions.FromEnvironment();
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls(mcpOptions.Urls);
+builder.WebHost.UseUrls(mcpOptions.ListenerUrls);
 
 builder.Services
     .AddBotServices()
@@ -20,8 +20,12 @@ builder.Services
 
 WebApplication app = builder.Build();
 
-app.UseCors();
-app.MapMcpApi();
+if (mcpOptions.Enabled)
+{
+    app.UseCors();
+    app.UseMcpApiSecurity();
+    app.MapMcpApi();
+}
 
 app.RunStartupMigrations();
 await app.StartBotAsync();

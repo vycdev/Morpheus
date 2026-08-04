@@ -69,6 +69,29 @@ Morpheus features a fully integrated economic system where value is directly tie
     - **Slots:** Gamble against the server's "Slots Vault" — a central bank that grows with losses and pays out from its own reserves.
 - **Wealth Transfers:** Securely send money to other users, with a 5% fee (contributed to the UBI pool) to discourage circular loops and encourage a healthy velocity of money.
 
+## MCP server
+
+Morpheus can expose a standard, read-only Model Context Protocol server at
+`/api/mcp`. Its standalone `MCP_API_URLS` listener defaults to
+`http://127.0.0.1:5268`, and the endpoint is disabled unless `MCP_API_KEY` is
+set. Clients authenticate through the `Authorization` header using the configured
+bearer token.
+
+Browser origins are restricted by `MCP_ALLOWED_ORIGINS` (a comma-separated
+list of exact `http` or `https` origins), and requests are rate limited by
+`MCP_RATE_LIMIT_PER_MINUTE` (default: 60). The initial tool set exposes only
+aggregate guild/activity data, guild-scoped leaderboards, and approved,
+non-removed quotes. Pending quotes, removed quotes, logs, balances, and user
+directory exports are not exposed.
+
+The API key authorizes the complete MCP tool surface and should be shared only
+with trusted clients. Rate limiting uses the direct client IP address; reverse
+proxies should preserve distinct trusted client connections or configure
+forwarded headers at the deployment boundary.
+
+The endpoint uses MCP Streamable HTTP and supports standard methods including
+`initialize`, `tools/list`, and `tools/call`.
+
 ## Contributing
 
 
