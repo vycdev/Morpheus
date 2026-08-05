@@ -1,3 +1,6 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Jobs;
 
@@ -5,6 +8,32 @@ namespace Morpheus.Tests;
 
 public class YoutubeRssJobTests
 {
+    [Fact]
+    public async Task HasFeedHistoryAsync_DistinguishesExistingChannelFromUnknownChannel()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Assert.False(await YoutubeRssJob.HasFeedHistoryAsync(db, "channel-1"));
+
+        db.YoutubeSeenVideos.Add(new YoutubeSeenVideo
+        {
+            YoutubeChannelId = "channel-1",
+            VideoId = "video-that-is-no-longer-in-the-feed"
+        });
+        await db.SaveChangesAsync();
+
+        bool hasHistory = await YoutubeRssJob.HasFeedHistoryAsync(db, "channel-1");
+
+        Assert.True(hasHistory);
+        Assert.False(await YoutubeRssJob.HasFeedHistoryAsync(db, "channel-2"));
+    }
+
     [Fact]
     public async Task DispatchAsync_WhenOneDeliveryFails_ReportsFailureAndAttemptsEverySubscriber()
     {
