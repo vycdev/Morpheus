@@ -67,7 +67,9 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
 
             // If nothing from this channel has ever been seen, this is an initial run for it:
             // mark everything seen and only post the latest video to avoid backfilling history.
-            bool initialSeed = !entries.Any(e => seen.Contains(e.VideoId));
+            // Check all history for the channel because older seen videos may have rolled out of
+            // the feed's current response.
+            bool initialSeed = !await HasFeedHistoryAsync(db, youtubeChannelId);
             if (initialSeed)
             {
                 YoutubeFeedService.VideoEntry latest = entries.OrderByDescending(e => e.Published).First();
@@ -114,6 +116,9 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
 
         return allSucceeded;
     }
+
+    internal static Task<bool> HasFeedHistoryAsync(DB db, string youtubeChannelId) =>
+        db.YoutubeSeenVideos.AnyAsync(video => video.YoutubeChannelId == youtubeChannelId);
 
     private async Task<bool> SendAsync(
         YoutubeSubscription sub,

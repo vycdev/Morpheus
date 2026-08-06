@@ -98,6 +98,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<YoutubeSubscription>().HasIndex(s => new { s.ChannelDiscordId, s.YoutubeChannelId }).IsUnique();
         modelBuilder.Entity<YoutubeSubscription>().HasIndex(s => s.YoutubeChannelId);
         modelBuilder.Entity<YoutubeSeenVideo>().HasIndex(s => s.VideoId).IsUnique();
+        modelBuilder.Entity<YoutubeSeenVideo>().HasIndex(s => s.YoutubeChannelId);
         modelBuilder.Entity<YoutubeSubscription>()
             .HasOne(s => s.Webhook)
             .WithMany()
