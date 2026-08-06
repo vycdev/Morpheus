@@ -10,7 +10,7 @@ public static class Utils
     private static readonly Regex _schemeRegex = new(@"\b(?:https?|ftp)://[\w\-\._~:/?#\[\]@!$&'()*+,;=%]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex _mdLinkRegex = new(@"\[[^\]]+\]\((?:https?://|ftp://|www\.)[^)\s]+\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex _bareDomainRegex = new(@"(?<![a-z0-9.!#$%&'*+/=?^_`{|}~@-])(?:www\.)?(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{1,5})?(?![a-z0-9.!#$%&'*+/=?^_`{|}~-]*@)(?:/[^\s]*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _ipRegex = new(@"(?<=\s|^)(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?::\d{1,5})?(?:/[^\s]*)?(?=\s|$)", RegexOptions.Compiled);
+    private static readonly Regex _ipRegex = new(@"(?<!@\[)(?<!@\[IPv4:)(?<![\w.@/+%-])(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?::\d{1,5})?(?:/[^\s]*)?(?![\w@/:%+-]|\.[a-z0-9]|[^\s@]*@)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static string GetAssemblyVersion()
     {
