@@ -358,8 +358,6 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task Info()
     {
-        ulong ownerId = ulong.Parse(Env.Variables["OWNER_ID"]);
-
         EmbedBuilder builder = new()
         {
             Color = Colors.Blue,
@@ -377,15 +375,16 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             -# Version: v{Utils.GetAssemblyVersion()}
             """,
             ThumbnailUrl = Context.Client.CurrentUser.GetAvatarUrl(),
-            Footer = new EmbedFooterBuilder()
-            {
-                Text = "Made with ❤️ by vycdev",
-                IconUrl = (await Context.Client.Rest.GetUserAsync(ownerId)).GetAvatarUrl()
-            }
+            Footer = BuildInfoFooter()
         };
 
         await ReplyAsync(embed: builder.Build());
     }
+
+    internal static EmbedFooterBuilder BuildInfoFooter() => new()
+    {
+        Text = "Made with ❤️ by vycdev"
+    };
 
     [Name("Uptime")]
     [Summary("Displays the bot's uptime.")]
