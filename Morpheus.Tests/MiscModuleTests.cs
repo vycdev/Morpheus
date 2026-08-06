@@ -60,6 +60,15 @@ public class MiscModuleTests
     }
 
     [Fact]
+    public void BuildInfoFooter_DoesNotDependOnOwnerConfiguration()
+    {
+        Discord.EmbedFooterBuilder footer = MiscModule.BuildInfoFooter();
+
+        Assert.Equal("Made with ❤️ by vycdev", footer.Text);
+        Assert.Null(footer.IconUrl);
+    }
+
+    [Fact]
     public void ParseChoices_IgnoresBlankLinesAndTrimsOptions()
     {
         string[] result = MiscModule.ParseChoices("  red  \n\n \t\nblue\r\n");
