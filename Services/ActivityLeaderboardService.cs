@@ -53,7 +53,7 @@ public class ActivityLeaderboardService(DB dbContext)
 
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { UserId = g.Key, Value = (long)g.Sum(x => x.XpGained) })
+            .Select(g => new { UserId = g.Key, Value = g.Sum(x => (long)x.XpGained) })
             .OrderByDescending(x => x.Value)
             .ThenBy(x => x.UserId);
 
@@ -112,7 +112,7 @@ public class ActivityLeaderboardService(DB dbContext)
 
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { UserId = g.Key, Value = (long)g.Sum(x => x.XpGained) })
+            .Select(g => new { UserId = g.Key, Value = g.Sum(x => (long)x.XpGained) })
             .OrderByDescending(x => x.Value)
             .ThenBy(x => x.UserId);
 
@@ -462,10 +462,12 @@ public class ActivityLeaderboardService(DB dbContext)
         if (!hasUser)
             return "Your rank: N/A";
 
-        int mySum = await baseQuery.Where(ua => ua.UserId == viewerUserId.Value).SumAsync(ua => ua.XpGained);
+        long mySum = await baseQuery
+            .Where(ua => ua.UserId == viewerUserId.Value)
+            .SumAsync(ua => (long)ua.XpGained);
         int better = await baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { Sum = g.Sum(ua => ua.XpGained) })
+            .Select(g => new { Sum = g.Sum(ua => (long)ua.XpGained) })
             .CountAsync(x => x.Sum > mySum);
 
         return $"Your rank: #{better + 1}";
