@@ -203,7 +203,7 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = dbContext.UserLevels
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
-            .Select(g => new { UserId = g.Key, Value = g.Sum(ul => ul.UserMessageCount) })
+            .Select(g => new { UserId = g.Key, Value = g.Sum(ul => (long)ul.UserMessageCount) })
             .Where(x => x.Value > 0)
             .OrderByDescending(x => x.Value)
             .ThenBy(x => x.UserId);
@@ -388,7 +388,7 @@ public class ActivityLeaderboardService(DB dbContext)
         return $"[{GetRankNumber(page, index)}] | {name}: Level {ActivityLevelService.CalculateLevel(xp)} with {xp} XP";
     }
 
-    private static string FormatMessageLine(int userId, IReadOnlyDictionary<int, string> names, int count, int page, int index)
+    private static string FormatMessageLine(int userId, IReadOnlyDictionary<int, string> names, long count, int page, int index)
     {
         string name = names.TryGetValue(userId, out string? username) ? username : userId.ToString();
         return $"[{GetRankNumber(page, index)}] | {name}: Messages {count}";
@@ -509,7 +509,7 @@ public class ActivityLeaderboardService(DB dbContext)
         int better = await dbContext.UserLevels
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
-            .Select(g => new { Count = g.Sum(ul => ul.UserMessageCount) })
+            .Select(g => new { Count = g.Sum(ul => (long)ul.UserMessageCount) })
             .CountAsync(x => x.Count > myCount);
 
         return $"Your rank: #{better + 1}";
