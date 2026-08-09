@@ -25,6 +25,18 @@ Install dotnet-ef (if needed):
 dotnet tool install --global dotnet-ef
 ```
 
+## Publishing the Docker image
+
+The publishing script reads registry credentials and image settings from `publish/.env`, which is intentionally ignored by Git. Create it from the checked-in template before publishing:
+
+```powershell
+Copy-Item .\publish\default.env .\publish\.env
+# Replace the placeholder values in publish\.env, then run:
+pwsh .\publish\publish.ps1
+```
+
+Keep `publish/.env` untracked because it contains registry credentials. Publishing also requires PowerShell and a running Docker daemon.
+
 ## Running the command list generator
 
 This repository includes a small Python script that extracts command metadata from the C# modules and writes `COMMANDS.md`.
