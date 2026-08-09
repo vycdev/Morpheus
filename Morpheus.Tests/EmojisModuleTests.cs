@@ -21,4 +21,14 @@ public class EmojisModuleTests
         Assert.True(found);
         Assert.Equal(42UL, messageId);
     }
+
+    [Fact]
+    public void GetEmojiArchivePath_UsesGuildIdUnderTempDirectory()
+    {
+        string tempPath = Path.Combine("tmp", "morpheus-tests");
+
+        string archivePath = EmojisModule.GetEmojiArchivePath(tempPath, 123UL);
+
+        Assert.Equal(Path.Combine(tempPath, "Morpheus_Emojis_123.zip"), archivePath);
+    }
 }
