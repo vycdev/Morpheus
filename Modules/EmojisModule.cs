@@ -124,6 +124,22 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         return referencedMessageId.HasValue;
     }
 
+    internal static bool TryParseEmojiPageDirection(string? customId, out bool isNext)
+    {
+        const string prefix = "emoji_import_page:";
+        isNext = false;
+
+        if (customId is null || !customId.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        return customId[prefix.Length..] switch
+        {
+            "next" => (isNext = true),
+            "prev" => true,
+            _ => false
+        };
+    }
+
     [Name("List Emojis")]
     [Summary("Lists all custom emojis that can be used by the bot.")]
     [Command("listemojis")]
@@ -439,7 +455,14 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     private async Task HandleEmojiPageInteraction(SocketInteraction interaction)
     {
         if (interaction is not SocketMessageComponent comp) return;
-        if (!comp.Data.CustomId.StartsWith("emoji_import_page:")) return;
+        string customId = comp.Data.CustomId ?? string.Empty;
+        if (!customId.StartsWith("emoji_import_page:", StringComparison.Ordinal)) return;
+
+        if (!TryParseEmojiPageDirection(customId, out bool isNext))
+        {
+            await comp.RespondAsync("Invalid emoji page selection.", ephemeral: true);
+            return;
+        }
 
         ulong messageId = comp.Message.Id;
         if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
@@ -457,8 +480,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
         await comp.DeferAsync();
 
-        string direction = comp.Data.CustomId.Split(':')[1];
-        session.EmojiPage += direction == "next" ? 1 : -1;
+        session.EmojiPage += isNext ? 1 : -1;
         if (session.EmojiPage < 0) session.EmojiPage = 0;
 
         var sourceGuild = client.GetGuild(session.SourceGuildId);
