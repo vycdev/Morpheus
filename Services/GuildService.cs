@@ -4,6 +4,7 @@ using Morpheus.Database;
 using Morpheus.Database.Models;
 
 namespace Morpheus.Services;
+
 public class GuildService(DB dbContext, LogsService logsService, GuildPrefixService guildPrefixService)
 {
     public Task<Guild> TryGetCreateGuild(SocketGuild guild) =>
@@ -32,7 +33,28 @@ public class GuildService(DB dbContext, LogsService logsService, GuildPrefixServ
         };
 
         await dbContext.Guilds.AddAsync(guildDb);
-        await dbContext.SaveChangesAsync();
+        try
+        {
+            await dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Another handler may have created the same Discord guild after our initial lookup.
+            // Clear the failed insert and use the row protected by the unique DiscordId index.
+            dbContext.ChangeTracker.Clear();
+            Guild? concurrentGuild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == discordId);
+            if (concurrentGuild == null)
+                throw;
+
+            if (concurrentGuild.Name != name)
+            {
+                concurrentGuild.Name = name;
+                await dbContext.SaveChangesAsync();
+            }
+
+            guildPrefixService.SetPrefix(discordId, concurrentGuild.Prefix);
+            return concurrentGuild;
+        }
 
         logsService.Log($"New guild created {name}", Discord.LogSeverity.Verbose);
         guildPrefixService.SetPrefix(discordId, guildDb.Prefix);
