@@ -41,6 +41,17 @@ public class XkcdJobTests
     }
 
     [Fact]
+    public async Task FetchItemsAsync_WhenCallerCancels_PropagatesCancellation()
+    {
+        using HttpClient httpClient = new();
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => XkcdJob.FetchItemsAsync(httpClient, cancellation.Token));
+    }
+
+    [Fact]
     public async Task RecordFailedDeliveryAsync_PersistsOneWeekOfHourlyAttempts()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
