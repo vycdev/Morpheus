@@ -11,6 +11,7 @@ public class YoutubeUtilsTests
     [InlineData("https://example.com/@channel")]
     [InlineData("http://127.0.0.1/private")]
     [InlineData("https://www.youtube.com.example.com/@channel")]
+    [InlineData("https://evil.youtube.com/@channel")]
     [InlineData("https://example.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("example.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("//example.com/channel/UCabcdefghijklmnopqrstuv")]

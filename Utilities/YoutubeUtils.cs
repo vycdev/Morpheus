@@ -142,7 +142,8 @@ public static partial class YoutubeUtils
 
     private static bool IsYoutubeHost(string host) =>
         host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
-        host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+        host.Equals("www.youtube.com", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("m.youtube.com", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupportedYoutubePath(string path) =>
         path.StartsWith("/@", StringComparison.OrdinalIgnoreCase) ||
