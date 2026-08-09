@@ -22,6 +22,14 @@ public class UtilityModuleTests
         Assert.Equal(42UL, messageId);
     }
 
+    [Fact]
+    public void FormatPinTitle_UsesReferencedMessageAuthor()
+    {
+        string title = UtilityModule.FormatPinTitle("general", "OriginalAuthor");
+
+        Assert.Equal("Pin in `#general` by OriginalAuthor", title);
+    }
+
     [Theory]
     [InlineData("5 days and 3 hours @User Take a break", "@User Take a break")]
     [InlineData("5 days, 3 hours: Take a break", "Take a break")]
