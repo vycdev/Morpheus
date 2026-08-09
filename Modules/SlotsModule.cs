@@ -11,6 +11,7 @@ using Morpheus.Handlers;
 using Morpheus.Services;
 using Morpheus.Utilities;
 using System.Data;
+using System.Globalization;
 using System.Text;
 
 namespace Morpheus.Modules;
@@ -22,6 +23,15 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
     private readonly DB dbContext;
     private readonly EconomyService economyService;
     private readonly SlotsService slotsService;
+
+    internal static string FormatButtonBet(decimal bet) =>
+        bet.ToString("F2", CultureInfo.InvariantCulture);
+
+    internal static bool TryParseButtonBet(string value, out decimal bet)
+    {
+        const NumberStyles styles = NumberStyles.AllowDecimalPoint;
+        return decimal.TryParse(value, styles, CultureInfo.InvariantCulture, out bet);
+    }
 
     public SlotsModule(
         DB dbContext,
@@ -193,9 +203,9 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         bool canHalf = halfBet >= SlotsService.MinBet;
 
         ComponentBuilder components = new ComponentBuilder()
-            .WithButton($"Spin Again (${bet:F2})", customId: $"slots_again:{userId}:{bet:F2}", style: ButtonStyle.Primary, emote: new Emoji("🔁"))
-            .WithButton($"Double (${(canDouble ? doubleBet : bet):F2})", customId: $"slots_double:{userId}:{doubleBet:F2}", style: ButtonStyle.Danger, emote: new Emoji("⏫"), disabled: !canDouble)
-            .WithButton($"Half (${(canHalf ? halfBet : bet):F2})", customId: $"slots_half:{userId}:{halfBet:F2}", style: ButtonStyle.Secondary, emote: new Emoji("⏬"), disabled: !canHalf);
+            .WithButton($"Spin Again (${bet:F2})", customId: $"slots_again:{userId}:{FormatButtonBet(bet)}", style: ButtonStyle.Primary, emote: new Emoji("🔁"))
+            .WithButton($"Double (${(canDouble ? doubleBet : bet):F2})", customId: $"slots_double:{userId}:{FormatButtonBet(doubleBet)}", style: ButtonStyle.Danger, emote: new Emoji("⏫"), disabled: !canDouble)
+            .WithButton($"Half (${(canHalf ? halfBet : bet):F2})", customId: $"slots_half:{userId}:{FormatButtonBet(halfBet)}", style: ButtonStyle.Secondary, emote: new Emoji("⏬"), disabled: !canHalf);
 
         return (embed.Build(), bet, components);
     }
@@ -252,7 +262,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
         string[] parts = custom.Split(':', 3);
         if (parts.Length < 3) return;
         if (!int.TryParse(parts[1], out int userId)) return;
-        if (!decimal.TryParse(parts[2], out decimal bet)) return;
+        if (!TryParseButtonBet(parts[2], out decimal bet)) return;
 
         // Only the original user can use the buttons
         User? user = await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
