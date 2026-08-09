@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Database;
 using Morpheus.Modules;
+using Morpheus.Utilities.Extensions;
 
 namespace Morpheus.Tests;
 
@@ -152,5 +153,13 @@ public class MiscModuleTests
     public void TryParseDiceInput_RejectsMalformedOrOutOfRangeInput(string input)
     {
         Assert.False(MiscModule.TryParseDiceInput(input, out _, out _));
+    }
+
+    [Theory]
+    [InlineData(-1, "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░")]
+    [InlineData(101, "██████████████████████████████")]
+    public void GetPercentageBar_ClampsOutOfRangeValues(int value, string expected)
+    {
+        Assert.Equal(expected, value.GetPercentageBar());
     }
 }
