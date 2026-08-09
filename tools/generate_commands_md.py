@@ -48,6 +48,29 @@ def clean_string_literal(s: str):
     return s
 
 
+def parse_parameter(raw: str):
+    """Return documentation fields for one C# parameter declaration."""
+    # Attributes such as [Remainder] belong to the parameter, not its type.
+    declaration = re.sub(r"\[[^\]]+\]", "", raw).strip()
+    optional = '=' in declaration
+    # A default expression is not part of the parameter name. Removing it
+    # before splitting also handles quoted defaults containing spaces.
+    declaration = declaration.split('=', 1)[0].strip()
+
+    toks = declaration.split()
+    if len(toks) >= 2:
+        ptype = ' '.join(toks[:-1])
+        pname = toks[-1]
+    elif toks:
+        ptype = toks[0]
+        pname = ''
+    else:
+        ptype = ''
+        pname = ''
+
+    return {'raw': raw.strip(), 'type': ptype, 'name': pname, 'optional': optional}
+
+
 def extract_methods_from_file(path: Path):
     text = path.read_text(encoding='utf-8')
     results = []
@@ -147,19 +170,7 @@ def extract_methods_from_file(path: Path):
                 p = p.strip()
                 if not p:
                     continue
-                # remove attributes like [Remainder]
-                p_clean = re.sub(r"\[[^\]]+\]", "", p).strip()
-                # detect default
-                optional = '=' in p_clean
-                # split type and name (take last token as name)
-                toks = p_clean.split()
-                if len(toks) >= 2:
-                    ptype = ' '.join(toks[:-1])
-                    pname = toks[-1]
-                else:
-                    ptype = toks[0]
-                    pname = ''
-                params.append({'raw': p.strip(), 'type': ptype, 'name': pname, 'optional': optional})
+                params.append(parse_parameter(p))
 
         results.append({
             'class': class_name,
@@ -174,7 +185,7 @@ def extract_methods_from_file(path: Path):
             'required_permission': required_permission,
             'required_bot_permission': required_bot_permission,
             # 'requires_db_guild' removed per request
-            'source': str(path.relative_to(Path.cwd()))
+            'source': str(path.relative_to(Path.cwd())).replace('/', '\\')
         })
 
     return results

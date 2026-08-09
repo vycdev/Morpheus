@@ -35,6 +35,12 @@ python .\tools\generate_commands_md.py
 
 If you update or add commands, regenerate `COMMANDS.md` and include the updated file in your PR.
 
+Run the generator regression tests with Python's standard library test runner:
+
+```powershell
+python -m unittest tools.test_generate_commands_md
+```
+
 ## Migrations and database changes
 
 - Do not edit historical migration files unless you know what you're doing and the migration has not been applied anywhere important.
