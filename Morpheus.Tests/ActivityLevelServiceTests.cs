@@ -9,6 +9,8 @@ public class ActivityLevelServiceTests
     [InlineData(998, 0)]
     [InlineData(999, 1)]
     [InlineData(1000, 1)]
+    [InlineData(1449, 1)]
+    [InlineData(1450, 2)]
     public void CalculateLevel_ReturnsExpectedBoundaryLevels(long xp, int expectedLevel)
     {
         Assert.Equal(expectedLevel, ActivityLevelService.CalculateLevel(xp));
