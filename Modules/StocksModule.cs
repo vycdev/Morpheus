@@ -116,7 +116,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
         decimal? sharesToSell = null;
         if (amountStr.ToLower() != "all")
         {
-            if (!decimal.TryParse(amountStr, out decimal parsed) || parsed <= 0)
+            if (!StockInputParser.TryParsePositiveAmount(amountStr, out decimal parsed))
             {
                 await ReplyAsync("Invalid amount. Use a positive number or `all`.");
                 return;
@@ -168,7 +168,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
         decimal? sharesToTransfer = null;
         if (amountStr.ToLower() != "all")
         {
-            if (!decimal.TryParse(amountStr, out decimal parsed) || parsed <= 0)
+            if (!StockInputParser.TryParsePositiveAmount(amountStr, out decimal parsed))
             {
                 await ReplyAsync("Invalid amount. Use a positive number or `all`.");
                 return;
