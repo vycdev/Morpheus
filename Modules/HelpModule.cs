@@ -8,6 +8,7 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Utilities;
+using System.Globalization;
 using System.Reflection;
 
 namespace Morpheus.Modules;
@@ -57,13 +58,36 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
         }
     }
 
+    internal static bool TryParseHelpModuleName(string moduleName, out int page, out string moduleKey)
+    {
+        page = 0;
+        moduleKey = string.Empty;
+
+        int separatorIndex = moduleName.IndexOf('_');
+        if (separatorIndex <= 0 || separatorIndex == moduleName.Length - 1)
+            return false;
+
+        if (!int.TryParse(moduleName[..separatorIndex], NumberStyles.None, CultureInfo.InvariantCulture, out page) || page < 1)
+            return false;
+
+        moduleKey = moduleName[(separatorIndex + 1)..];
+        return moduleKey.IndexOf('_') < 0;
+    }
+
     private Embed CreateModuleHelpEmbed(string moduleName, string commandPrefix)
     {
         if (helpModules.TryGetValue(commandPrefix + moduleName, out Embed? embed))
             return embed;
 
-        int page = int.Parse(moduleName.Split("_")[0]);
-        string moduleKey = moduleName.Split("_")[1];
+        if (!TryParseHelpModuleName(moduleName, out int page, out string moduleKey))
+        {
+            return new EmbedBuilder()
+            {
+                Color = Colors.Blue,
+                Title = "Unable to load help",
+                Description = "The selected help page is invalid. Please run the help command again."
+            }.Build();
+        }
         string name = moduleKey.Replace("Module", "");
 
         EmbedBuilder builder = new()

@@ -6,6 +6,27 @@ namespace Morpheus.Tests;
 
 public class HelpCommandRegistrationTests
 {
+    [Theory]
+    [InlineData("2_StocksModule", 2, "StocksModule")]
+    [InlineData("10_Misc", 10, "Misc")]
+    public void TryParseHelpModuleName_ParsesPageAndModule(string input, int expectedPage, string expectedModule)
+    {
+        Assert.True(HelpModule.TryParseHelpModuleName(input, out int page, out string module));
+        Assert.Equal(expectedPage, page);
+        Assert.Equal(expectedModule, module);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("invalid")]
+    [InlineData("0_StocksModule")]
+    [InlineData("-1_StocksModule")]
+    [InlineData("2_")]
+    public void TryParseHelpModuleName_RejectsMalformedSelections(string input)
+    {
+        Assert.False(HelpModule.TryParseHelpModuleName(input, out _, out _));
+    }
+
     [Fact]
     public void HelpCommand_AcceptsMultiWordCommandNames()
     {
