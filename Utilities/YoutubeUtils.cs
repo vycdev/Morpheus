@@ -154,7 +154,7 @@ public static partial class YoutubeUtils
     /// Uses the Innertube (youtubei) browse API to fetch a channel's avatar URL.
     /// Returns null on error or if thumbnails are not found.
     /// </summary>
-    public static async Task<string?> GetChannelAvatarAsync(HttpClient httpClient, string channelId)
+    public static async Task<string?> GetChannelAvatarAsync(HttpClient httpClient, string channelId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         if (string.IsNullOrWhiteSpace(channelId))
@@ -165,10 +165,10 @@ public static partial class YoutubeUtils
             // 1) fetch youtube homepage to extract INNERTUBE_API_KEY and client version
             using HttpRequestMessage homeReq = new(HttpMethod.Get, "https://www.youtube.com");
             homeReq.Headers.UserAgent.ParseAdd(BrowserUserAgent);
-            using HttpResponseMessage homeResp = await httpClient.SendAsync(homeReq).ConfigureAwait(false);
+            using HttpResponseMessage homeResp = await httpClient.SendAsync(homeReq, cancellationToken).ConfigureAwait(false);
             if (!homeResp.IsSuccessStatusCode)
                 return null;
-            string homeHtml = await homeResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            string homeHtml = await homeResp.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
             static string? ExtractValue(string hay, string marker)
             {
@@ -201,10 +201,10 @@ public static partial class YoutubeUtils
             };
             req.Headers.UserAgent.ParseAdd(BrowserUserAgent);
 
-            using HttpResponseMessage resp = await httpClient.SendAsync(req).ConfigureAwait(false);
+            using HttpResponseMessage resp = await httpClient.SendAsync(req, cancellationToken).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 return null;
-            string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            string body = await resp.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using JsonDocument doc = JsonDocument.Parse(body);
             JsonElement root = doc.RootElement;
 
@@ -266,8 +266,11 @@ public static partial class YoutubeUtils
                 string? best = BestFromSources(thumbs2);
                 if (!string.IsNullOrWhiteSpace(best)) return best;
             }
-
             return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception)
         {
