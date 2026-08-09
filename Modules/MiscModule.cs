@@ -349,7 +349,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         }
     }
 
-    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.ToLowerInvariant();
+    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.Trim().ToLowerInvariant();
 
     [Name("Info")]
     [Summary("Displays information about the bot.")]
