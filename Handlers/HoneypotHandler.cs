@@ -77,35 +77,66 @@ public class HoneypotHandler
         if (guildUser.GuildPermissions.Administrator)
             return;
 
+        DateTime bannedAt = DateTime.UtcNow;
+        var logsService = scope.ServiceProvider.GetRequiredService<LogsService>();
+
         // Ban the user and delete their messages from the past day
         try
         {
-            // Ban with pruneDays set to 1 (deletes messages from past 24 hours)
-            await guildChannel.Guild.AddBanAsync(
-                user: guildUser,
-                pruneDays: 1,
-                reason: $"Honeypot triggered (7 day ban) on {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}"
+            await ExecuteTemporaryBanWorkflowAsync(
+                banUser: () => guildChannel.Guild.AddBanAsync(
+                    user: guildUser,
+                    pruneDays: 1,
+                    reason: $"Honeypot triggered (7 day ban) on {bannedAt:yyyy-MM-dd HH:mm:ss}"
+                ),
+                persistTemporaryBan: () => RecordTemporaryBanAsync(
+                    db,
+                    guildChannel.Guild.Id,
+                    guildUser.Id,
+                    bannedAt
+                ),
+                sendNotification: () => welcomeChannel.SendMessageAsync(
+                    $"{guildUser.Mention} has been automatically banned after posting in the honeypot channel."
+                ),
+                logNotificationFailure: ex => logsService.Log(
+                    $"HoneypotHandler: banned user {message.Author.Mention}, but failed to send the welcome-channel notification: {ex.Message}"
+                )
             );
-
-            // Send notification to welcome channel
-            await welcomeChannel.SendMessageAsync(
-                $"{guildUser.Mention} has been automatically banned after posting in the honeypot channel."
-            );
-
-            // Record temporary ban for 7 days
-            db.TemporaryBans.Add(new TemporaryBan
-            {
-                GuildId = guildChannel.Guild.Id,
-                UserId = guildUser.Id,
-                Reason = $"Honeypot temporary ban. Banned on {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}",
-                ExpiresAt = DateTime.UtcNow.AddDays(7)
-            });
-            await db.SaveChangesAsync();
         }
         catch (Exception ex)
         {
-            var logsService = scope.ServiceProvider.GetRequiredService<LogsService>();
-            logsService.Log($"HoneypotHandler: failed to ban user {message.Author.Mention}: {ex.Message}");
+            logsService.Log($"HoneypotHandler: failed to ban or record user {message.Author.Mention}: {ex.Message}");
         }
+    }
+
+    internal static async Task ExecuteTemporaryBanWorkflowAsync(
+        Func<Task> banUser,
+        Func<Task> persistTemporaryBan,
+        Func<Task> sendNotification,
+        Action<Exception> logNotificationFailure)
+    {
+        await banUser();
+        await persistTemporaryBan();
+
+        try
+        {
+            await sendNotification();
+        }
+        catch (Exception ex)
+        {
+            logNotificationFailure(ex);
+        }
+    }
+
+    internal static async Task RecordTemporaryBanAsync(DB db, ulong guildId, ulong userId, DateTime bannedAt)
+    {
+        db.TemporaryBans.Add(new TemporaryBan
+        {
+            GuildId = guildId,
+            UserId = userId,
+            Reason = $"Honeypot temporary ban. Banned on {bannedAt:yyyy-MM-dd HH:mm:ss}",
+            ExpiresAt = bannedAt.AddDays(7)
+        });
+        await db.SaveChangesAsync();
     }
 }
