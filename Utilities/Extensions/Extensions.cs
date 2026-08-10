@@ -73,6 +73,9 @@ public static partial class Extensions
         // Define the total length of the bar
         int totalLength = 30;
 
+        // Keep malformed or future caller input from producing an invalid bar length.
+        value = Math.Clamp(value, 0, 100);
+
         // Calculate the number of filled cells
         int filledCells = (int)Math.Round((double)value / 100 * totalLength);
 
