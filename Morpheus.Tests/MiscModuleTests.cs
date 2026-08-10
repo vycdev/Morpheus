@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -107,6 +108,20 @@ public class MiscModuleTests
         string result = MiscModule.BuildUrbanDictionaryUrl("C# & tea");
 
         Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
+    }
+
+    [Fact]
+    public void UrbanDictionaryCommand_AcceptsMultiWordTerms()
+    {
+        MethodInfo method = Assert.Single(
+            typeof(MiscModule).GetMethods(),
+            method => method.GetCustomAttributes<CommandAttribute>()
+                .Any(attribute => attribute.Text == "udic"));
+        System.Reflection.ParameterInfo parameter = Assert.Single(method.GetParameters());
+
+        Assert.NotNull(parameter.GetCustomAttribute<RemainderAttribute>());
+        Assert.True(parameter.HasDefaultValue);
+        Assert.Null(parameter.DefaultValue);
     }
 
     [Fact]

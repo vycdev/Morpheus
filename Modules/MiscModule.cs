@@ -535,7 +535,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [Command("udic")]
     [Alias("urbandictionary", "urbandic", "udictionary")]
     [RateLimit(5, 30)]
-    public async Task UrbanDictionary(string? word = null)
+    public async Task UrbanDictionary([Remainder] string? word = null)
     {
         string url = BuildUrbanDictionaryUrl(word);
 
