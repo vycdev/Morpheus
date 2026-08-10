@@ -1,9 +1,9 @@
+using Discord;
+using Morpheus.Utilities;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Discord;
-using Morpheus.Utilities;
 
 namespace Morpheus.Services;
 
@@ -84,7 +84,11 @@ public class TwitchService
             return new LiveStreamsResult(live, true);
 
         // Helix allows up to 100 user_id params per request.
-        foreach (string[] batch in userIds.Distinct().Chunk(100))
+        foreach (string[] batch in userIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Chunk(100))
         {
             string query = string.Join("&", batch.Select(id => $"user_id={Uri.EscapeDataString(id)}"));
             string url = $"https://api.twitch.tv/helix/streams?{query}";

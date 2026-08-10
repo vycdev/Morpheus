@@ -1,6 +1,6 @@
+using Morpheus.Services;
 using System.Net;
 using System.Text;
-using Morpheus.Services;
 
 namespace Morpheus.Tests;
 
@@ -33,6 +33,43 @@ public class TwitchServiceTests
         TimeSpan duration = TwitchService.CalculateTokenCacheDuration(expiresInSeconds);
 
         Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), duration);
+    }
+
+    [Fact]
+    public async Task GetLiveStreamsAsync_IgnoresBlankAndTrimsDuplicateUserIds()
+    {
+        RecordingHandler handler = new();
+        using HttpClient httpClient = new(handler);
+        TwitchService service = new(new LogsService(new LogQueue()), httpClient, "test-client", "test-secret");
+
+        IReadOnlyDictionary<string, TwitchService.TwitchStream> live =
+            await service.GetLiveStreamsAsync([" ", " 42 ", string.Empty, "42"]);
+
+        Assert.True(live.ContainsKey("42"));
+        Assert.Single(handler.StreamRequests);
+        Assert.Equal("https://api.twitch.tv/helix/streams?user_id=42", handler.StreamRequests[0]);
+    }
+
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        public List<string> StreamRequests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"access_token\":\"token\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+                });
+            }
+
+            StreamRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"data\":[{\"id\":\"stream\",\"user_id\":\"42\",\"title\":\"Live\",\"type\":\"live\"}]}", Encoding.UTF8, "application/json")
+            });
+        }
     }
 
     [Fact]
