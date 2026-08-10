@@ -134,6 +134,63 @@ public class ActivityGraphServiceTests
     }
 
     [Fact]
+    public async Task BuildUserActivityGraphAsync_UsesUserIdToBreakTies()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Guild guild = new() { DiscordId = 100, Name = "Test guild" };
+        List<User> users = [.. Enumerable.Range(1, 11)
+            .Select(i => new User { DiscordId = (ulong)(1000 + i), Username = $"user-{i:D2}" })];
+        db.Add(guild);
+        db.Users.AddRange(users);
+        await db.SaveChangesAsync();
+
+        DateTime start = new(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc);
+        db.UserActivity.AddRange(users
+            .AsEnumerable()
+            .Reverse()
+            .Select((user, index) => new UserActivity
+            {
+                UserId = user.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = (ulong)(3001 + index),
+                XpGained = 10,
+                InsertDate = start
+            }));
+        await db.SaveChangesAsync();
+
+        ActivityGraphService service = new(db);
+        ActivityGraphRange range = new(Days: 7, Start: start, ExplicitStart: start);
+        ActivityGraphBuildResult topUsers = await service.BuildUserActivityGraphAsync(
+            range,
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: [],
+            cumulative: false,
+            rollingWindowDays: null);
+
+        ActivityGraphBuildResult mentionedUsers = await service.BuildUserActivityGraphAsync(
+            range,
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: users.AsEnumerable().Reverse().Select(user => user.DiscordId),
+            cumulative: false,
+            rollingWindowDays: null);
+
+        IEnumerable<string> expectedOrder = users.OrderBy(user => user.Id).Select(user => user.Username);
+        Assert.Equal(expectedOrder.Take(10), topUsers.Series.Keys);
+        Assert.Equal(expectedOrder, mentionedUsers.Series.Keys);
+    }
+
+    [Fact]
     public void ParseDaysString_ClampsPresetDaysForNonOwner()
     {
         ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(

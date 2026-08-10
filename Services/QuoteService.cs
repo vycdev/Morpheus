@@ -514,7 +514,14 @@ public class QuoteService(DB dbContext)
         if (content.Length <= maxLength)
             return content;
 
-        return content[..(maxLength - 3)] + "...";
+        int contentLength = maxLength - 3;
+        if (char.IsHighSurrogate(content[contentLength - 1]) &&
+            char.IsLowSurrogate(content[contentLength]))
+        {
+            contentLength--;
+        }
+
+        return content[..contentLength] + "...";
     }
 
     private async Task<Quote?> FindApprovedQuoteByContentAsync(string quoteContent, int guildId, bool useGlobalQuotes)
