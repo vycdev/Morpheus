@@ -4,6 +4,14 @@ namespace Morpheus.Tests;
 
 public class SimHasherTests
 {
+    [Theory]
+    [InlineData("a ! b", "a b")]
+    [InlineData("a \u0301 b", "a b")]
+    public void Normalize_CollapsesWhitespaceAcrossRemovedCharacters(string input, string expected)
+    {
+        Assert.Equal(expected, SimHasher.Normalize(input));
+    }
+
     [Fact]
     public void ComputeSimHash_ReturnsZeroHashForVeryShortNormalizedText()
     {
