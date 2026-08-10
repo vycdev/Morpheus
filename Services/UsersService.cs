@@ -1,4 +1,5 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
@@ -6,7 +7,7 @@ using Morpheus.Database.Models;
 namespace Morpheus.Services;
 public class UsersService(DB dbContext, LogsService logsService)
 {
-    public Task<User> TryGetCreateUser(SocketUser user) =>
+    public Task<User> TryGetCreateUser(IUser user) =>
         TryGetCreateUserAsync(user.Id, user.Username);
 
     internal async Task<User> TryGetCreateUserAsync(ulong discordId, string username)

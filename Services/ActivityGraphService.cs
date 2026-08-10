@@ -136,29 +136,25 @@ public class ActivityGraphService(DB dbContext)
     {
         string[] parts = input.Split([".."], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2 ||
-            !DateTime.TryParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTime start) ||
-            !DateTime.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTime end))
+            !DateOnly.TryParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly start) ||
+            !DateOnly.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly end))
         {
             return ActivityGraphParseResult.Error(
                 $"Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most {maxDays} days and start <= end.");
         }
 
-        start = start.Date;
-        end = end.Date;
         if (end < start)
             (start, end) = (end, start);
 
-        double span = (end - start).TotalDays + 1;
+        int span = end.DayNumber - start.DayNumber + 1;
         if (span < 7)
-        {
-            end = start.AddDays(6);
             span = 7;
-        }
 
         if (!isOwner && span > maxDays)
             return ActivityGraphParseResult.Error($"Date range exceeds maximum of {maxDays} days.");
 
-        return ActivityGraphParseResult.Valid((int)span, NormalizeToUtc(start));
+        DateTime explicitStart = start.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        return ActivityGraphParseResult.Valid(span, explicitStart);
     }
 
     private static int NormalizeDayCount(int days, bool isOwner, int maxDays)
@@ -188,6 +184,7 @@ public class ActivityGraphService(DB dbContext)
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
             .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.UserId)
             .Take(10)
             .ToListAsync();
 
@@ -232,6 +229,7 @@ public class ActivityGraphService(DB dbContext)
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
             .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.UserId)
             .ToListAsync();
 
         Dictionary<int, Dictionary<DateTime, int>> byDay = await GetUserActivityByDayAsync(query);

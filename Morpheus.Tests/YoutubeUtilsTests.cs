@@ -11,6 +11,7 @@ public class YoutubeUtilsTests
     [InlineData("https://example.com/@channel")]
     [InlineData("http://127.0.0.1/private")]
     [InlineData("https://www.youtube.com.example.com/@channel")]
+    [InlineData("https://evil.youtube.com/@channel")]
     [InlineData("https://example.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("example.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("//example.com/channel/UCabcdefghijklmnopqrstuv")]
@@ -31,6 +32,7 @@ public class YoutubeUtilsTests
     [InlineData("https://www.youtube.com/@channel", "/@channel", "")]
     [InlineData("youtube.com/user/channel", "/user/channel", "")]
     [InlineData("https://m.youtube.com/c/channel?feature=share", "/c/channel", "")]
+    [InlineData("https://music.youtube.com/@channel", "/@channel", "")]
     [InlineData("https://youtu.be/dQw4w9WgXcQ?si=tracking", "/watch", "?v=dQw4w9WgXcQ")]
     [InlineData("@channel", "/@channel", "")]
     public async Task ResolveChannelIdAsync_RequestsCanonicalYoutubeUrls(
@@ -55,6 +57,7 @@ public class YoutubeUtilsTests
 
     [Theory]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")]
+    [InlineData("https://music.youtube.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("youtube.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("/channel/UCabcdefghijklmnopqrstuv")]
     public async Task ResolveChannelIdAsync_ReturnsIdsFromYoutubeChannelPathsWithoutRequesting(string input)

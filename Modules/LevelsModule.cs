@@ -45,9 +45,9 @@ public class LevelsModule(
             return;
         }
 
-        long totalXp = userLevels.Sum(ul => ul.TotalXp);
+        long totalXp = SumTotalXp(userLevels);
         int totalLevel = ActivityHandler.CalculateLevel(totalXp);
-        long totalXpNeededForNextLevel = ActivityHandler.CalculateXp(totalLevel + 1);
+        long totalXpNeededForNextLevel = ActivityHandler.CalculateXpLong(totalLevel + 1);
 
         await ReplyAsync($"**Global**: Level **{totalLevel}** with **{totalXp}** XP");
         await ReplyAsync($"**{totalXpNeededForNextLevel - totalXp}** XP needed to level up globally \n");
@@ -56,12 +56,15 @@ public class LevelsModule(
         {
             await ReplyAsync($"**{guild.Name}**: Level **{userLevelGuild.Level}** with **{userLevelGuild.TotalXp}** XP");
 
-            totalXpNeededForNextLevel = ActivityHandler.CalculateXp(userLevelGuild.Level + 1);
+            totalXpNeededForNextLevel = ActivityHandler.CalculateXpLong(userLevelGuild.Level + 1);
 
             await ReplyAsync($"**{totalXpNeededForNextLevel - userLevelGuild.TotalXp}** XP needed to level up");
             return;
         }
     }
+
+    internal static long SumTotalXp(IQueryable<UserLevels> userLevels) =>
+        userLevels.Sum(ul => (long)ul.TotalXp);
 
     [Name("Activity Graph")]
     [Summary("Generates an activity graph for the top 10 users over the past n days.")]
