@@ -8,6 +8,21 @@ using Morpheus.Modules;
 
 namespace Morpheus.Tests;
 
+public sealed class SupportedCultureTheoryAttribute : TheoryAttribute
+{
+    public SupportedCultureTheoryAttribute(string cultureName)
+    {
+        try
+        {
+            CultureInfo.GetCultureInfo(cultureName);
+        }
+        catch (CultureNotFoundException)
+        {
+            Skip = $"The {cultureName} culture is unavailable in globalization-invariant mode.";
+        }
+    }
+}
+
 public class MiscModuleTests
 {
     [Theory]
@@ -32,7 +47,7 @@ public class MiscModuleTests
         Assert.Equal(new DateTime(expectedYear, eventMonth, eventDay, 0, 0, 0, DateTimeKind.Utc), result);
     }
 
-    [Theory]
+    [SupportedCultureTheory("tr-TR")]
     [InlineData("CHRISTMAS", "christmas")]
     [InlineData("CC BIRTHDAY", "cc birthday")]
     public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
