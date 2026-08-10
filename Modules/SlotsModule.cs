@@ -201,7 +201,7 @@ public class SlotsModule : ModuleBase<SocketCommandContextExtended>
     }
 
     [Name("Slots")]
-    [Summary("Spin the slot machine! Bet an amount and try your luck. 5% tax is always deducted from your bet.")]
+    [Summary("Spin the slot machine! Bet an amount and try your luck. A 5% tax is deducted from profit only.")]
     [Command("slots")]
     [Alias("slot", "spin")]
     [RateLimit(3, 15)]
