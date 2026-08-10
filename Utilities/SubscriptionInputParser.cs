@@ -107,9 +107,24 @@ internal static partial class SubscriptionInputParser
         .Split(input)
         .Where(token => !string.IsNullOrWhiteSpace(token));
 
-    private static IReadOnlyList<string> Deduplicate(IEnumerable<string> values) => values
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    private static IReadOnlyList<string> Deduplicate(IEnumerable<string> values)
+    {
+        List<string> unique = [];
+        HashSet<string> seenCaseSensitive = new(StringComparer.Ordinal);
+        HashSet<string> seenCaseInsensitive = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string value in values)
+        {
+            HashSet<string> seen = YoutubeChannelIdRegex().IsMatch(value)
+                ? seenCaseSensitive
+                : seenCaseInsensitive;
+
+            if (seen.Add(value))
+                unique.Add(value);
+        }
+
+        return unique;
+    }
 
     private static bool IsHttpUrl(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) &&
@@ -119,6 +134,9 @@ internal static partial class SubscriptionInputParser
 
     [GeneratedRegex("^<#(\\d+)>$")]
     private static partial Regex ChannelMentionRegex();
+
+    [GeneratedRegex("^UC[0-9A-Za-z_-]{22}$")]
+    private static partial Regex YoutubeChannelIdRegex();
 
     [GeneratedRegex(@"(?:\s*[,;]\s*|\s+)(?=https?://)", RegexOptions.IgnoreCase)]
     private static partial Regex RssUrlSeparatorRegex();

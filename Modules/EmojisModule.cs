@@ -8,6 +8,7 @@ using Morpheus.Handlers;
 using Morpheus.Services;
 using Morpheus.Utilities;
 using System.IO.Compression;
+using System.Globalization;
 
 namespace Morpheus.Modules;
 
@@ -124,6 +125,22 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         return referencedMessageId.HasValue;
     }
 
+    internal static bool TryParseEmojiPageDirection(string? customId, out bool isNext)
+    {
+        const string prefix = "emoji_import_page:";
+        isNext = false;
+
+        if (customId is null || !customId.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        return customId[prefix.Length..] switch
+        {
+            "next" => (isNext = true),
+            "prev" => true,
+            _ => false
+        };
+    }
+
     [Name("List Emojis")]
     [Summary("Lists all custom emojis that can be used by the bot.")]
     [Command("listemojis")]
@@ -155,7 +172,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     {
         SocketGuild guild = Context.Guild;
         string directory = Path.Combine(Path.GetTempPath(), "emojis", guild.Id.ToString());
-        string zipPath = Path.Combine(Path.GetTempPath(), $"{guild.Name}_Emojis.zip");
+        string zipPath = GetEmojiArchivePath(Path.GetTempPath(), guild.Id);
 
         // Ensure directory is clean
         if (Directory.Exists(directory))
@@ -196,6 +213,9 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
         await progressMessage.ModifyAsync(m => m.Content = "Emoji download process completed!");
     }
+
+    internal static string GetEmojiArchivePath(string tempPath, ulong guildId) =>
+        Path.Combine(tempPath, $"Morpheus_Emojis_{guildId}.zip");
 
     // ─── Import Emoji Command ────────────────────────────────────────────
 
@@ -291,9 +311,14 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
+        if (!TryParseSelectionId(comp.Data.Values.FirstOrDefault(), out ulong selectedGuildId))
+        {
+            await comp.RespondAsync("Invalid server selection.", ephemeral: true);
+            return;
+        }
+
         await comp.DeferAsync();
 
-        ulong selectedGuildId = ulong.Parse(comp.Data.Values.First());
         var sourceGuild = client.GetGuild(selectedGuildId);
 
         if (sourceGuild == null)
@@ -346,9 +371,14 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
+        if (!TryParseSelectionId(comp.Data.Values.FirstOrDefault(), out ulong emojiId))
+        {
+            await comp.RespondAsync("Invalid emoji selection.", ephemeral: true);
+            return;
+        }
+
         await comp.DeferAsync();
 
-        ulong emojiId = ulong.Parse(comp.Data.Values.First());
         var sourceGuild = client.GetGuild(session.SourceGuildId);
         var targetGuild = client.GetGuild(session.TargetGuildId);
 
@@ -439,7 +469,14 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     private async Task HandleEmojiPageInteraction(SocketInteraction interaction)
     {
         if (interaction is not SocketMessageComponent comp) return;
-        if (!comp.Data.CustomId.StartsWith("emoji_import_page:")) return;
+        string customId = comp.Data.CustomId ?? string.Empty;
+        if (!customId.StartsWith("emoji_import_page:", StringComparison.Ordinal)) return;
+
+        if (!TryParseEmojiPageDirection(customId, out bool isNext))
+        {
+            await comp.RespondAsync("Invalid emoji page selection.", ephemeral: true);
+            return;
+        }
 
         ulong messageId = comp.Message.Id;
         if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
@@ -457,8 +494,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
         await comp.DeferAsync();
 
-        string direction = comp.Data.CustomId.Split(':')[1];
-        session.EmojiPage += direction == "next" ? 1 : -1;
+        session.EmojiPage += isNext ? 1 : -1;
         if (session.EmojiPage < 0) session.EmojiPage = 0;
 
         var sourceGuild = client.GetGuild(session.SourceGuildId);
@@ -820,6 +856,13 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         PremiumTier.Tier3 => 250,
         _ => 50
     };
+
+    internal static bool TryParseSelectionId(string? value, out ulong id)
+    {
+        id = 0;
+        return !string.IsNullOrEmpty(value) &&
+            ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out id);
+    }
 
     // ─── Cleanup expired sessions ────────────────────────────────────────
 

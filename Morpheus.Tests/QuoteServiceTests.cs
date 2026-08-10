@@ -80,6 +80,27 @@ public class QuoteServiceTests
     }
 
     [Fact]
+    public void FormatQuoteListFieldValue_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        QuoteListItem item = new(
+            Id: 1,
+            GuildId: 1,
+            UserId: 1,
+            Content: new string('x', 296) + "😀" + new string('x', 10),
+            InsertDate: new DateTime(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc),
+            Approved: true,
+            Removed: false,
+            Score: 0,
+            Author: "author");
+
+        string fieldValue = QuoteService.FormatQuoteListFieldValue(item);
+
+        string firstLine = fieldValue.Split('\n')[0];
+        Assert.Equal(new string('x', 296) + "...", firstLine);
+        Assert.False(char.IsSurrogate(firstLine[^4]));
+    }
+
+    [Fact]
     public void GetPreviousPeriodBounds_ReturnsPreviousMonthWindow()
     {
         DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);

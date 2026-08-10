@@ -72,6 +72,18 @@ public class TwitchServiceTests
         }
     }
 
+    [Fact]
+    public async Task GetLiveStreamsResultAsync_WhenStreamsRequestFails_MarksResultAsUnknown()
+    {
+        using HttpClient httpClient = new(new StreamsFailureHandler());
+        TwitchService service = new(new LogsService(new LogQueue()), httpClient, "test-client", "test-secret");
+
+        TwitchService.LiveStreamsResult result = await service.GetLiveStreamsResultAsync(["123"]);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(result.Streams);
+    }
+
     private sealed class CancellationHandler(bool blockTokenRequest) : HttpMessageHandler
     {
         private readonly TaskCompletionSource requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -91,6 +103,25 @@ public class TwitchServiceTests
             requestStarted.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             throw new InvalidOperationException("The canceled Twitch request unexpectedly completed.");
+        }
+    }
+
+    private sealed class StreamsFailureHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"access_token\":\"token\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("temporarily unavailable")
+            });
         }
     }
 }

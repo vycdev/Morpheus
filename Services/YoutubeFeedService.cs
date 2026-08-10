@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using Discord;
 
@@ -36,7 +37,7 @@ public class YoutubeFeedService(LogsService logsService)
                 string link = e.Elements(Atom + "link").FirstOrDefault()?.Attribute("href")?.Value
                               ?? $"https://www.youtube.com/watch?v={vid}";
                 string pubRaw = e.Element(Atom + "published")?.Value ?? string.Empty;
-                DateTime.TryParse(pubRaw, out DateTime published);
+                DateTime published = ParsePublished(pubRaw);
 
                 entries.Add(new VideoEntry(vid, title, link, published));
             }
@@ -53,4 +54,13 @@ public class YoutubeFeedService(LogsService logsService)
             return (null, []);
         }
     }
+
+    internal static DateTime ParsePublished(string value) =>
+        DateTime.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out DateTime published)
+            ? published
+            : DateTime.MinValue;
 }

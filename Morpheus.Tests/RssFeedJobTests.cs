@@ -98,4 +98,26 @@ public class RssFeedJobTests
         Assert.True(succeeded);
         Assert.False(sent);
     }
+
+    [Fact]
+    public async Task DispatchAsync_WhenCallerCancels_PropagatesCancellationBeforeDelivery()
+    {
+        RssFeedService.FeedEntry entry = new("entry-1", "Entry", "https://example.com/entry-1", DateTime.UtcNow);
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+        bool sent = false;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            RssFeedJob.DispatchAsync(
+                entry,
+                [new RssSubscription()],
+                (_, _) =>
+                {
+                    sent = true;
+                    return Task.FromResult(true);
+                },
+                cts.Token));
+
+        Assert.False(sent);
+    }
 }

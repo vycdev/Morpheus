@@ -63,6 +63,134 @@ public class ActivityGraphServiceTests
     }
 
     [Fact]
+    public async Task BuildUserActivityGraphAsync_ClampsDailyTotalsThatExceedIntRange()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Guild guild = new() { DiscordId = 200, Name = "Overflow guild" };
+        User user = new() { DiscordId = 2001, Username = "high-xp" };
+        db.AddRange(guild, user);
+        await db.SaveChangesAsync();
+
+        DateTime start = new(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc);
+        db.UserActivity.AddRange(
+            new UserActivity
+            {
+                UserId = user.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = 4001,
+                XpGained = 1_500_000_000,
+                InsertDate = start
+            },
+            new UserActivity
+            {
+                UserId = user.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = 4002,
+                XpGained = 1_500_000_000,
+                InsertDate = start
+            },
+            new UserActivity
+            {
+                UserId = user.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = 4003,
+                XpGained = -852_516_353,
+                InsertDate = start.AddDays(1)
+            });
+        await db.SaveChangesAsync();
+
+        ActivityGraphService service = new(db);
+        ActivityGraphRange range = new(Days: 7, Start: start, ExplicitStart: start);
+        ActivityGraphBuildResult result = await service.BuildUserActivityGraphAsync(
+            range,
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: [],
+            cumulative: false,
+            rollingWindowDays: null);
+
+        Assert.Equal(int.MaxValue, result.Series["high-xp"][0]);
+
+        ActivityGraphBuildResult cumulative = await service.BuildUserActivityGraphAsync(
+            range,
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: [],
+            cumulative: true,
+            rollingWindowDays: null);
+
+        Assert.Equal([int.MaxValue, int.MaxValue], cumulative.Series["high-xp"][..2]);
+    }
+
+    [Fact]
+    public async Task BuildUserActivityGraphAsync_UsesUserIdToBreakTies()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Guild guild = new() { DiscordId = 100, Name = "Test guild" };
+        List<User> users = [.. Enumerable.Range(1, 11)
+            .Select(i => new User { DiscordId = (ulong)(1000 + i), Username = $"user-{i:D2}" })];
+        db.Add(guild);
+        db.Users.AddRange(users);
+        await db.SaveChangesAsync();
+
+        DateTime start = new(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc);
+        db.UserActivity.AddRange(users
+            .AsEnumerable()
+            .Reverse()
+            .Select((user, index) => new UserActivity
+            {
+                UserId = user.Id,
+                GuildId = guild.Id,
+                DiscordChannelId = 2001,
+                DiscordMessageId = (ulong)(3001 + index),
+                XpGained = 10,
+                InsertDate = start
+            }));
+        await db.SaveChangesAsync();
+
+        ActivityGraphService service = new(db);
+        ActivityGraphRange range = new(Days: 7, Start: start, ExplicitStart: start);
+        ActivityGraphBuildResult topUsers = await service.BuildUserActivityGraphAsync(
+            range,
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: [],
+            cumulative: false,
+            rollingWindowDays: null);
+
+        ActivityGraphBuildResult mentionedUsers = await service.BuildUserActivityGraphAsync(
+            range,
+            guildId: guild.Id,
+            global: false,
+            mentionedDiscordIds: users.AsEnumerable().Reverse().Select(user => user.DiscordId),
+            cumulative: false,
+            rollingWindowDays: null);
+
+        IEnumerable<string> expectedOrder = users.OrderBy(user => user.Id).Select(user => user.Username);
+        Assert.Equal(expectedOrder.Take(10), topUsers.Series.Keys);
+        Assert.Equal(expectedOrder, mentionedUsers.Series.Keys);
+    }
+
+    [Fact]
     public void ParseDaysString_ClampsPresetDaysForNonOwner()
     {
         ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(
@@ -142,13 +270,13 @@ public class ActivityGraphServiceTests
     public void BuildDailyValues_FillsMissingDaysWithZero()
     {
         DateTime start = new(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc);
-        Dictionary<DateTime, int> values = new()
+        Dictionary<DateTime, long> values = new()
         {
             [start] = 2,
             [start.AddDays(2)] = 5
         };
 
-        List<int> daily = ActivityGraphService.BuildDailyValues(values, start, days: 4);
+        List<long> daily = ActivityGraphService.BuildDailyValues(values, start, days: 4);
 
         Assert.Equal([2, 0, 5, 0], daily);
     }
@@ -159,6 +287,16 @@ public class ActivityGraphServiceTests
         List<int> cumulative = ActivityGraphService.BuildCumulativeValues([2, 0, 5], baseline: 100);
 
         Assert.Equal([102, 102, 107], cumulative);
+    }
+
+    [Fact]
+    public void BuildCumulativeValues_PreservesOverflowRemainderAcrossLaterValues()
+    {
+        List<int> cumulative = ActivityGraphService.BuildCumulativeValues(
+            [100, -100],
+            baseline: int.MaxValue);
+
+        Assert.Equal([int.MaxValue, int.MaxValue], cumulative);
     }
 
     [Fact]
