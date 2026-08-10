@@ -27,7 +27,7 @@ public class Env
                 string key = parts[0].Trim();
                 string value = parts[1].Trim();
                 Environment.SetEnvironmentVariable(key, value);
-                Variables.Add(key, value);
+                Variables[key] = value;
             }
         }
 
