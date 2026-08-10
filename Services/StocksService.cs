@@ -483,6 +483,14 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     }
 
     /// <summary>
+    /// Order stocks by daily change, using the stock ID for deterministic ties.
+    /// </summary>
+    internal static IOrderedQueryable<Stock> OrderByDailyChange(IQueryable<Stock> stocks, bool descending) =>
+        descending
+            ? stocks.OrderByDescending(stock => stock.DailyChangePercent).ThenBy(stock => stock.Id)
+            : stocks.OrderBy(stock => stock.DailyChangePercent).ThenBy(stock => stock.Id);
+
+    /// <summary>
     /// Get the top gaining stocks for the current UTC day.
     /// </summary>
     public async Task<List<Stock>> GetTopGainers(int page = 1, int pageSize = 10)
@@ -490,10 +498,9 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
         DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-        return await dbContext.Stocks
+        return await OrderByDailyChange(dbContext.Stocks
             .AsNoTracking()
-            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
-            .OrderByDescending(s => s.DailyChangePercent)
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0), descending: true)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -520,10 +527,9 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
         DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-        return await dbContext.Stocks
+        return await OrderByDailyChange(dbContext.Stocks
             .AsNoTracking()
-            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
-            .OrderBy(s => s.DailyChangePercent)
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0), descending: false)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -559,15 +565,14 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
             .Where(c => guildChannelDiscordIds.Contains(c.DiscordId))
             .Select(c => c.Id);
 
-        return await dbContext.Stocks
+        return await OrderByDailyChange(dbContext.Stocks
             .AsNoTracking()
             .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
             .Where(s =>
                 (s.EntityType == StockEntityType.Guild && s.EntityId == guildId) ||
                 (s.EntityType == StockEntityType.Channel && validChannelIds.Contains(s.EntityId)) ||
                 (s.EntityType == StockEntityType.User && validUserIds.Contains(s.EntityId))
-            )
-            .OrderByDescending(s => s.DailyChangePercent)
+            ), descending: true)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -602,15 +607,14 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         var validUserIds = dbContext.UserActivity.Where(ua => ua.GuildId == guildId).Select(ua => ua.UserId);
         var validChannelIds = dbContext.Channels.Where(c => guildChannelDiscordIds.Contains(c.DiscordId)).Select(c => c.Id);
 
-        return await dbContext.Stocks
+        return await OrderByDailyChange(dbContext.Stocks
             .AsNoTracking()
             .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
             .Where(s =>
                 (s.EntityType == StockEntityType.Guild && s.EntityId == guildId) ||
                 (s.EntityType == StockEntityType.Channel && validChannelIds.Contains(s.EntityId)) ||
                 (s.EntityType == StockEntityType.User && validUserIds.Contains(s.EntityId))
-            )
-            .OrderBy(s => s.DailyChangePercent)
+            ), descending: false)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -644,15 +648,13 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
         DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-        var gainers = await dbContext.Stocks
-            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0)
-            .OrderByDescending(s => s.DailyChangePercent)
+        var gainers = await OrderByDailyChange(dbContext.Stocks
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent > 0), descending: true)
             .Take(count)
             .ToListAsync();
 
-        var losers = await dbContext.Stocks
-            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0)
-            .OrderBy(s => s.DailyChangePercent)
+        var losers = await OrderByDailyChange(dbContext.Stocks
+            .Where(s => s.LastUpdatedDate >= todayStart && s.DailyChangePercent < 0), descending: false)
             .Take(count)
             .ToListAsync();
 

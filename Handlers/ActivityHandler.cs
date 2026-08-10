@@ -195,4 +195,9 @@ public class ActivityHandler
     {
         return ActivityLevelService.CalculateXp(level);
     }
+
+    public static long CalculateXpLong(int level)
+    {
+        return ActivityLevelService.CalculateXpLong(level);
+    }
 }
