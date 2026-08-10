@@ -155,7 +155,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     {
         SocketGuild guild = Context.Guild;
         string directory = Path.Combine(Path.GetTempPath(), "emojis", guild.Id.ToString());
-        string zipPath = Path.Combine(Path.GetTempPath(), $"{guild.Name}_Emojis.zip");
+        string zipPath = GetEmojiArchivePath(Path.GetTempPath(), guild.Id);
 
         // Ensure directory is clean
         if (Directory.Exists(directory))
@@ -196,6 +196,9 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
         await progressMessage.ModifyAsync(m => m.Content = "Emoji download process completed!");
     }
+
+    internal static string GetEmojiArchivePath(string tempPath, ulong guildId) =>
+        Path.Combine(tempPath, $"Morpheus_Emojis_{guildId}.zip");
 
     // ─── Import Emoji Command ────────────────────────────────────────────
 
