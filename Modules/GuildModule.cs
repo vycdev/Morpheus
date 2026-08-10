@@ -27,7 +27,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetWelcomeChanelAsync([Remainder] SocketTextChannel? channel = null)
     {
         // Load tracked Guild entity from DB instead of using Context.DbGuild (which may be detached)
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
@@ -94,7 +94,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetPinsChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -123,7 +123,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -151,7 +151,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -251,7 +251,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetQuotesApprovalChannel([Remainder] SocketChannel? channel = null)
+    public async Task SetQuotesApprovalChannel([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -346,7 +346,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireBotPermission(GuildPermission.BanMembers)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetHoneypotChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetHoneypotChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
