@@ -75,8 +75,10 @@ def extract_methods_from_file(path: Path):
     text = path.read_text(encoding='utf-8')
     results = []
 
-    # Find class name
-    class_match = re.search(r"class\s+(\w+)", text)
+    # Prefer the command module when helper classes appear earlier in the file.
+    class_match = re.search(r"class\s+(\w+Module)\b", text)
+    if class_match is None:
+        class_match = re.search(r"class\s+(\w+)", text)
     class_name = class_match.group(1) if class_match else path.stem
 
     # iterate attribute blocks followed by a method signature

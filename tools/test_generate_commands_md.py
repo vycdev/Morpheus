@@ -32,6 +32,10 @@ class ParameterParsingTests(unittest.TestCase):
         source = '''
 using System.Threading.Tasks;
 
+internal sealed class ExampleGuildScore
+{
+}
+
 public class ExampleModule
 {
     [Command("example")]
@@ -51,6 +55,8 @@ public class ExampleModule
                 os.chdir(old_cwd)
 
         markdown = GENERATOR.generate_markdown(commands)
+        self.assertIn("## Example (1 command)", markdown)
+        self.assertNotIn("## ExampleGuildScore", markdown)
         self.assertIn("`page` — int — Optional", markdown)
         self.assertIn("`sort` — string — Optional", markdown)
         self.assertNotIn("`1` — int page", markdown)
