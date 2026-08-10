@@ -22,33 +22,31 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
     // Public square avatar for the xkcd identity (data: URLs are rejected by Discord's avatar_url).
     private const string XkcdAvatarUrl = "https://pbs.twimg.com/profile_images/1488600831377252354/hEpPeSu0_400x400.jpg";
 
-    private record XkcdItem(string Title, string Link);
+    internal record XkcdItem(string Title, string Link);
 
     internal static bool ShouldFetchFeed(int subscriptionCount) => subscriptionCount > 0;
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         List<XkcdSubscription> subscriptions = await db.XkcdSubscriptions
             .Include(s => s.Webhook)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         // Leave the feed unseeded until there is somewhere to post the initial comic.
         if (!ShouldFetchFeed(subscriptions.Count))
             return;
 
-        bool hasSeen = await db.XkcdSeen.AnyAsync();
+        bool hasSeen = await db.XkcdSeen.AnyAsync(cancellationToken);
 
         List<XkcdItem> items;
         try
         {
-            string rss = await HttpClient.GetStringAsync("https://xkcd.com/rss.xml");
-            XDocument doc = XDocument.Parse(rss);
-            items = doc.Descendants("item")
-                .Select(x => new XkcdItem(
-                    x.Element("title")?.Value ?? string.Empty,
-                    x.Element("link")?.Value ?? string.Empty))
-                .Where(i => !string.IsNullOrEmpty(i.Link))
-                .ToList();
+            items = await FetchItemsAsync(HttpClient, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -68,11 +66,14 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
             string latestLink = await db.XkcdDeliveryRetries
                 .OrderBy(r => r.LastAttemptAt)
                 .Select(r => r.Link)
-                .FirstOrDefaultAsync() ?? items[0].Link;
-            bool delivered = await DispatchAsync(latestLink, subscriptions, SendAsync);
+                .FirstOrDefaultAsync(cancellationToken) ?? items[0].Link;
+            bool delivered = await DispatchAsync(
+                latestLink,
+                subscriptions,
+                (subscription, link) => SendAsync(subscription, link, cancellationToken));
             if (!delivered)
             {
-                int attempts = await RecordFailedDeliveryAsync(db, latestLink, DateTime.UtcNow);
+                int attempts = await RecordFailedDeliveryAsync(db, latestLink, DateTime.UtcNow, cancellationToken);
                 if (ShouldRetryDelivery(attempts))
                     return;
 
@@ -81,14 +82,14 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
                     LogSeverity.Warning);
             }
 
-            await ClearDeliveryRetryAsync(latestLink);
+            await ClearDeliveryRetryAsync(latestLink, cancellationToken);
 
             foreach (XkcdItem item in items)
                 db.XkcdSeen.Add(new XkcdSeen { Link = item.Link, SeenAt = DateTime.UtcNow });
             if (items.All(item => item.Link != latestLink))
                 db.XkcdSeen.Add(new XkcdSeen { Link = latestLink, SeenAt = DateTime.UtcNow });
 
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
             return;
         }
 
@@ -96,7 +97,7 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
         HashSet<string> seen = (await db.XkcdSeen
                 .Where(x => feedLinks.Contains(x.Link))
                 .Select(x => x.Link)
-                .ToListAsync())
+                .ToListAsync(cancellationToken))
             .ToHashSet();
 
         // Retry pending comics first, including links that have rotated out of the RSS feed.
@@ -104,7 +105,7 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
         List<string> pendingLinks = await db.XkcdDeliveryRetries
             .OrderBy(r => r.LastAttemptAt)
             .Select(r => r.Link)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
         HashSet<string> pendingLinkSet = pendingLinks.ToHashSet();
         List<string> deliveryLinks =
         [
@@ -119,10 +120,13 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
 
         foreach (string link in deliveryLinks)
         {
-            bool delivered = await DispatchAsync(link, subscriptions, SendAsync);
+            bool delivered = await DispatchAsync(
+                link,
+                subscriptions,
+                (subscription, entryLink) => SendAsync(subscription, entryLink, cancellationToken));
             if (!delivered)
             {
-                int attempts = await RecordFailedDeliveryAsync(db, link, DateTime.UtcNow);
+                int attempts = await RecordFailedDeliveryAsync(db, link, DateTime.UtcNow, cancellationToken);
                 if (ShouldRetryDelivery(attempts))
                     continue;
 
@@ -131,11 +135,23 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
                     LogSeverity.Warning);
             }
 
-            await ClearDeliveryRetryAsync(link);
+            await ClearDeliveryRetryAsync(link, cancellationToken);
             db.XkcdSeen.Add(new XkcdSeen { Link = link, SeenAt = DateTime.UtcNow });
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    internal static async Task<List<XkcdItem>> FetchItemsAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    {
+        string rss = await httpClient.GetStringAsync("https://xkcd.com/rss.xml", cancellationToken);
+        XDocument doc = XDocument.Parse(rss);
+        return doc.Descendants("item")
+            .Select(x => new XkcdItem(
+                x.Element("title")?.Value ?? string.Empty,
+                x.Element("link")?.Value ?? string.Empty))
+            .Where(i => !string.IsNullOrEmpty(i.Link))
+            .ToList();
     }
 
     internal static async Task<bool> DispatchAsync(
@@ -155,9 +171,14 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
 
     internal static bool ShouldRetryDelivery(int attemptCount) => attemptCount < MaxDeliveryAttempts;
 
-    internal static async Task<int> RecordFailedDeliveryAsync(DB db, string link, DateTime attemptedAt)
+    internal static async Task<int> RecordFailedDeliveryAsync(
+        DB db,
+        string link,
+        DateTime attemptedAt,
+        CancellationToken cancellationToken = default)
     {
-        XkcdDeliveryRetry? retry = await db.XkcdDeliveryRetries.SingleOrDefaultAsync(r => r.Link == link);
+        XkcdDeliveryRetry? retry = await db.XkcdDeliveryRetries
+            .SingleOrDefaultAsync(r => r.Link == link, cancellationToken);
         if (retry == null)
         {
             retry = new XkcdDeliveryRetry
@@ -174,18 +195,19 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
             retry.LastAttemptAt = attemptedAt;
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(cancellationToken);
         return retry.AttemptCount;
     }
 
-    private async Task ClearDeliveryRetryAsync(string link)
+    private async Task ClearDeliveryRetryAsync(string link, CancellationToken cancellationToken)
     {
-        XkcdDeliveryRetry? retry = await db.XkcdDeliveryRetries.SingleOrDefaultAsync(r => r.Link == link);
+        XkcdDeliveryRetry? retry = await db.XkcdDeliveryRetries
+            .SingleOrDefaultAsync(r => r.Link == link, cancellationToken);
         if (retry != null)
             db.XkcdDeliveryRetries.Remove(retry);
     }
 
-    private async Task<bool> SendAsync(XkcdSubscription sub, string link)
+    private async Task<bool> SendAsync(XkcdSubscription sub, string link, CancellationToken cancellationToken)
     {
         if (sub.Webhook == null)
         {
@@ -193,7 +215,13 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
             return false;
         }
 
-        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, link, XkcdUsername, XkcdAvatarUrl);
+        bool ok = await discordWebhook.SendAsync(
+            sub.Webhook.WebhookId,
+            sub.Webhook.Token,
+            link,
+            XkcdUsername,
+            XkcdAvatarUrl,
+            cancellationToken);
         if (!ok)
             logsService.Log($"XkcdJob: failed to post comic to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
 
