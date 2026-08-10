@@ -188,6 +188,7 @@ public class ActivityGraphService(DB dbContext)
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
             .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.UserId)
             .Take(10)
             .ToListAsync();
 
@@ -232,6 +233,7 @@ public class ActivityGraphService(DB dbContext)
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
             .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.UserId)
             .ToListAsync();
 
         Dictionary<int, Dictionary<DateTime, int>> byDay = await GetUserActivityByDayAsync(query);

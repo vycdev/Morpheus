@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,6 +7,21 @@ using Morpheus.Database;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
+
+public sealed class SupportedCultureTheoryAttribute : TheoryAttribute
+{
+    public SupportedCultureTheoryAttribute(string cultureName)
+    {
+        try
+        {
+            CultureInfo.GetCultureInfo(cultureName);
+        }
+        catch (CultureNotFoundException)
+        {
+            Skip = $"The {cultureName} culture is unavailable in globalization-invariant mode.";
+        }
+    }
+}
 
 public class MiscModuleTests
 {
@@ -31,7 +47,7 @@ public class MiscModuleTests
         Assert.Equal(new DateTime(expectedYear, eventMonth, eventDay, 0, 0, 0, DateTimeKind.Utc), result);
     }
 
-    [Theory]
+    [SupportedCultureTheory("tr-TR")]
     [InlineData("CHRISTMAS", "christmas")]
     [InlineData("CC BIRTHDAY", "cc birthday")]
     public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
@@ -48,6 +64,14 @@ public class MiscModuleTests
         {
             CultureInfo.CurrentCulture = originalCulture;
         }
+    }
+
+    [Theory]
+    [InlineData("  christmas  ", "christmas")]
+    [InlineData("\tcc birthday\r\n", "cc birthday")]
+    public void NormalizeTimeUntilEventName_TrimsSurroundingWhitespace(string eventName, string expected)
+    {
+        Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
     }
 
     [Theory]
@@ -107,6 +131,20 @@ public class MiscModuleTests
         string result = MiscModule.BuildUrbanDictionaryUrl("C# & tea");
 
         Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
+    }
+
+    [Fact]
+    public void UrbanDictionaryCommand_AcceptsMultiWordTerms()
+    {
+        MethodInfo method = Assert.Single(
+            typeof(MiscModule).GetMethods(),
+            method => method.GetCustomAttributes<CommandAttribute>()
+                .Any(attribute => attribute.Text == "udic"));
+        System.Reflection.ParameterInfo parameter = Assert.Single(method.GetParameters());
+
+        Assert.NotNull(parameter.GetCustomAttribute<RemainderAttribute>());
+        Assert.True(parameter.HasDefaultValue);
+        Assert.Null(parameter.DefaultValue);
     }
 
     [Fact]
