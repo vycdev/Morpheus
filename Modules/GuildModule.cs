@@ -68,15 +68,15 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
 
         prefix ??= guildPrefixService.DefaultPrefix;
 
-        if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 3)
+        if (!TryValidatePrefix(prefix, out string normalizedPrefix))
         {
-            await ReplyAsync($"The prefix you picked, `{prefix}`, is not valid. Make sure that the prefix is not empty and at most 3 characters.");
+            await ReplyAsync($"The prefix you picked, `{prefix}`, is not valid. Make sure that the prefix is not empty, at most 3 characters, and contains no whitespace.");
             return;
         }
 
-        guild.Prefix = prefix;
+        guild.Prefix = normalizedPrefix;
         await dbContext.SaveChangesAsync();
-        guildPrefixService.SetPrefix(Context.Guild.Id, prefix);
+        guildPrefixService.SetPrefix(Context.Guild.Id, normalizedPrefix);
 
         if (prefix == guildPrefixService.DefaultPrefix)
         {
@@ -444,5 +444,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         };
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static bool TryValidatePrefix(string? value, out string prefix)
+    {
+        prefix = value ?? string.Empty;
+        return prefix.Length is > 0 and <= 3 &&
+            prefix.All(character => !char.IsWhiteSpace(character) && !char.IsControl(character));
     }
 }
