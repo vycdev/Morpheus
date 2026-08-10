@@ -24,6 +24,17 @@ public class SubscriptionInputParserTests
     }
 
     [Fact]
+    public void ParseSources_PreservesDistinctCaseSensitiveYoutubeChannelIds()
+    {
+        SubscriptionInputParser.SourceList parsed = SubscriptionInputParser.ParseSources(
+            "UCaaaaaaaaaaaaaaaaaaaaaa UCaaaaaaaaaaaaaaaaaaaaaA");
+
+        Assert.Equal(
+            ["UCaaaaaaaaaaaaaaaaaaaaaa", "UCaaaaaaaaaaaaaaaaaaaaaA"],
+            parsed.Sources);
+    }
+
+    [Fact]
     public void ParseRssSources_PreservesLegacySingleFeedDisplayName()
     {
         IReadOnlyList<SubscriptionInputParser.RssSource> parsed =
