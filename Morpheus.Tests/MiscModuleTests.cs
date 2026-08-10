@@ -67,6 +67,14 @@ public class MiscModuleTests
     }
 
     [Theory]
+    [InlineData("  christmas  ", "christmas")]
+    [InlineData("\tcc birthday\r\n", "cc birthday")]
+    public void NormalizeTimeUntilEventName_TrimsSurroundingWhitespace(string eventName, string expected)
+    {
+        Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
+    }
+
+    [Theory]
     [InlineData("ROCK", "rock")]
     [InlineData("PaPeR", "paper")]
     [InlineData("ScIsSoRs", "scissors")]

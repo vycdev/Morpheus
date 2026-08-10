@@ -124,7 +124,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         return eventDate < now ? eventDate.AddYears(1) : eventDate;
     }
 
-    internal static string NormalizeTimeUntilEventName(string eventName) => eventName.ToLowerInvariant();
+    internal static string NormalizeTimeUntilEventName(string eventName) => eventName.Trim().ToLowerInvariant();
 
     [Name("Coin Flip")]
     [Summary("Flips a coin, or multiple coins.")]
