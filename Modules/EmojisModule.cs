@@ -7,8 +7,9 @@ using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Services;
 using Morpheus.Utilities;
-using System.IO.Compression;
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.IO.Compression;
 
 namespace Morpheus.Modules;
 
@@ -23,16 +24,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
     private readonly LogsService logsService;
 
     // Track pending import sessions: messageId -> session data
-    private static readonly Dictionary<ulong, EmojiImportSession> _importSessions = [];
-
-    private class EmojiImportSession
-    {
-        public ulong UserId { get; set; }
-        public ulong SourceGuildId { get; set; }
-        public ulong TargetGuildId { get; set; }
-        public int EmojiPage { get; set; }
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    }
+    private static readonly EmojiImportSessionStore importSessions = new();
 
     public EmojisModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext, LogsService logsService)
     {
@@ -139,6 +131,19 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             "prev" => true,
             _ => false
         };
+    }
+
+    internal static bool TryGetEmojiPage(int emojiCount, int requestedPage, out int emojiPage, out int totalPages)
+    {
+        totalPages = (int)Math.Ceiling(emojiCount / (double)EmojiPageSize);
+        if (totalPages == 0)
+        {
+            emojiPage = 0;
+            return false;
+        }
+
+        emojiPage = Math.Clamp(requestedPage, 0, totalPages - 1);
+        return true;
     }
 
     [Name("List Emojis")]
@@ -281,11 +286,11 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         var message = await ReplyAsync(embed: embed, components: components);
 
         // Store session
-        _importSessions[message.Id] = new EmojiImportSession
+        importSessions.Set(message.Id, new EmojiImportSession
         {
             UserId = Context.User.Id,
             TargetGuildId = Context.Guild.Id
-        };
+        });
 
         CleanupExpiredSessions();
     }
@@ -298,15 +303,17 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (comp.Data.CustomId != "emoji_import_server") return;
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
+        using EmojiImportSessionLease lease = sessionLease;
+
         if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
         {
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
             return;
         }
@@ -327,8 +334,15 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        session.SourceGuildId = selectedGuildId;
-        session.EmojiPage = 0;
+        if (!importSessions.TryUpdate(messageId, current => current with
+        {
+            SourceGuildId = selectedGuildId,
+            EmojiPage = 0
+        }, out session))
+        {
+            await comp.FollowupAsync("This import session has expired. Please start a new one.", ephemeral: true);
+            return;
+        }
 
         var emojis = sourceGuild.Emotes.OrderBy(e => e.Name).ToList();
 
@@ -343,7 +357,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
                     .Build();
                 msg.Components = new ComponentBuilder().Build();
             });
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             return;
         }
 
@@ -358,15 +372,17 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (comp.Data.CustomId != "emoji_import_select") return;
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
+        using EmojiImportSessionLease lease = sessionLease;
+
         if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
         {
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
             return;
         }
@@ -385,7 +401,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (sourceGuild == null || targetGuild == null)
         {
             await comp.FollowupAsync("One of the servers is no longer accessible.", ephemeral: true);
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             return;
         }
 
@@ -479,29 +495,37 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         }
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
+        using EmojiImportSessionLease lease = sessionLease;
+
         if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
         {
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
             return;
         }
 
         await comp.DeferAsync();
 
-        session.EmojiPage += isNext ? 1 : -1;
-        if (session.EmojiPage < 0) session.EmojiPage = 0;
+        if (!importSessions.TryUpdate(messageId, current => current with
+        {
+            EmojiPage = Math.Max(0, current.EmojiPage + (isNext ? 1 : -1))
+        }, out session))
+        {
+            await comp.FollowupAsync("This import session has expired. Please start a new one.", ephemeral: true);
+            return;
+        }
 
         var sourceGuild = client.GetGuild(session.SourceGuildId);
         if (sourceGuild == null)
         {
             await comp.FollowupAsync("The source server is no longer accessible.", ephemeral: true);
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             return;
         }
 
@@ -517,13 +541,15 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (comp.Data.CustomId != "emoji_import_cancel") return;
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
-        _importSessions.Remove(messageId);
+        using EmojiImportSessionLease lease = sessionLease;
+
+        importSessions.TryRemove(messageId);
 
         await comp.DeferAsync();
         await comp.ModifyOriginalResponseAsync(msg =>
@@ -541,11 +567,29 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
     private async Task UpdateEmojiSelectionMessage(SocketMessageComponent comp, EmojiImportSession session, SocketGuild sourceGuild, List<GuildEmote> emojis)
     {
-        int totalPages = (int)Math.Ceiling(emojis.Count / (double)EmojiPageSize);
-        if (session.EmojiPage >= totalPages) session.EmojiPage = totalPages - 1;
+        if (!TryGetEmojiPage(emojis.Count, session.EmojiPage, out int emojiPage, out int totalPages))
+        {
+            await comp.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Embed = new EmbedBuilder()
+                    .WithColor(Colors.Blue)
+                    .WithTitle("📥 Import Emoji")
+                    .WithDescription($"**{sourceGuild.Name}** has no custom emojis.")
+                    .Build();
+                msg.Components = new ComponentBuilder().Build();
+            });
+            importSessions.TryRemove(comp.Message.Id);
+            return;
+        }
+
+        if (emojiPage != session.EmojiPage &&
+            importSessions.TryUpdate(comp.Message.Id, current => current with { EmojiPage = emojiPage }, out var clampedSession))
+        {
+            session = clampedSession;
+        }
 
         var pageEmojis = emojis
-            .Skip(session.EmojiPage * EmojiPageSize)
+            .Skip(emojiPage * EmojiPageSize)
             .Take(EmojiPageSize)
             .ToList();
 
@@ -568,7 +612,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             .WithColor(Colors.Blue)
             .WithTitle($"📥 Import Emoji from {sourceGuild.Name}")
             .WithDescription($"Select an emoji to import into this server.\n\n{emojiPreview}")
-            .WithFooter($"Page {session.EmojiPage + 1}/{totalPages} • {emojis.Count} emoji{(emojis.Count != 1 ? "s" : "")} total")
+            .WithFooter($"Page {emojiPage + 1}/{totalPages} • {emojis.Count} emoji{(emojis.Count != 1 ? "s" : "")} total")
             .Build();
 
         var componentBuilder = new ComponentBuilder()
@@ -577,8 +621,8 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         // Add pagination buttons if needed
         if (totalPages > 1)
         {
-            componentBuilder.WithButton("◀ Previous", "emoji_import_page:prev", ButtonStyle.Secondary, disabled: session.EmojiPage == 0);
-            componentBuilder.WithButton("Next ▶", "emoji_import_page:next", ButtonStyle.Secondary, disabled: session.EmojiPage >= totalPages - 1);
+            componentBuilder.WithButton("◀ Previous", "emoji_import_page:prev", ButtonStyle.Secondary, disabled: emojiPage == 0);
+            componentBuilder.WithButton("Next ▶", "emoji_import_page:next", ButtonStyle.Secondary, disabled: emojiPage >= totalPages - 1);
         }
 
         componentBuilder.WithButton("Import All", "emoji_import_all", ButtonStyle.Success);
@@ -600,15 +644,17 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (comp.Data.CustomId != "emoji_import_back") return;
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
+        using EmojiImportSessionLease lease = sessionLease;
+
         if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
         {
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
             return;
         }
@@ -650,8 +696,11 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             .WithButton("Cancel", "emoji_import_cancel", ButtonStyle.Danger)
             .Build();
 
-        session.SourceGuildId = 0;
-        session.EmojiPage = 0;
+        importSessions.TryUpdate(messageId, current => current with
+        {
+            SourceGuildId = 0,
+            EmojiPage = 0
+        }, out _);
 
         await comp.ModifyOriginalResponseAsync(msg =>
         {
@@ -668,15 +717,17 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (comp.Data.CustomId != "emoji_import_another") return;
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
+        using EmojiImportSessionLease lease = sessionLease;
+
         if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
         {
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
             return;
         }
@@ -690,8 +741,11 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             // Source guild no longer available, fall back to server selection
             await comp.FollowupAsync("The source server is no longer accessible. Returning to server selection.", ephemeral: true);
             // Trigger back to servers logic by resetting
-            session.SourceGuildId = 0;
-            session.EmojiPage = 0;
+            importSessions.TryUpdate(messageId, current => current with
+            {
+                SourceGuildId = 0,
+                EmojiPage = 0
+            }, out _);
             return;
         }
 
@@ -708,7 +762,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
                     .Build();
                 msg.Components = new ComponentBuilder().Build();
             });
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             return;
         }
 
@@ -723,15 +777,17 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (comp.Data.CustomId != "emoji_import_all") return;
 
         ulong messageId = comp.Message.Id;
-        if (!_importSessions.TryGetValue(messageId, out var session) || session.UserId != comp.User.Id)
+        if (!importSessions.TryAcquire(messageId, comp.User.Id, out var session, out var sessionLease))
         {
-            await comp.RespondAsync("This menu isn't for you, or it has expired.", ephemeral: true);
+            await comp.RespondAsync("This menu isn't for you, has expired, or another action is in progress.", ephemeral: true);
             return;
         }
 
+        using EmojiImportSessionLease lease = sessionLease;
+
         if (DateTime.UtcNow - session.CreatedAt > SessionTimeout)
         {
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             await comp.RespondAsync("This import session has expired. Please start a new one.", ephemeral: true);
             return;
         }
@@ -744,7 +800,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         if (sourceGuild == null || targetGuild == null)
         {
             await comp.FollowupAsync("One of the servers is no longer accessible.", ephemeral: true);
-            _importSessions.Remove(messageId);
+            importSessions.TryRemove(messageId);
             return;
         }
 
@@ -868,12 +924,110 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
     private static void CleanupExpiredSessions()
     {
-        var expiredKeys = _importSessions
-            .Where(kvp => DateTime.UtcNow - kvp.Value.CreatedAt > SessionTimeout)
-            .Select(kvp => kvp.Key)
-            .ToList();
+        importSessions.RemoveExpired(DateTime.UtcNow, SessionTimeout);
+    }
+}
 
-        foreach (var key in expiredKeys)
-            _importSessions.Remove(key);
+internal sealed record EmojiImportSession
+{
+    public required ulong UserId { get; init; }
+    public ulong SourceGuildId { get; init; }
+    public required ulong TargetGuildId { get; init; }
+    public int EmojiPage { get; init; }
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    internal SemaphoreSlim InteractionGate { get; init; } = new(1, 1);
+}
+
+internal sealed class EmojiImportSessionStore
+{
+    private readonly ConcurrentDictionary<ulong, EmojiImportSession> sessions = [];
+
+    internal int Count => sessions.Count;
+
+    internal void Set(ulong messageId, EmojiImportSession session) => sessions[messageId] = session;
+
+    internal bool TryGetValue(ulong messageId, out EmojiImportSession session) =>
+        sessions.TryGetValue(messageId, out session!);
+
+    internal bool TryAcquire(
+        ulong messageId,
+        ulong userId,
+        out EmojiImportSession session,
+        out EmojiImportSessionLease lease)
+    {
+        if (sessions.TryGetValue(messageId, out session!) &&
+            session.UserId == userId &&
+            session.InteractionGate.Wait(0))
+        {
+            if (sessions.TryGetValue(messageId, out EmojiImportSession? current) &&
+                ReferenceEquals(current, session))
+            {
+                lease = new EmojiImportSessionLease(session.InteractionGate);
+                return true;
+            }
+
+            session.InteractionGate.Release();
+        }
+
+        session = null!;
+        lease = null!;
+        return false;
+    }
+
+    internal bool TryRemove(ulong messageId) => sessions.TryRemove(messageId, out _);
+
+    internal bool TryUpdate(
+        ulong messageId,
+        Func<EmojiImportSession, EmojiImportSession> update,
+        out EmojiImportSession session)
+    {
+        while (sessions.TryGetValue(messageId, out EmojiImportSession? current))
+        {
+            EmojiImportSession updated = update(current);
+            if (sessions.TryUpdate(messageId, updated, current))
+            {
+                session = updated;
+                return true;
+            }
+        }
+
+        session = null!;
+        return false;
+    }
+
+    internal int RemoveExpired(DateTime utcNow, TimeSpan timeout)
+    {
+        int removed = 0;
+        foreach ((ulong messageId, EmojiImportSession session) in sessions)
+        {
+            if (utcNow - session.CreatedAt <= timeout || !session.InteractionGate.Wait(0))
+                continue;
+
+            try
+            {
+                if (sessions.TryGetValue(messageId, out EmojiImportSession? current) &&
+                    ReferenceEquals(current, session) &&
+                    sessions.TryRemove(messageId, out _))
+                {
+                    removed++;
+                }
+            }
+            finally
+            {
+                session.InteractionGate.Release();
+            }
+        }
+
+        return removed;
+    }
+}
+
+internal sealed class EmojiImportSessionLease(SemaphoreSlim interactionGate) : IDisposable
+{
+    private SemaphoreSlim? interactionGate = interactionGate;
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref interactionGate, null)?.Release();
     }
 }
