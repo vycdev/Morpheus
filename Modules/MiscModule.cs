@@ -649,10 +649,9 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             .WithCurrentTimestamp();
 
         // Include image if the favicon exists
-        if (!string.IsNullOrEmpty(serverImageBase64))
+        if (TryDecodeMinecraftFavicon(serverImageBase64, out byte[] imageBytes))
         {
             embed.WithThumbnailUrl($"attachment://favicon.png"); // Point to an inline attachment URL
-            byte[] imageBytes = Convert.FromBase64String(serverImageBase64.Split(',')[1]); // Remove the data:image/png;base64, part
             MemoryStream stream = new(imageBytes);
             FileAttachment attachment = new(stream, "favicon.png");
 
@@ -674,6 +673,32 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
                 msg.Content = string.Empty;
                 msg.Embed = finalEmbed;
             });
+        }
+    }
+
+    internal static bool TryDecodeMinecraftFavicon(string? favicon, out byte[] imageBytes)
+    {
+        imageBytes = [];
+        if (string.IsNullOrWhiteSpace(favicon))
+            return false;
+
+        const string base64Marker = ";base64,";
+        int markerIndex = favicon.IndexOf(base64Marker, StringComparison.OrdinalIgnoreCase);
+        if (favicon.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && markerIndex < 0)
+            return false;
+
+        string encodedImage = markerIndex >= 0
+            ? favicon[(markerIndex + base64Marker.Length)..]
+            : favicon;
+
+        try
+        {
+            imageBytes = Convert.FromBase64String(encodedImage);
+            return imageBytes.Length > 0;
+        }
+        catch (FormatException)
+        {
+            return false;
         }
     }
 

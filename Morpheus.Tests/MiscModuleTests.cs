@@ -134,6 +134,31 @@ public class MiscModuleTests
         Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
     }
 
+    [Theory]
+    [InlineData("data:image/png;base64,AQID")]
+    [InlineData("AQID")]
+    public void TryDecodeMinecraftFavicon_DecodesSupportedBase64Formats(string favicon)
+    {
+        bool decoded = MiscModule.TryDecodeMinecraftFavicon(favicon, out byte[] imageBytes);
+
+        Assert.True(decoded);
+        Assert.Equal([1, 2, 3], imageBytes);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("data:image/png,not-base64")]
+    [InlineData("data:image/png;base64,")]
+    [InlineData("not-base64")]
+    public void TryDecodeMinecraftFavicon_RejectsMissingOrMalformedImages(string? favicon)
+    {
+        bool decoded = MiscModule.TryDecodeMinecraftFavicon(favicon, out byte[] imageBytes);
+
+        Assert.False(decoded);
+        Assert.Empty(imageBytes);
+    }
+
     [Fact]
     public void UrbanDictionaryCommand_AcceptsMultiWordTerms()
     {
