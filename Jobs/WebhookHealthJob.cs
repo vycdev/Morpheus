@@ -17,7 +17,8 @@ public class WebhookHealthJob(DB db, DiscordWebhookService discordWebhook, LogsS
 {
     public async Task Execute(IJobExecutionContext context)
     {
-        List<Webhook> webhooks = await db.Webhooks.ToListAsync();
+        CancellationToken cancellationToken = context.CancellationToken;
+        List<Webhook> webhooks = await db.Webhooks.ToListAsync(cancellationToken);
         if (webhooks.Count == 0)
             return;
 
@@ -26,7 +27,7 @@ public class WebhookHealthJob(DB db, DiscordWebhookService discordWebhook, LogsS
 
         foreach (Webhook webhook in webhooks)
         {
-            bool? exists = await discordWebhook.CheckExistsAsync(webhook.WebhookId, webhook.Token);
+            bool? exists = await discordWebhook.CheckExistsAsync(webhook.WebhookId, webhook.Token, cancellationToken);
 
             if (exists == false)
             {
@@ -44,7 +45,7 @@ public class WebhookHealthJob(DB db, DiscordWebhookService discordWebhook, LogsS
         }
 
         if (changed)
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
 
         if (removed > 0)
             logsService.Log($"WebhookHealthJob: removed {removed} deleted webhook(s) and their subscriptions.");
