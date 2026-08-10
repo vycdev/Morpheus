@@ -28,6 +28,18 @@ public class YoutubeUtilsTests
         Assert.Empty(handler.RequestedUris);
     }
 
+    [Fact]
+    public async Task GetChannelAvatarAsync_WhenCallerCancels_PropagatesCancellation()
+    {
+        RecordingHandler handler = new(_ => throw new InvalidOperationException("Unexpected HTTP request."));
+        using HttpClient httpClient = new(handler);
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            YoutubeUtils.GetChannelAvatarAsync(httpClient, "UC123", cts.Token));
+    }
+
     [Theory]
     [InlineData("https://www.youtube.com/@channel", "/@channel", "")]
     [InlineData("youtube.com/user/channel", "/user/channel", "")]
@@ -77,6 +89,9 @@ public class YoutubeUtilsTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (cancellationToken.IsCancellationRequested)
+                return Task.FromCanceled<HttpResponseMessage>(cancellationToken);
+
             if (request.RequestUri != null)
                 RequestedUris.Add(request.RequestUri);
 
