@@ -1,11 +1,28 @@
 using System.Globalization;
+using System.Reflection;
 using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Database;
 using Morpheus.Modules;
+using Morpheus.Utilities.Extensions;
 
 namespace Morpheus.Tests;
+
+public sealed class SupportedCultureTheoryAttribute : TheoryAttribute
+{
+    public SupportedCultureTheoryAttribute(string cultureName)
+    {
+        try
+        {
+            CultureInfo.GetCultureInfo(cultureName);
+        }
+        catch (CultureNotFoundException)
+        {
+            Skip = $"The {cultureName} culture is unavailable in globalization-invariant mode.";
+        }
+    }
+}
 
 public class MiscModuleTests
 {
@@ -31,7 +48,7 @@ public class MiscModuleTests
         Assert.Equal(new DateTime(expectedYear, eventMonth, eventDay, 0, 0, 0, DateTimeKind.Utc), result);
     }
 
-    [Theory]
+    [SupportedCultureTheory("tr-TR")]
     [InlineData("CHRISTMAS", "christmas")]
     [InlineData("CC BIRTHDAY", "cc birthday")]
     public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
@@ -48,6 +65,14 @@ public class MiscModuleTests
         {
             CultureInfo.CurrentCulture = originalCulture;
         }
+    }
+
+    [Theory]
+    [InlineData("  christmas  ", "christmas")]
+    [InlineData("\tcc birthday\r\n", "cc birthday")]
+    public void NormalizeTimeUntilEventName_TrimsSurroundingWhitespace(string eventName, string expected)
+    {
+        Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
     }
 
     [Theory]
@@ -109,6 +134,45 @@ public class MiscModuleTests
         Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
     }
 
+    [Theory]
+    [InlineData("data:image/png;base64,AQID")]
+    [InlineData("AQID")]
+    public void TryDecodeMinecraftFavicon_DecodesSupportedBase64Formats(string favicon)
+    {
+        bool decoded = MiscModule.TryDecodeMinecraftFavicon(favicon, out byte[] imageBytes);
+
+        Assert.True(decoded);
+        Assert.Equal([1, 2, 3], imageBytes);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("data:image/png,not-base64")]
+    [InlineData("data:image/png;base64,")]
+    [InlineData("not-base64")]
+    public void TryDecodeMinecraftFavicon_RejectsMissingOrMalformedImages(string? favicon)
+    {
+        bool decoded = MiscModule.TryDecodeMinecraftFavicon(favicon, out byte[] imageBytes);
+
+        Assert.False(decoded);
+        Assert.Empty(imageBytes);
+    }
+
+    [Fact]
+    public void UrbanDictionaryCommand_AcceptsMultiWordTerms()
+    {
+        MethodInfo method = Assert.Single(
+            typeof(MiscModule).GetMethods(),
+            method => method.GetCustomAttributes<CommandAttribute>()
+                .Any(attribute => attribute.Text == "udic"));
+        System.Reflection.ParameterInfo parameter = Assert.Single(method.GetParameters());
+
+        Assert.NotNull(parameter.GetCustomAttribute<RemainderAttribute>());
+        Assert.True(parameter.HasDefaultValue);
+        Assert.Null(parameter.DefaultValue);
+    }
+
     [Fact]
     public async Task LoveCompatibilityCommand_AllowsComparingWithInvoker()
     {
@@ -152,5 +216,13 @@ public class MiscModuleTests
     public void TryParseDiceInput_RejectsMalformedOrOutOfRangeInput(string input)
     {
         Assert.False(MiscModule.TryParseDiceInput(input, out _, out _));
+    }
+
+    [Theory]
+    [InlineData(-1, "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░")]
+    [InlineData(101, "██████████████████████████████")]
+    public void GetPercentageBar_ClampsOutOfRangeValues(int value, string expected)
+    {
+        Assert.Equal(expected, value.GetPercentageBar());
     }
 }
