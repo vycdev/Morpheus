@@ -23,6 +23,17 @@ public class EmojisModuleTests
     }
 
     [Theory]
+    [InlineData("emoji_import_page:next", true)]
+    [InlineData("emoji_import_page:prev", false)]
+    public void TryParseEmojiPageDirection_AcceptsKnownDirections(string customId, bool expectedNext)
+    {
+        bool parsed = EmojisModule.TryParseEmojiPageDirection(customId, out bool isNext);
+
+        Assert.True(parsed);
+        Assert.Equal(expectedNext, isNext);
+    }
+
+    [Theory]
     [InlineData("123456789", 123456789UL)]
     [InlineData("18446744073709551615", ulong.MaxValue)]
     public void TryParseSelectionId_AcceptsUnsignedDecimalIds(string value, ulong expected)
@@ -31,6 +42,19 @@ public class EmojisModuleTests
 
         Assert.True(parsed);
         Assert.Equal(expected, id);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("emoji_import_page")]
+    [InlineData("emoji_import_page:")]
+    [InlineData("emoji_import_page:first")]
+    [InlineData("emoji_import_page:next:extra")]
+    [InlineData("other:next")]
+    public void TryParseEmojiPageDirection_RejectsMalformedDirections(string? customId)
+    {
+        Assert.False(EmojisModule.TryParseEmojiPageDirection(customId, out _));
     }
 
     [Theory]
