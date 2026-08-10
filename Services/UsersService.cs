@@ -7,25 +7,42 @@ using Morpheus.Database.Models;
 namespace Morpheus.Services;
 public class UsersService(DB dbContext, LogsService logsService)
 {
-    public async Task<User> TryGetCreateUser(IUser user)
+    public Task<User> TryGetCreateUser(IUser user) =>
+        TryGetCreateUserAsync(user.Id, user.Username);
+
+    internal async Task<User> TryGetCreateUserAsync(ulong discordId, string username)
     {
-        User? userDb = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == user.Id);
+        User? userDb = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == discordId);
 
         if (userDb != null)
             return userDb;
 
         userDb = new User()
         {
-            DiscordId = user.Id,
-            Username = user.Username,
+            DiscordId = discordId,
+            Username = username,
             InsertDate = DateTime.UtcNow,
             LastUsernameCheck = DateTime.UtcNow
         };
 
         await dbContext.Users.AddAsync(userDb);
-        await dbContext.SaveChangesAsync();
+        try
+        {
+            await dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Another message handler may have created the same Discord user after our initial
+            // lookup. Re-query instead of failing activity processing on the unique index.
+            dbContext.ChangeTracker.Clear();
+            User? concurrentUser = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == discordId);
+            if (concurrentUser != null)
+                return concurrentUser;
 
-        logsService.Log($"New user created {user.Username}", Discord.LogSeverity.Verbose);
+            throw;
+        }
+
+        logsService.Log($"New user created {username}", Discord.LogSeverity.Verbose);
 
         return userDb;
     }
