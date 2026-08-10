@@ -49,4 +49,28 @@ public class ActivityLevelServiceTests
 
         Assert.Throws<OverflowException>(() => ActivityLevelService.CalculateXp(highestRepresentableLevel + 1));
     }
+
+    [Fact]
+    public void CalculateXpLong_ReturnsThresholdAboveIntMaxValue()
+    {
+        int level = ActivityLevelService.CalculateLevel((long)int.MaxValue + 1) + 1;
+
+        long threshold = ActivityLevelService.CalculateXpLong(level);
+
+        Assert.True(threshold > int.MaxValue);
+        Assert.Equal(level, ActivityLevelService.CalculateLevel(threshold));
+        Assert.True(ActivityLevelService.CalculateLevel(threshold - 1) < level);
+    }
+
+    [Fact]
+    public void CalculateXpLong_HandlesHighestRepresentableLongLevel()
+    {
+        int highestRepresentableLevel = ActivityLevelService.CalculateLevel(long.MaxValue);
+
+        long threshold = ActivityLevelService.CalculateXpLong(highestRepresentableLevel);
+
+        Assert.Equal(highestRepresentableLevel, ActivityLevelService.CalculateLevel(threshold));
+        Assert.True(ActivityLevelService.CalculateLevel(threshold - 1) < highestRepresentableLevel);
+        Assert.Throws<OverflowException>(() => ActivityLevelService.CalculateXpLong(highestRepresentableLevel + 1));
+    }
 }

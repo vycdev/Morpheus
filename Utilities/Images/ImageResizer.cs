@@ -24,8 +24,8 @@ public static class ImageResizer
         using Image<Rgba32> image = Image.Load<Rgba32>(ms);
 
         float scale = Math.Min((float)MaxDimension / info.Width, (float)MaxDimension / info.Height);
-        int newWidth = (int)(info.Width * scale);
-        int newHeight = (int)(info.Height * scale);
+        int newWidth = Math.Max(1, (int)(info.Width * scale));
+        int newHeight = Math.Max(1, (int)(info.Height * scale));
 
         image.Mutate(x => x.Resize(newWidth, newHeight));
 

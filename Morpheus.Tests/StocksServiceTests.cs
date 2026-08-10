@@ -1,10 +1,45 @@
 using Morpheus.Database.Enums;
+using Morpheus.Database.Models;
 using Morpheus.Services;
 
 namespace Morpheus.Tests;
 
 public class StocksServiceTests
 {
+    [Fact]
+    public void OrderByDailyChange_UsesStockIdToBreakGainerTies()
+    {
+        Stock[] stocks =
+        [
+            new() { Id = 3, DailyChangePercent = 5m },
+            new() { Id = 2, DailyChangePercent = 7m },
+            new() { Id = 1, DailyChangePercent = 7m }
+        ];
+
+        List<int> orderedIds = StocksService.OrderByDailyChange(stocks.AsQueryable(), descending: true)
+            .Select(stock => stock.Id)
+            .ToList();
+
+        Assert.Equal([1, 2, 3], orderedIds);
+    }
+
+    [Fact]
+    public void OrderByDailyChange_UsesStockIdToBreakLoserTies()
+    {
+        Stock[] stocks =
+        [
+            new() { Id = 3, DailyChangePercent = -5m },
+            new() { Id = 2, DailyChangePercent = -7m },
+            new() { Id = 1, DailyChangePercent = -7m }
+        ];
+
+        List<int> orderedIds = StocksService.OrderByDailyChange(stocks.AsQueryable(), descending: false)
+            .Select(stock => stock.Id)
+            .ToList();
+
+        Assert.Equal([1, 2, 3], orderedIds);
+    }
+
     [Fact]
     public void OrderStockHoldingKeysForUpdate_DeduplicatesAndSortsByStockThenUser()
     {
