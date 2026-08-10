@@ -65,7 +65,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         // Make an embed of the message details
         EmbedBuilder embed = new()
         {
-            Title = $"Pin in `#{message.Channel.Name}` by {Context.Message.Author.Username}",
+            Title = FormatPinTitle(message.Channel.Name, message.Author.Username),
             Url = message.GetJumpUrl(),
             Author = new EmbedAuthorBuilder()
             {
@@ -95,6 +95,9 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         messageId = referencedMessageId.GetValueOrDefault();
         return referencedMessageId.HasValue;
     }
+
+    internal static string FormatPinTitle(string channelName, string authorUsername) =>
+        $"Pin in `#{channelName}` by {authorUsername}";
 
     [Name("Reminder")]
     [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 1 minute, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: reminder 5 days and 3 hours @User Take a break. Reminders are executed once a minute.")]
