@@ -14,6 +14,21 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
 {
     private static readonly HttpClient httpClient = new();
 
+    internal static bool TryDownscaleImage(byte[] imageData, out byte[] result)
+    {
+        try
+        {
+            result = ImageResizer.DownscaleIfTooLarge(imageData);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IMAGE ERROR] Failed to inspect image: {ex}");
+            result = [];
+            return false;
+        }
+    }
+
     private readonly CommandService commands = commands;
     private readonly IServiceProvider serviceProvider = serviceProvider;
     private readonly DB dbContext = dbContext;
@@ -207,8 +222,23 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
             return;
         }
 
-        imageBytes = ImageResizer.DownscaleIfTooLarge(imageBytes);
-        byte[] deepfriedImage = ImageDeepFryer.DeepFry(imageBytes);
+        if (!TryDownscaleImage(imageBytes, out imageBytes))
+        {
+            await ReplyAsync("Failed to process the image. Please try again with a valid image file.");
+            return;
+        }
+
+        byte[] deepfriedImage;
+        try
+        {
+            deepfriedImage = ImageDeepFryer.DeepFry(imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY ERROR] Processing failed: {ex}");
+            await ReplyAsync("Failed to deepfry the image. Please try again with a different image.");
+            return;
+        }
 
         if (deepfriedImage == null || deepfriedImage.Length == 0)
         {
