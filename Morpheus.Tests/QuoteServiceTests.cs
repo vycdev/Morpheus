@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Services;
@@ -177,6 +177,31 @@ public class QuoteServiceTests
 
         Assert.Equal(quotes.Take(QuoteService.PageSize).Select(quote => quote.Id), firstPage.Items.Select(item => item.Id));
         Assert.Equal([quotes[^1].Id], secondPage.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public async Task QuoteScoreAggregates_WidenBeforeSummingAndClampPublicTotals()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        User secondUser = new() { DiscordId = 789, Username = "second" };
+        await testDb.Db.Users.AddAsync(secondUser);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "high score");
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = quote.Id, UserId = user.Id, Score = int.MaxValue },
+            new QuoteScore { QuoteId = quote.Id, UserId = secondUser.Id, Score = 1 });
+        await testDb.Db.SaveChangesAsync();
+
+        QuoteService service = new(testDb.Db);
+
+        QuoteDetails details = await service.GetQuoteDetailsAsync(quote.Id)
+            ?? throw new InvalidOperationException("Quote details were not found.");
+        QuotePage page = await service.GetQuotePageAsync(1, "top", approvedOnly: true, guild.Id);
+
+        Assert.Equal(int.MaxValue, details.TotalScore);
+        Assert.Equal(int.MaxValue, Assert.Single(page.Items).Score);
     }
 
     [Fact]
