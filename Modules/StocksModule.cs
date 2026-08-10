@@ -165,10 +165,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
 
         User? receiver = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == targetUser.Id);
         if (receiver == null)
-        {
-            if (targetUser is SocketUser socketTarget)
-                receiver = await usersService.TryGetCreateUser(socketTarget);
-        }
+            receiver = await usersService.TryGetCreateUser(targetUser);
 
         if (receiver == null) { await ReplyAsync("Recipient not found."); return; }
 
@@ -771,11 +768,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
 
         User? receiver = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == targetUser.Id);
         if (receiver == null)
-        {
-            // Auto-create the receiver if they exist on Discord
-            if (targetUser is SocketUser socketTarget)
-                receiver = await usersService.TryGetCreateUser(socketTarget);
-        }
+            receiver = await usersService.TryGetCreateUser(targetUser);
 
         if (receiver == null) { await ReplyAsync("Recipient not found."); return; }
 

@@ -79,4 +79,24 @@ public class YoutubeRssJobTests
         Assert.True(secondSucceeded);
         Assert.Equal(4, attempts);
     }
+
+    [Fact]
+    public async Task DispatchAsync_WhenCallerCancels_PropagatesCancellationBeforeDelivery()
+    {
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+        bool sent = false;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            YoutubeRssJob.DispatchAsync(
+                [new YoutubeSubscription()],
+                _ =>
+                {
+                    sent = true;
+                    return Task.FromResult(true);
+                },
+                cts.Token));
+
+        Assert.False(sent);
+    }
 }

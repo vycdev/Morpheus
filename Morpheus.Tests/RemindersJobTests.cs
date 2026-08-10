@@ -45,6 +45,26 @@ public class RemindersJobTests
         Assert.Equal(["Remember this"], sentMessages);
     }
 
+    [Fact]
+    public async Task DeliverAsync_WhenChannelUnavailable_RetainsReminderForRetry()
+    {
+        Reminder reminder = new() { Id = 7, ChannelId = 42, Text = "Remember this" };
+        List<string> logs = [];
+        DateTime now = new(2026, 7, 31, 8, 0, 0, DateTimeKind.Utc);
+
+        bool shouldDelete = await RemindersJob.DeliverAsync(
+            reminder,
+            null,
+            logs.Add,
+            now);
+
+        Assert.False(shouldDelete);
+        Assert.Equal(1, reminder.DeliveryFailureCount);
+        Assert.Equal(now, reminder.FirstDeliveryFailureAt);
+        Assert.Equal(now.AddMinutes(1), reminder.NextDeliveryAttemptAt);
+        Assert.Contains(logs, message => message.Contains("unavailable") && message.Contains("Retry 1 scheduled"));
+    }
+
     [Theory]
     [InlineData(1, 1)]
     [InlineData(2, 2)]

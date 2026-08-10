@@ -27,7 +27,6 @@ public static class SimHasher
                 }
                 continue;
             }
-            lastWasSpace = false;
 
             // Strip combining marks (diacritics)
             var cat = CharUnicodeInfo.GetUnicodeCategory(ch.ToString(), 0);
@@ -42,6 +41,7 @@ public static class SimHasher
             if (Rune.IsDigit(ch))
             {
                 sb.Append('0');
+                lastWasSpace = false;
                 continue;
             }
 
@@ -50,6 +50,7 @@ public static class SimHasher
                 continue;
 
             sb.Append(ch.ToString());
+            lastWasSpace = false;
         }
 
         var result = sb.ToString().Trim();
