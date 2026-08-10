@@ -28,7 +28,14 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
             return;
 
         List<string> userIds = subscriptions.Select(s => s.TwitchUserId).Distinct().ToList();
-        IReadOnlyDictionary<string, TwitchService.TwitchStream> live = await twitch.GetLiveStreamsAsync(userIds);
+        TwitchService.LiveStreamsResult result = await twitch.GetLiveStreamsResultAsync(userIds, context.CancellationToken);
+        if (!result.Succeeded)
+        {
+            logsService.Log("TwitchLiveJob: live-status request failed; preserving existing subscription state.", LogSeverity.Warning);
+            return;
+        }
+
+        IReadOnlyDictionary<string, TwitchService.TwitchStream> live = result.Streams;
 
         bool changed = false;
 
