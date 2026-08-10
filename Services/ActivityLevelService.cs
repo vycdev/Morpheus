@@ -68,6 +68,8 @@ public class ActivityLevelService(DB dbContext)
 
     public static int CalculateLevel(long xp)
     {
+        // Integer division is intentional: it preserves the established XP thresholds.
+        // Do not use a floating-point ratio here without deliberately rebalancing levels.
         long normalizedXp = xp > long.MaxValue - 111
             ? (xp / 111) + 1
             : (xp + 111) / 111;
