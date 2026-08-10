@@ -161,6 +161,65 @@ public class ActivityLeaderboardServiceTests
     }
 
     [Fact]
+    public async Task GetGlobalPastXpLeaderboardAsync_HandlesViewerTotalAboveIntMaxValue()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        User viewer = new() { DiscordId = 1, Username = "viewer" };
+        User runnerUp = new() { DiscordId = 2, Username = "runner-up" };
+        Guild guild = new() { DiscordId = 1, Name = "Test guild" };
+        db.AddRange(viewer, runnerUp, guild);
+        await db.SaveChangesAsync();
+
+        db.UserActivity.AddRange(
+            new UserActivity
+            {
+                UserId = viewer.Id,
+                GuildId = guild.Id,
+                DiscordMessageId = 1,
+                XpGained = int.MaxValue,
+                InsertDate = DateTime.UtcNow
+            },
+            new UserActivity
+            {
+                UserId = viewer.Id,
+                GuildId = guild.Id,
+                DiscordMessageId = 2,
+                XpGained = 1,
+                InsertDate = DateTime.UtcNow
+            },
+            new UserActivity
+            {
+                UserId = runnerUp.Id,
+                GuildId = guild.Id,
+                DiscordMessageId = 3,
+                XpGained = int.MaxValue,
+                InsertDate = DateTime.UtcNow
+            });
+        await db.SaveChangesAsync();
+
+        ActivityLeaderboardService service = new(db);
+
+        ActivityLeaderboardQueryResult result = await service.GetGlobalPastXpLeaderboardAsync(
+            viewerUserId: viewer.Id,
+            days: 1,
+            page: 1);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Page);
+        Assert.StartsWith("[1] | viewer:", result.Page.Lines[0]);
+        Assert.EndsWith($"with {(long)int.MaxValue + 1} XP", result.Page.Lines[0]);
+        Assert.Equal("Your rank: #1", result.Page.RankLine);
+    }
+
+    [Fact]
     public async Task GetGuildXpLeaderboardAsync_OrdersTiesByUserIdAcrossPages()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
