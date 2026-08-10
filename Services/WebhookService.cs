@@ -66,8 +66,23 @@ public class WebhookService(DB db, DiscordSocketClient client, DiscordWebhookSer
         };
 
         db.Webhooks.Add(created);
-        await db.SaveChangesAsync();
-        return created;
+
+        try
+        {
+            await db.SaveChangesAsync();
+            return created;
+        }
+        catch (DbUpdateException)
+        {
+            // Another handler may have inserted the unique channel row between our read and insert.
+            // Clear the failed insert before reloading the winner from the database.
+            db.ChangeTracker.Clear();
+            Webhook? competing = await db.Webhooks.FirstOrDefaultAsync(w => w.ChannelDiscordId == channel.Id);
+            if (competing == null)
+                throw;
+
+            return competing;
+        }
     }
 
     private async Task<IWebhook?> TryReuseExistingWebhookAsync(ITextChannel channel)
