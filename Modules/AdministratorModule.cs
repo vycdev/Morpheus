@@ -1,11 +1,11 @@
-using System.Text;
-using Discord.Commands;
 using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Utilities;
+using System.Text;
 
 namespace Morpheus.Modules;
 
@@ -40,7 +40,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
         const int pageSize = 25;
         var logs = dbContext.Logs
             .OrderByDescending(l => l.InsertDate)
-            .Skip((page - 1) * pageSize)
+            .Skip(CalculateLogSkipCount(page, pageSize))
             .Take(pageSize)
             .ToList();
 
@@ -144,6 +144,15 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
         {
             await ReplyAsync($"Failed to send message: {ex.Message}");
         }
+    }
+
+    internal static int CalculateLogSkipCount(int page, int pageSize)
+    {
+        if (page <= 1)
+            return 0;
+
+        long skip = ((long)page - 1) * pageSize;
+        return (int)Math.Min(skip, int.MaxValue);
     }
 
     internal static bool TryParseOwnerId(string? value, out ulong ownerId)
