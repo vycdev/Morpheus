@@ -213,4 +213,80 @@ public class ActivityLeaderboardServiceTests
                 $"[{ActivityLeaderboardService.PageSize + index + 1}] | {user.Username}: Level 0 with 100 XP"),
             secondPage.Page.Lines);
     }
+
+    [Fact]
+    public async Task Leaderboards_RankTiesByTheSameUserIdOrderAsDisplayedRows()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        User firstUser = new() { DiscordId = 1, Username = "first" };
+        User secondUser = new() { DiscordId = 2, Username = "second" };
+        Guild guild = new() { DiscordId = 1, Name = "Test guild" };
+        db.AddRange(firstUser, secondUser, guild);
+        await db.SaveChangesAsync();
+
+        db.UserLevels.AddRange(
+            new UserLevels
+            {
+                UserId = firstUser.Id,
+                GuildId = guild.Id,
+                TotalXp = 100,
+                UserMessageCount = 1,
+                UserAverageMessageLength = 10
+            },
+            new UserLevels
+            {
+                UserId = secondUser.Id,
+                GuildId = guild.Id,
+                TotalXp = 100,
+                UserMessageCount = 1,
+                UserAverageMessageLength = 10
+            });
+        db.UserActivity.AddRange(
+            new UserActivity
+            {
+                UserId = firstUser.Id,
+                GuildId = guild.Id,
+                DiscordMessageId = 1,
+                XpGained = 10
+            },
+            new UserActivity
+            {
+                UserId = secondUser.Id,
+                GuildId = guild.Id,
+                DiscordMessageId = 2,
+                XpGained = 10
+            });
+        await db.SaveChangesAsync();
+
+        ActivityLeaderboardService service = new(db);
+        int viewerUserId = secondUser.Id;
+        ActivityLeaderboardQueryResult[] results =
+        [
+            await service.GetGuildXpLeaderboardAsync(guild.Id, guild.Name, viewerUserId, page: 1),
+            await service.GetGuildPastXpLeaderboardAsync(guild.Id, guild.Name, viewerUserId, days: 1, page: 1),
+            await service.GetGlobalXpLeaderboardAsync(viewerUserId, page: 1),
+            await service.GetGlobalPastXpLeaderboardAsync(viewerUserId, days: 1, page: 1),
+            await service.GetGuildMessageLeaderboardAsync(guild.Id, guild.Name, viewerUserId, page: 1),
+            await service.GetGuildPastMessageLeaderboardAsync(guild.Id, guild.Name, viewerUserId, days: 1, page: 1),
+            await service.GetGlobalMessageLeaderboardAsync(viewerUserId, page: 1),
+            await service.GetGlobalPastMessageLeaderboardAsync(viewerUserId, days: 1, page: 1),
+            await service.GetGuildAverageLengthLeaderboardAsync(guild.Id, guild.Name, viewerUserId, page: 1),
+            await service.GetGlobalAverageLengthLeaderboardAsync(viewerUserId, page: 1)
+        ];
+
+        Assert.All(results, result =>
+        {
+            Assert.True(result.Success);
+            Assert.NotNull(result.Page);
+            Assert.Equal("Your rank: #2", result.Page.RankLine);
+        });
+    }
 }
