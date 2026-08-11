@@ -45,7 +45,7 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
                 Guild? guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == interaction.GuildId);
                 string commandPrefix = guild?.Prefix ?? Env.Variables["BOT_DEFAULT_COMMAND_PREFIX"];
 
-                string selectedModule = messageComponent.Data.Values.First();
+                string? selectedModule = messageComponent.Data.Values.FirstOrDefault();
                 Embed embed = CreateModuleHelpEmbed(selectedModule, commandPrefix);
 
                 // Fetch the original message using message ID
@@ -58,10 +58,13 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
         }
     }
 
-    internal static bool TryParseHelpModuleName(string moduleName, out int page, out string moduleKey)
+    internal static bool TryParseHelpModuleName(string? moduleName, out int page, out string moduleKey)
     {
         page = 0;
         moduleKey = string.Empty;
+
+        if (string.IsNullOrEmpty(moduleName))
+            return false;
 
         int separatorIndex = moduleName.IndexOf('_');
         if (separatorIndex <= 0 || separatorIndex == moduleName.Length - 1)
@@ -74,20 +77,38 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
         return moduleKey.IndexOf('_') < 0;
     }
 
-    private Embed CreateModuleHelpEmbed(string moduleName, string commandPrefix)
+    internal static bool TryGetHelpPageBounds(int page, int visibleCommandCount, out int startIndex, out int endIndex)
     {
+        startIndex = 0;
+        endIndex = 0;
+
+        if (page < 1 || visibleCommandCount < 1)
+            return false;
+
+        long start = ((long)page - 1) * HelpPageSize;
+        if (start >= visibleCommandCount)
+            return false;
+
+        startIndex = (int)start;
+        endIndex = (int)Math.Min(start + HelpPageSize, visibleCommandCount);
+        return true;
+    }
+
+    private static Embed CreateInvalidHelpEmbed() => new EmbedBuilder()
+    {
+        Color = Colors.Blue,
+        Title = "Unable to load help",
+        Description = "The selected help page is invalid. Please run the help command again."
+    }.Build();
+
+    private Embed CreateModuleHelpEmbed(string? moduleName, string commandPrefix)
+    {
+        if (!TryParseHelpModuleName(moduleName, out int page, out string moduleKey))
+            return CreateInvalidHelpEmbed();
+
         if (helpModules.TryGetValue(commandPrefix + moduleName, out Embed? embed))
             return embed;
 
-        if (!TryParseHelpModuleName(moduleName, out int page, out string moduleKey))
-        {
-            return new EmbedBuilder()
-            {
-                Color = Colors.Blue,
-                Title = "Unable to load help",
-                Description = "The selected help page is invalid. Please run the help command again."
-            }.Build();
-        }
         string name = moduleKey.Replace("Module", "");
 
         EmbedBuilder builder = new()
@@ -101,34 +122,37 @@ public class HelpModule : ModuleBase<SocketCommandContextExtended>
             string.Equals(m.Name, moduleKey, StringComparison.OrdinalIgnoreCase)
             || string.Equals(m.Name, moduleKey + "Module", StringComparison.OrdinalIgnoreCase));
 
-        if (module != null)
+        if (module == null)
+            return CreateInvalidHelpEmbed();
+
+        var visibleCommands = module.Commands.Where(c => !c.Attributes.OfType<HiddenAttribute>().Any()).ToList();
+        if (!TryGetHelpPageBounds(page, visibleCommands.Count, out int startIndex, out int endIndex))
+            return CreateInvalidHelpEmbed();
+
+        for (int i = startIndex; i < endIndex; i++)
         {
-            var visibleCommands = module.Commands.Where(c => !c.Attributes.OfType<HiddenAttribute>().Any()).ToList();
-            for (int i = (page - 1) * HelpPageSize; i < page * HelpPageSize && i < visibleCommands.Count; i++)
+            CommandInfo cmd = visibleCommands[i];
+
+            string aliases = cmd.Aliases.Count > 1
+                ? $"Aliases: {string.Join(", ", cmd.Aliases.Skip(1).Select(a => commandPrefix + a))}"
+                : "No aliases available.";
+
+            string commandDescription = cmd.Summary ?? "No description available.";
+            if (commandDescription.Length > CommandDescriptionMaxLength)
             {
-                CommandInfo cmd = visibleCommands[i];
-
-                string aliases = cmd.Aliases.Count > 1
-                    ? $"Aliases: {string.Join(", ", cmd.Aliases.Skip(1).Select(a => commandPrefix + a))}"
-                    : "No aliases available.";
-
-                string commandDescription = cmd.Summary ?? "No description available.";
-                if (commandDescription.Length > CommandDescriptionMaxLength)
-                {
-                    commandDescription = commandDescription.Substring(0, CommandDescriptionMaxLength).TrimEnd() + "…";
-                }
-
-                string commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
-                    ? $"Usage: `{commandPrefix}{cmd.Aliases[0]} {string.Join(" ", cmd.Parameters.Select(p => $"[{p.Name}{(p.IsOptional ? "?" : "")}{(!string.IsNullOrEmpty(p.DefaultValue?.ToString()) ? " = " + p.DefaultValue.ToString() : "")}]"))}`"
-                    : $"Usage: `{commandPrefix}{cmd.Aliases[0]}`";
-
-                builder.AddField(x =>
-                {
-                    x.Name = cmd.Name;
-                    x.Value = $"{commandDescription}\n{commandUsage}\n{aliases}";
-                    x.IsInline = false;
-                });
+                commandDescription = commandDescription.Substring(0, CommandDescriptionMaxLength).TrimEnd() + "…";
             }
+
+            string commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
+                ? $"Usage: `{commandPrefix}{cmd.Aliases[0]} {string.Join(" ", cmd.Parameters.Select(p => $"[{p.Name}{(p.IsOptional ? "?" : "")}{(!string.IsNullOrEmpty(p.DefaultValue?.ToString()) ? " = " + p.DefaultValue.ToString() : "")}]"))}`"
+                : $"Usage: `{commandPrefix}{cmd.Aliases[0]}`";
+
+            builder.AddField(x =>
+            {
+                x.Name = cmd.Name;
+                x.Value = $"{commandDescription}\n{commandUsage}\n{aliases}";
+                x.IsInline = false;
+            });
         }
 
         embed = builder.Build();

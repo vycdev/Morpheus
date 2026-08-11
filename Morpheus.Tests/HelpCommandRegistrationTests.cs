@@ -28,6 +28,31 @@ public class HelpCommandRegistrationTests
     }
 
     [Fact]
+    public void TryParseHelpModuleName_RejectsAbsentSelection()
+    {
+        Assert.False(HelpModule.TryParseHelpModuleName(null, out _, out _));
+    }
+
+    [Theory]
+    [InlineData(1, 11, true, 0, 10)]
+    [InlineData(2, 11, true, 10, 11)]
+    [InlineData(3, 11, false, 0, 0)]
+    [InlineData(int.MaxValue, 11, false, 0, 0)]
+    public void TryGetHelpPageBounds_ValidatesActualPageRange(
+        int page,
+        int visibleCommandCount,
+        bool expectedResult,
+        int expectedStart,
+        int expectedEnd)
+    {
+        bool result = HelpModule.TryGetHelpPageBounds(page, visibleCommandCount, out int start, out int end);
+
+        Assert.Equal(expectedResult, result);
+        Assert.Equal(expectedStart, start);
+        Assert.Equal(expectedEnd, end);
+    }
+
+    [Fact]
     public void HelpCommand_AcceptsMultiWordCommandNames()
     {
         MethodInfo method = Assert.Single(
