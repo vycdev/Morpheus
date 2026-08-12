@@ -1,10 +1,17 @@
 using Morpheus.Database.Models;
 using Morpheus.Jobs;
+using Quartz;
 
 namespace Morpheus.Tests;
 
 public class RemindersJobTests
 {
+    [Fact]
+    public void Job_DisallowsConcurrentDeliveryRuns()
+    {
+        Assert.True(typeof(RemindersJob).IsDefined(typeof(DisallowConcurrentExecutionAttribute), inherit: false));
+    }
+
     [Fact]
     public async Task DeliverAsync_WhenDeliveryFails_RetainsReminderForRetry()
     {
