@@ -1,12 +1,13 @@
+using Discord;
 using Discord.Commands;
+using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database.Models;
 using Morpheus.Extensions;
-using Morpheus.Utilities;
-using Discord.WebSocket;
-using Morpheus.Services;
 using Morpheus.Handlers;
-using Discord;
+using Morpheus.Services;
+using Morpheus.Utilities;
+using System.Globalization;
 
 namespace Morpheus.Modules;
 
@@ -31,6 +32,21 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     }
 
     // Interaction handler for the approve button. Interaction custom id format: quote_approve:{approvalId}
+    internal static bool TryParseApprovalId(string? customId, out int approvalId)
+    {
+        approvalId = 0;
+        const string prefix = "quote_approve:";
+        if (string.IsNullOrEmpty(customId) || !customId.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        ReadOnlySpan<char> value = customId.AsSpan(prefix.Length);
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) || parsed <= 0)
+            return false;
+
+        approvalId = parsed;
+        return true;
+    }
+
     private async Task HandleQuoteApproveInteraction(SocketInteraction interaction)
     {
         if (interaction is not SocketMessageComponent comp)
@@ -54,13 +70,10 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
             }
         }
 
-        if (!custom.StartsWith("quote_approve:"))
-        {
+        if (!custom.StartsWith("quote_approve:", StringComparison.Ordinal))
             return;
-        }
 
-        var parts = custom.Split(':', 2);
-        if (parts.Length < 2 || !int.TryParse(parts[1], out var approvalId))
+        if (!TryParseApprovalId(custom, out int approvalId))
         {
             await SafeRespond("Invalid approval identifier.");
             return;

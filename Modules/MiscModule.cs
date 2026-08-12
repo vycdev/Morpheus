@@ -88,7 +88,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     {
         DateTime now = DateTime.UtcNow;
         DateTime eventDate;
-        switch (eventName.ToLower())
+        switch (NormalizeTimeUntilEventName(eventName))
         {
             case "new year":
             case "new years":
@@ -97,17 +97,17 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
                 break;
             case "christmas":
             case "xmas":
-                eventDate = new DateTime(now.Year, 12, 25);
+                eventDate = GetNextAnnualEventDate(now, 12, 25);
                 break;
             case "halloween":
             case "hw":
-                eventDate = new DateTime(now.Year, 10, 31);
+                eventDate = GetNextAnnualEventDate(now, 10, 31);
                 break;
             case "cc day":
             case "ccbday":
             case "cc bday":
             case "cc birthday":
-                eventDate = new DateTime(now.Year, 9, 2);
+                eventDate = GetNextAnnualEventDate(now, 9, 2);
                 break;
             default:
                 await ReplyAsync("Invalid event name.\nValid events are: `new year`, `xmas`, `halloween`, `cc bday`");
@@ -117,6 +117,14 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         string timeUntil = now.GetAccurateTimeSpan(eventDate);
         await ReplyAsync($"Time until {eventName}: {timeUntil}");
     }
+
+    internal static DateTime GetNextAnnualEventDate(DateTime now, int month, int day)
+    {
+        DateTime eventDate = new(now.Year, month, day, 0, 0, 0, now.Kind);
+        return eventDate < now ? eventDate.AddYears(1) : eventDate;
+    }
+
+    internal static string NormalizeTimeUntilEventName(string eventName) => eventName.Trim().ToLowerInvariant();
 
     [Name("Coin Flip")]
     [Summary("Flips a coin, or multiple coins.")]
@@ -171,14 +179,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task RollDice([Remainder] string input = "1d6")
     {
-        if (input.AsSpan().Count('d') != 1)
-        {
-            await ReplyAsync("Invalid input. Please provide input in the format of `xdy` where x is the number of dice and y is the number of sides.");
-            return;
-        }
-
-        string[] parts = input.Split('d');
-        if (parts.Length != 2 || !int.TryParse(parts[0], out int count) || !int.TryParse(parts[1], out int sides) || count < 1 || sides < 2)
+        if (!TryParseDiceInput(input, out int count, out int sides))
         {
             await ReplyAsync("Invalid input. Please provide input in the format of `xdy` where x is the number of dice and y is the number of sides.");
             return;
@@ -215,6 +216,22 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         await ReplyAsync(sb.ToString());
     }
 
+    internal static bool TryParseDiceInput(string input, out int count, out int sides)
+    {
+        ReadOnlySpan<char> inputSpan = input.AsSpan();
+        int separatorIndex = inputSpan.IndexOfAny('d', 'D');
+
+        count = 0;
+        sides = 0;
+
+        return separatorIndex >= 0
+            && inputSpan[(separatorIndex + 1)..].IndexOfAny('d', 'D') < 0
+            && int.TryParse(inputSpan[..separatorIndex], out count)
+            && int.TryParse(inputSpan[(separatorIndex + 1)..], out sides)
+            && count >= 1
+            && sides >= 2;
+    }
+
     [Name("Choose")]
     [Summary("Randomly chooses between multiple options.")]
     [Command("choose")]
@@ -222,7 +239,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task Choose([Remainder] string options)
     {
-        string[] parts = options.Split('\n');
+        string[] parts = ParseChoices(options);
         if (parts.Length < 2)
         {
             await ReplyAsync("Please provide at least two options, one on each line.");
@@ -230,8 +247,15 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         }
 
         Random random = new();
-        string choice = parts[random.Next(parts.Length)].Trim();
+        string choice = parts[random.Next(parts.Length)];
         await ReplyAsync($"Hmmm I choose: {choice}");
+    }
+
+    internal static string[] ParseChoices(string options)
+    {
+        return options.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     [Name("Random Number")]
@@ -241,12 +265,16 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task RandomNumber(int min, int max)
     {
-        if (min >= max)
+        int number = GenerateRandomNumber(min, max);
+        await ReplyAsync(number.ToString());
+    }
+
+    internal static int GenerateRandomNumber(int min, int max)
+    {
+        if (min > max)
             (min, max) = (max, min);
 
-        Random random = new();
-        int number = random.Next(min, max + 1);
-        await ReplyAsync(number.ToString());
+        return (int)Random.Shared.NextInt64(min, (long)max + 1);
     }
 
     [Name("8 Ball")]
@@ -321,7 +349,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         }
     }
 
-    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.ToLowerInvariant();
+    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.Trim().ToLowerInvariant();
 
     [Name("Info")]
     [Summary("Displays information about the bot.")]
@@ -330,8 +358,6 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [RateLimit(3, 10)]
     public async Task Info()
     {
-        ulong ownerId = ulong.Parse(Env.Variables["OWNER_ID"]);
-
         EmbedBuilder builder = new()
         {
             Color = Colors.Blue,
@@ -349,15 +375,16 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             -# Version: v{Utils.GetAssemblyVersion()}
             """,
             ThumbnailUrl = Context.Client.CurrentUser.GetAvatarUrl(),
-            Footer = new EmbedFooterBuilder()
-            {
-                Text = "Made with ❤️ by vycdev",
-                IconUrl = (await Context.Client.Rest.GetUserAsync(ownerId)).GetAvatarUrl()
-            }
+            Footer = BuildInfoFooter()
         };
 
         await ReplyAsync(embed: builder.Build());
     }
+
+    internal static EmbedFooterBuilder BuildInfoFooter() => new()
+    {
+        Text = "Made with ❤️ by vycdev"
+    };
 
     [Name("Uptime")]
     [Summary("Displays the bot's uptime.")]
@@ -508,14 +535,9 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [Command("udic")]
     [Alias("urbandictionary", "urbandic", "udictionary")]
     [RateLimit(5, 30)]
-    public async Task UrbanDictionary(string? word = null)
+    public async Task UrbanDictionary([Remainder] string? word = null)
     {
-        string url;
-
-        if (!string.IsNullOrWhiteSpace(word))
-            url = $"https://api.urbandictionary.com/v0/define?term={word}";
-        else
-            url = "https://api.urbandictionary.com/v0/random";
+        string url = BuildUrbanDictionaryUrl(word);
 
         HttpResponseMessage response = await httpClient.GetAsync(url);
 
@@ -555,6 +577,14 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             .WithFooter("Powered by Urban Dictionary");
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static string BuildUrbanDictionaryUrl(string? word)
+    {
+        if (string.IsNullOrWhiteSpace(word))
+            return "https://api.urbandictionary.com/v0/random";
+
+        return $"https://api.urbandictionary.com/v0/define?term={Uri.EscapeDataString(word)}";
     }
 
     [Name("Ping Minecraft Server")]
@@ -619,10 +649,9 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             .WithCurrentTimestamp();
 
         // Include image if the favicon exists
-        if (!string.IsNullOrEmpty(serverImageBase64))
+        if (TryDecodeMinecraftFavicon(serverImageBase64, out byte[] imageBytes))
         {
             embed.WithThumbnailUrl($"attachment://favicon.png"); // Point to an inline attachment URL
-            byte[] imageBytes = Convert.FromBase64String(serverImageBase64.Split(',')[1]); // Remove the data:image/png;base64, part
             MemoryStream stream = new(imageBytes);
             FileAttachment attachment = new(stream, "favicon.png");
 
@@ -644,6 +673,32 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
                 msg.Content = string.Empty;
                 msg.Embed = finalEmbed;
             });
+        }
+    }
+
+    internal static bool TryDecodeMinecraftFavicon(string? favicon, out byte[] imageBytes)
+    {
+        imageBytes = [];
+        if (string.IsNullOrWhiteSpace(favicon))
+            return false;
+
+        const string base64Marker = ";base64,";
+        int markerIndex = favicon.IndexOf(base64Marker, StringComparison.OrdinalIgnoreCase);
+        if (favicon.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && markerIndex < 0)
+            return false;
+
+        string encodedImage = markerIndex >= 0
+            ? favicon[(markerIndex + base64Marker.Length)..]
+            : favicon;
+
+        try
+        {
+            imageBytes = Convert.FromBase64String(encodedImage);
+            return imageBytes.Length > 0;
+        }
+        catch (FormatException)
+        {
+            return false;
         }
     }
 
@@ -688,7 +743,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [Alias("lovecompatibility", "lovecalc", "lovecouple")]
     [RequireContext(ContextType.Guild)]
     [RateLimit(3, 10)]
-    public async Task LoveCompatibility(SocketGuildUser user1, SocketGuildUser? user2)
+    public async Task LoveCompatibility(SocketGuildUser user1, SocketGuildUser? user2 = null)
     {
         user2 ??= Context.User as SocketGuildUser;
         if (user2 == null)

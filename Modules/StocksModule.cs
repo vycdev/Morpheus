@@ -9,6 +9,7 @@ using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Services;
 using Morpheus.Utilities;
+using System.Globalization;
 using System.Text;
 
 namespace Morpheus.Modules;
@@ -17,6 +18,12 @@ namespace Morpheus.Modules;
 [Summary("Pseudo stock market — invest in users, guilds, and channels.")]
 public class StocksModule(DB dbContext, StocksService stocksService, ChannelService channelService, UsersService usersService) : ModuleBase<SocketCommandContextExtended>
 {
+    internal static bool TryParseShareAmount(string value, out decimal amount)
+    {
+        const NumberStyles styles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign;
+        return decimal.TryParse(value, styles, CultureInfo.InvariantCulture, out amount) && amount > 0;
+    }
+
     #region Target Resolution
 
     /// <summary>
@@ -116,7 +123,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
         decimal? sharesToSell = null;
         if (amountStr.ToLower() != "all")
         {
-            if (!decimal.TryParse(amountStr, out decimal parsed) || parsed <= 0)
+            if (!TryParseShareAmount(amountStr, out decimal parsed))
             {
                 await ReplyAsync("Invalid amount. Use a positive number or `all`.");
                 return;
@@ -158,17 +165,14 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
 
         User? receiver = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == targetUser.Id);
         if (receiver == null)
-        {
-            if (targetUser is SocketUser socketTarget)
-                receiver = await usersService.TryGetCreateUser(socketTarget);
-        }
+            receiver = await usersService.TryGetCreateUser(targetUser);
 
         if (receiver == null) { await ReplyAsync("Recipient not found."); return; }
 
         decimal? sharesToTransfer = null;
         if (amountStr.ToLower() != "all")
         {
-            if (!decimal.TryParse(amountStr, out decimal parsed) || parsed <= 0)
+            if (!TryParseShareAmount(amountStr, out decimal parsed))
             {
                 await ReplyAsync("Invalid amount. Use a positive number or `all`.");
                 return;
@@ -764,11 +768,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
 
         User? receiver = await dbContext.Users.FirstOrDefaultAsync(u => u.DiscordId == targetUser.Id);
         if (receiver == null)
-        {
-            // Auto-create the receiver if they exist on Discord
-            if (targetUser is SocketUser socketTarget)
-                receiver = await usersService.TryGetCreateUser(socketTarget);
-        }
+            receiver = await usersService.TryGetCreateUser(targetUser);
 
         if (receiver == null) { await ReplyAsync("Recipient not found."); return; }
 

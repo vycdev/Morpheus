@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using Discord;
 
@@ -24,7 +25,7 @@ public class RssFeedService(LogsService logsService)
 
     /// <summary>
     /// Fetches a feed and returns its title + icon (if any) plus the parsed entries. Returns
-    /// (null, null, empty) on any error, and null title when the feed has no title element.
+    /// (null, null, empty) on errors other than caller cancellation, and null title when the feed has no title element.
     /// </summary>
     public async Task<(string? FeedTitle, string? FeedImageUrl, IReadOnlyList<FeedEntry> Entries)> FetchAsync(string feedUrl, CancellationToken ct = default)
     {
@@ -35,7 +36,7 @@ public class RssFeedService(LogsService logsService)
 
             List<FeedEntry> entries = [];
 
-            // Atom (<entry>) first, then RSS 2.0 (<item>).
+            // Atom (<entry>) first, then RSS (<item>), including namespaced RSS 1.0 feeds.
             List<XElement> atomEntries = doc.Descendants(Atom + "entry").ToList();
             if (atomEntries.Count > 0)
             {
@@ -47,7 +48,7 @@ public class RssFeedService(LogsService logsService)
                     string id = e.Element(Atom + "id")?.Value ?? link;
                     string title = e.Element(Atom + "title")?.Value ?? string.Empty;
                     string pubRaw = e.Element(Atom + "published")?.Value ?? e.Element(Atom + "updated")?.Value ?? string.Empty;
-                    DateTime.TryParse(pubRaw, out DateTime published);
+                    DateTime published = ParsePublished(pubRaw);
 
                     if (!string.IsNullOrWhiteSpace(id))
                         entries.Add(new FeedEntry(id, title, link, published));
@@ -55,19 +56,7 @@ public class RssFeedService(LogsService logsService)
             }
             else
             {
-                foreach (XElement it in doc.Descendants().Where(x => x.Name.LocalName == "item"))
-                {
-                    string link = it.Element("link")?.Value
-                                  ?? it.Elements("link").FirstOrDefault()?.Attribute("href")?.Value
-                                  ?? string.Empty;
-                    string id = it.Element("guid")?.Value ?? it.Element("id")?.Value ?? link;
-                    string title = it.Element("title")?.Value ?? string.Empty;
-                    string pubRaw = it.Element("pubDate")?.Value ?? it.Element("published")?.Value ?? string.Empty;
-                    DateTime.TryParse(pubRaw, out DateTime published);
-
-                    if (!string.IsNullOrWhiteSpace(id))
-                        entries.Add(new FeedEntry(id, title, link, published));
-                }
+                entries.AddRange(ParseRssEntries(doc));
             }
 
             XElement? channel = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "channel");
@@ -85,10 +74,53 @@ public class RssFeedService(LogsService logsService)
                 string.IsNullOrWhiteSpace(feedImage) ? null : feedImage.Trim(),
                 entries);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logsService.Log($"Failed to fetch RSS feed {feedUrl}: {ex.Message}", LogSeverity.Warning);
             return (null, null, []);
         }
     }
+
+    internal static IReadOnlyList<FeedEntry> ParseRssEntries(XDocument doc)
+    {
+        List<FeedEntry> entries = [];
+
+        foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
+        {
+            XElement? linkElement = ChildByLocalName(item, "link");
+            string link = linkElement?.Value
+                          ?? linkElement?.Attribute("href")?.Value
+                          ?? string.Empty;
+            string id = ChildByLocalName(item, "guid")?.Value
+                        ?? ChildByLocalName(item, "id")?.Value
+                        ?? link;
+            string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
+            string pubRaw = ChildByLocalName(item, "pubDate")?.Value
+                            ?? ChildByLocalName(item, "published")?.Value
+                            ?? ChildByLocalName(item, "date")?.Value
+                            ?? string.Empty;
+            DateTime published = ParsePublished(pubRaw);
+
+            if (!string.IsNullOrWhiteSpace(id))
+                entries.Add(new FeedEntry(id, title, link, published));
+        }
+
+        return entries;
+    }
+
+    private static XElement? ChildByLocalName(XElement parent, string localName) =>
+        parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName);
+
+    internal static DateTime ParsePublished(string value) =>
+        DateTime.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out DateTime published)
+            ? published
+            : DateTime.MinValue;
 }

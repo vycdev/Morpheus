@@ -18,7 +18,8 @@ public class ActivityLeaderboardService(DB dbContext)
         IQueryable<UserLevels> query = dbContext.UserLevels
             .AsNoTracking()
             .Where(ul => ul.GuildId == guildId)
-            .OrderByDescending(ul => ul.TotalXp);
+            .OrderByDescending(ul => ul.TotalXp)
+            .ThenBy(ul => ul.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No level data found for this guild.");
@@ -52,8 +53,9 @@ public class ActivityLeaderboardService(DB dbContext)
 
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { UserId = g.Key, Value = (long)g.Sum(x => x.XpGained) })
-            .OrderByDescending(x => x.Value);
+            .Select(g => new { UserId = g.Key, Value = g.Sum(x => (long)x.XpGained) })
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No activity data found for the past {days} days.");
@@ -78,7 +80,8 @@ public class ActivityLeaderboardService(DB dbContext)
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
             .Select(g => new { UserId = g.Key, Value = (long)g.Sum(ul => ul.TotalXp) })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No level data found globally.");
@@ -109,8 +112,9 @@ public class ActivityLeaderboardService(DB dbContext)
 
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { UserId = g.Key, Value = (long)g.Sum(x => x.XpGained) })
-            .OrderByDescending(x => x.Value);
+            .Select(g => new { UserId = g.Key, Value = g.Sum(x => (long)x.XpGained) })
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No activity data found globally for the past {days} days.");
@@ -138,7 +142,8 @@ public class ActivityLeaderboardService(DB dbContext)
         IQueryable<UserLevels> query = dbContext.UserLevels
             .AsNoTracking()
             .Where(ul => ul.GuildId == guildId && ul.UserMessageCount > 0)
-            .OrderByDescending(ul => ul.UserMessageCount);
+            .OrderByDescending(ul => ul.UserMessageCount)
+            .ThenBy(ul => ul.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found for this guild.");
@@ -173,7 +178,8 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Value = g.Count() })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No message data found for the past {days} days.");
@@ -197,8 +203,10 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = dbContext.UserLevels
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
-            .Select(g => new { UserId = g.Key, Value = g.Sum(ul => ul.UserMessageCount) })
-            .OrderByDescending(x => x.Value);
+            .Select(g => new { UserId = g.Key, Value = g.Sum(ul => (long)ul.UserMessageCount) })
+            .Where(x => x.Value > 0)
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found globally.");
@@ -230,7 +238,8 @@ public class ActivityLeaderboardService(DB dbContext)
         var query = baseQuery
             .GroupBy(ua => ua.UserId)
             .Select(g => new { UserId = g.Key, Value = g.Count() })
-            .OrderByDescending(x => x.Value);
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, $"No message data found globally for the past {days} days.");
@@ -258,7 +267,8 @@ public class ActivityLeaderboardService(DB dbContext)
         IQueryable<UserLevels> query = dbContext.UserLevels
             .AsNoTracking()
             .Where(ul => ul.GuildId == guildId && ul.UserMessageCount > 0)
-            .OrderByDescending(ul => ul.UserAverageMessageLength);
+            .OrderByDescending(ul => ul.UserAverageMessageLength)
+            .ThenBy(ul => ul.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found for this guild.");
@@ -300,7 +310,8 @@ public class ActivityLeaderboardService(DB dbContext)
             })
             .Where(x => x.SumCount > 0)
             .Select(x => new { x.UserId, AverageLength = x.SumLen / x.SumCount })
-            .OrderByDescending(x => x.AverageLength);
+            .OrderByDescending(x => x.AverageLength)
+            .ThenBy(x => x.UserId);
 
         int totalUsers = await query.CountAsync();
         ActivityLeaderboardQueryResult? invalidPage = ValidatePage(page, totalUsers, "No message data found globally.");
@@ -377,7 +388,7 @@ public class ActivityLeaderboardService(DB dbContext)
         return $"[{GetRankNumber(page, index)}] | {name}: Level {ActivityLevelService.CalculateLevel(xp)} with {xp} XP";
     }
 
-    private static string FormatMessageLine(int userId, IReadOnlyDictionary<int, string> names, int count, int page, int index)
+    private static string FormatMessageLine(int userId, IReadOnlyDictionary<int, string> names, long count, int page, int index)
     {
         string name = names.TryGetValue(userId, out string? username) ? username : userId.ToString();
         return $"[{GetRankNumber(page, index)}] | {name}: Messages {count}";
@@ -412,7 +423,10 @@ public class ActivityLeaderboardService(DB dbContext)
 
         int better = await dbContext.UserLevels
             .AsNoTracking()
-            .Where(ul => ul.GuildId == guildId && ul.TotalXp > userLevel.TotalXp)
+            .Where(ul =>
+                ul.GuildId == guildId &&
+                (ul.TotalXp > userLevel.TotalXp ||
+                 (ul.TotalXp == userLevel.TotalXp && ul.UserId < viewerUserId.Value)))
             .CountAsync();
 
         return $"Your rank: #{better + 1}";
@@ -436,8 +450,10 @@ public class ActivityLeaderboardService(DB dbContext)
         int better = await dbContext.UserLevels
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
-            .Select(g => new { Total = g.Sum(ul => ul.TotalXp) })
-            .CountAsync(x => x.Total > myTotal);
+            .Select(g => new { UserId = g.Key, Total = g.Sum(ul => ul.TotalXp) })
+            .CountAsync(x =>
+                x.Total > myTotal ||
+                (x.Total == myTotal && x.UserId < viewerUserId.Value));
 
         return $"Your rank: #{better + 1}";
     }
@@ -451,11 +467,15 @@ public class ActivityLeaderboardService(DB dbContext)
         if (!hasUser)
             return "Your rank: N/A";
 
-        int mySum = await baseQuery.Where(ua => ua.UserId == viewerUserId.Value).SumAsync(ua => ua.XpGained);
+        long mySum = await baseQuery
+            .Where(ua => ua.UserId == viewerUserId.Value)
+            .SumAsync(ua => (long)ua.XpGained);
         int better = await baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { Sum = g.Sum(ua => ua.XpGained) })
-            .CountAsync(x => x.Sum > mySum);
+            .Select(g => new { UserId = g.Key, Sum = g.Sum(ua => (long)ua.XpGained) })
+            .CountAsync(x =>
+                x.Sum > mySum ||
+                (x.Sum == mySum && x.UserId < viewerUserId.Value));
 
         return $"Your rank: #{better + 1}";
     }
@@ -474,7 +494,10 @@ public class ActivityLeaderboardService(DB dbContext)
 
         int better = await dbContext.UserLevels
             .AsNoTracking()
-            .Where(ul => ul.GuildId == guildId && ul.UserMessageCount > userLevel.UserMessageCount)
+            .Where(ul =>
+                ul.GuildId == guildId &&
+                (ul.UserMessageCount > userLevel.UserMessageCount ||
+                 (ul.UserMessageCount == userLevel.UserMessageCount && ul.UserId < viewerUserId.Value)))
             .CountAsync();
 
         return $"Your rank: #{better + 1}";
@@ -498,8 +521,10 @@ public class ActivityLeaderboardService(DB dbContext)
         int better = await dbContext.UserLevels
             .AsNoTracking()
             .GroupBy(ul => ul.UserId)
-            .Select(g => new { Count = g.Sum(ul => ul.UserMessageCount) })
-            .CountAsync(x => x.Count > myCount);
+            .Select(g => new { UserId = g.Key, Count = g.Sum(ul => (long)ul.UserMessageCount) })
+            .CountAsync(x =>
+                x.Count > myCount ||
+                (x.Count == myCount && x.UserId < viewerUserId.Value));
 
         return $"Your rank: #{better + 1}";
     }
@@ -516,8 +541,10 @@ public class ActivityLeaderboardService(DB dbContext)
         int myCount = await baseQuery.CountAsync(ua => ua.UserId == viewerUserId.Value);
         int better = await baseQuery
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { Count = g.Count() })
-            .CountAsync(x => x.Count > myCount);
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .CountAsync(x =>
+                x.Count > myCount ||
+                (x.Count == myCount && x.UserId < viewerUserId.Value));
 
         return $"Your rank: #{better + 1}";
     }
@@ -539,7 +566,9 @@ public class ActivityLeaderboardService(DB dbContext)
             .Where(ul =>
                 ul.GuildId == guildId &&
                 ul.UserMessageCount > 0 &&
-                ul.UserAverageMessageLength > userLevel.UserAverageMessageLength)
+                (ul.UserAverageMessageLength > userLevel.UserAverageMessageLength ||
+                 (ul.UserAverageMessageLength == userLevel.UserAverageMessageLength &&
+                  ul.UserId < viewerUserId.Value)))
             .CountAsync();
 
         return $"Your rank: #{better + 1}";
@@ -570,11 +599,14 @@ public class ActivityLeaderboardService(DB dbContext)
             .GroupBy(ul => ul.UserId)
             .Select(g => new
             {
+                UserId = g.Key,
                 SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
                 SumCount = g.Sum(ul => ul.UserMessageCount)
             })
             .Where(x => x.SumCount > 0)
-            .CountAsync(x => (x.SumLen / x.SumCount) > myAverage);
+            .CountAsync(x =>
+                (x.SumLen / x.SumCount) > myAverage ||
+                ((x.SumLen / x.SumCount) == myAverage && x.UserId < viewerUserId.Value));
 
         return $"Your rank: #{better + 1}";
     }

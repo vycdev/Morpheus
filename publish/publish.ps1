@@ -66,34 +66,23 @@ $registry = Get-RequiredValue "REGISTRY" $REGISTRY
 $username = Get-RequiredValue "USERNAME" $USERNAME
 $password = Get-RequiredValue "PASSWORD" $PASSWORD
 $imageName = Get-RequiredValue "IMAGE_NAME" $IMAGE_NAME
-$dashboardImageName = if ([string]::IsNullOrWhiteSpace($DASHBOARD_IMAGE_NAME)) { "$($imageName)-dashboard" } else { $DASHBOARD_IMAGE_NAME.Trim() }
 $tag = Get-RequiredValue "IMAGE_TAG" $IMAGE_TAG
-$apiDockerfile = Join-Path $repoRoot "Dockerfile"
-$dashboardContext = Join-Path $repoRoot "DashboardWeb"
-$dashboardDockerfile = Join-Path $dashboardContext "Dockerfile"
+$dockerfile = Join-Path $repoRoot "Dockerfile"
 
 # Echo variables
 echo "Registry: $($registry)"
 echo "Username: $($username)"
-echo "API Image Name: $($imageName)"
-echo "Dashboard Image Name: $($dashboardImageName)"
+echo "Image Name: $($imageName)"
 echo "Tag: $($tag)"
 
 # Login to the Docker registry
 $password | docker login $registry -u $username --password-stdin
 Assert-DockerSucceeded "Docker login"
 
-# Build and publish both runtime images
+# Build and publish the runtime image
 Publish-DockerImage `
     -Registry $registry `
     -ImageName $imageName `
     -Tag $tag `
     -ContextPath $repoRoot `
-    -DockerfilePath $apiDockerfile
-
-Publish-DockerImage `
-    -Registry $registry `
-    -ImageName $dashboardImageName `
-    -Tag $tag `
-    -ContextPath $dashboardContext `
-    -DockerfilePath $dashboardDockerfile
+    -DockerfilePath $dockerfile

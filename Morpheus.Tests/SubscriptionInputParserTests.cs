@@ -24,6 +24,17 @@ public class SubscriptionInputParserTests
     }
 
     [Fact]
+    public void ParseSources_PreservesDistinctCaseSensitiveYoutubeChannelIds()
+    {
+        SubscriptionInputParser.SourceList parsed = SubscriptionInputParser.ParseSources(
+            "UCaaaaaaaaaaaaaaaaaaaaaa UCaaaaaaaaaaaaaaaaaaaaaA");
+
+        Assert.Equal(
+            ["UCaaaaaaaaaaaaaaaaaaaaaa", "UCaaaaaaaaaaaaaaaaaaaaaA"],
+            parsed.Sources);
+    }
+
+    [Fact]
     public void ParseRssSources_PreservesLegacySingleFeedDisplayName()
     {
         IReadOnlyList<SubscriptionInputParser.RssSource> parsed =
@@ -42,6 +53,54 @@ public class SubscriptionInputParserTests
 
         Assert.Equal(2, parsed.Count);
         Assert.All(parsed, source => Assert.Null(source.DisplayName));
+    }
+
+    [Theory]
+    [InlineData("https://example.com/feed.xml?tags=release,stable", null)]
+    [InlineData("https://example.com/feed.xml?tags=release,stable Example feed", "Example feed")]
+    public void ParseRssSources_PreservesQueryCommasForSingleFeed(string input, string? expectedDisplayName)
+    {
+        SubscriptionInputParser.RssSource parsed = Assert.Single(SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal("https://example.com/feed.xml?tags=release,stable", parsed.Url);
+        Assert.Equal(expectedDisplayName, parsed.DisplayName);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/feed.xml?tags=release,stable")]
+    [InlineData("https://example.com/feed.xml?tags=release,stable Example feed")]
+    public void ParseRssSources_PreservesQueryCommasInMultilineInput(string firstSource)
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            $"{firstSource}\nhttps://example.org/atom.xml");
+
+        Assert.Equal(
+            ["https://example.com/feed.xml?tags=release,stable", "https://example.org/atom.xml"],
+            parsed.Select(source => source.Url));
+    }
+
+    [Fact]
+    public void ParseRssSources_PreservesQueryCommasInSpaceSeparatedUrls()
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            "https://example.com/feed.xml?tags=release,stable https://example.org/atom.xml");
+
+        Assert.Equal(
+            ["https://example.com/feed.xml?tags=release,stable", "https://example.org/atom.xml"],
+            parsed.Select(source => source.Url));
+    }
+
+    [Theory]
+    [InlineData("https://example.com/feed.xml,https://example.org/atom.xml")]
+    [InlineData("https://example.com/feed.xml , https://example.org/atom.xml")]
+    [InlineData("https://example.com/feed.xml;https://example.org/atom.xml")]
+    public void ParseRssSources_AcceptsPunctuationSeparatedUrls(string input)
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(input);
+
+        Assert.Equal(
+            ["https://example.com/feed.xml", "https://example.org/atom.xml"],
+            parsed.Select(source => source.Url));
     }
 
     [Fact]
@@ -85,5 +144,36 @@ public class SubscriptionInputParserTests
         Assert.Equal(
             ["https://example.com/Feed.xml", "https://example.com/feed.xml"],
             parsed.Select(source => source.Url));
+    }
+
+    [Theory]
+    [InlineData("https://example.com/feed.xml#news https://example.com/feed.xml#releases")]
+    [InlineData("https://example.com/feed.xml#news\nhttps://example.com/feed.xml#releases")]
+    public void ParseRssSources_IgnoresFragmentsWhenDeduplicating(string input)
+    {
+        SubscriptionInputParser.RssSource source = Assert.Single(SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal("https://example.com/feed.xml", source.Url);
+    }
+
+    [Fact]
+    public void ParseRssSources_PreservesQueryWhenRemovingFragments()
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            "https://example.com/feed.xml?category=news#top\nhttps://example.com/feed.xml?category=releases#top");
+
+        Assert.Equal(
+            ["https://example.com/feed.xml?category=news", "https://example.com/feed.xml?category=releases"],
+            parsed.Select(source => source.Url));
+    }
+
+    [Fact]
+    public void ParseRssSources_RemovesFragmentFromSingleFeedWithDisplayName()
+    {
+        SubscriptionInputParser.RssSource source = Assert.Single(
+            SubscriptionInputParser.ParseRssSources("https://example.com/feed.xml#news Example feed"));
+
+        Assert.Equal("https://example.com/feed.xml", source.Url);
+        Assert.Equal("Example feed", source.DisplayName);
     }
 }

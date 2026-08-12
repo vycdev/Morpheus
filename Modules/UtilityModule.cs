@@ -13,6 +13,17 @@ namespace Morpheus.Modules;
 public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     private static readonly HttpClient httpClient = new();
+    private const string ReminderDurationTokenPatternText =
+        "(\\d+)\\s*(years?|yrs?|y|months?|mos?|mo|weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b";
+    private static readonly Regex ReminderDurationTokenPattern = new(
+        ReminderDurationTokenPatternText,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex ReminderDurationSequencePattern = new(
+        $"^\\s*{ReminderDurationTokenPatternText}(?:\\s*(?:(?:,\\s*)?and|[,;])?\\s*{ReminderDurationTokenPatternText})*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex LeadingReminderSeparatorPattern = new(
+        "^[,;:\\-]\\s*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     // DB is provided by primary-constructor style parameter
     // (accessible as 'dbContext' directly)
 
@@ -44,7 +55,8 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         }
 
         // Get the message the user replied to
-        if (await Context.Channel.GetMessageAsync(Context.Message.ReferencedMessage.Id) is not IUserMessage message)
+        if (!TryGetReferencedMessageId(Context.Message.ReferencedMessage?.Id, out ulong referencedMessageId) ||
+            await Context.Channel.GetMessageAsync(referencedMessageId) is not IUserMessage message)
         {
             await ReplyAsync("Couldn't find the message you want to pin.");
             return;
@@ -53,7 +65,7 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         // Make an embed of the message details
         EmbedBuilder embed = new()
         {
-            Title = $"Pin in `#{message.Channel.Name}` by {Context.Message.Author.Username}",
+            Title = FormatPinTitle(message.Channel.Name, message.Author.Username),
             Url = message.GetJumpUrl(),
             Author = new EmbedAuthorBuilder()
             {
@@ -78,8 +90,17 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         return;
     }
 
+    internal static bool TryGetReferencedMessageId(ulong? referencedMessageId, out ulong messageId)
+    {
+        messageId = referencedMessageId.GetValueOrDefault();
+        return referencedMessageId.HasValue;
+    }
+
+    internal static string FormatPinTitle(string channelName, string authorUsername) =>
+        $"Pin in `#{channelName}` by {authorUsername}";
+
     [Name("Reminder")]
-    [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 5 seconds, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: reminder 5 days and 3 hours @User Take a break. Reminders are executed once a minute.")]
+    [Summary("Sets a reminder using a duration specification (e.g. '5 days and 3 hours'). Minimum 1 minute, maximum 100 years. Usage: reminder <duration> [@user] [text...]. Example: reminder 5 days and 3 hours @User Take a break. Reminders are executed once a minute.")]
     [Command("reminder")]
     [Alias("settimer", "remindme")]
     [RateLimit(3, 10)]
@@ -94,49 +115,10 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
 
         // No separate ping field — users can include mentions in the reminder text if desired.
 
-        // Find all number+unit tokens
-        var tokenPattern = new Regex("(\\d+)\\s*(years?|yrs?|y|months?|mos?|mo|weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\\b", RegexOptions.IgnoreCase);
-        var matches = tokenPattern.Matches(input);
-
-        if (matches.Count == 0)
+        if (!TryParseReminderDuration(input, out double totalSeconds))
         {
             await ReplyAsync("Could not parse a duration. Examples: `5 days`, `3 hours and 30 minutes`, `7 weeks 2 minutes`. Supported units: seconds, minutes, hours, days, weeks, months, years.");
             return;
-        }
-
-        // Sum timespan
-        double totalSeconds = 0;
-        foreach (Match m in matches)
-        {
-            if (!long.TryParse(m.Groups[1].Value, out var number)) continue;
-            string unit = m.Groups[2].Value.ToLowerInvariant();
-
-            switch (unit)
-            {
-                case var u when u.StartsWith("y") || u.StartsWith("yr"):
-                    totalSeconds += (double)number * 365 * 24 * 3600; // years -> 365 days
-                    break;
-                case var u when u.StartsWith("mo"):
-                    totalSeconds += (double)number * 30 * 24 * 3600; // months -> 30 days
-                    break;
-                case var u when u.StartsWith("w"):
-                    totalSeconds += (double)number * 7 * 24 * 3600;
-                    break;
-                case var u when u.StartsWith("d"):
-                    totalSeconds += (double)number * 24 * 3600;
-                    break;
-                case var u when u.StartsWith("h"):
-                    totalSeconds += (double)number * 3600;
-                    break;
-                case var u when u.StartsWith("m") && (u == "m" || u.StartsWith("min") || u.StartsWith("mins")):
-                    totalSeconds += (double)number * 60;
-                    break;
-                case var u when u.StartsWith("s"):
-                    totalSeconds += (double)number;
-                    break;
-                default:
-                    break;
-            }
         }
 
         if (totalSeconds <= 0)
@@ -170,10 +152,8 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         }
 
         // Remove the duration tokens from input to get optional text
-        input = tokenPattern.Replace(input, "").Trim();
-
-        // After removing tokens and mention, remaining text is the reminder text
-        string? text = string.IsNullOrWhiteSpace(input) ? null : input.Trim();
+        // After removing duration tokens and their leading separators, the remainder is the reminder text.
+        string? text = ExtractReminderText(input);
 
         // Require some text for the reminder
         if (string.IsNullOrWhiteSpace(text))
@@ -199,6 +179,60 @@ public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtend
         await dbContext.SaveChangesAsync();
 
         await ReplyAsync($"Reminder scheduled for {due:yyyy-MM-dd HH:mm:ss} UTC.");
+    }
+
+    internal static bool TryParseReminderDuration(string input, out double totalSeconds)
+    {
+        Match durationSequence = ReminderDurationSequencePattern.Match(input);
+        totalSeconds = 0;
+
+        if (!durationSequence.Success)
+            return false;
+
+        foreach (Match match in ReminderDurationTokenPattern.Matches(durationSequence.Value))
+        {
+            if (!long.TryParse(match.Groups[1].Value, out long number))
+                continue;
+
+            string unit = match.Groups[2].Value.ToLowerInvariant();
+
+            switch (unit)
+            {
+                case var u when u.StartsWith("y") || u.StartsWith("yr"):
+                    totalSeconds += (double)number * 365 * 24 * 3600; // years -> 365 days
+                    break;
+                case var u when u.StartsWith("mo"):
+                    totalSeconds += (double)number * 30 * 24 * 3600; // months -> 30 days
+                    break;
+                case var u when u.StartsWith("w"):
+                    totalSeconds += (double)number * 7 * 24 * 3600;
+                    break;
+                case var u when u.StartsWith("d"):
+                    totalSeconds += (double)number * 24 * 3600;
+                    break;
+                case var u when u.StartsWith("h"):
+                    totalSeconds += (double)number * 3600;
+                    break;
+                case var u when u.StartsWith("m") && (u == "m" || u.StartsWith("min") || u.StartsWith("mins")):
+                    totalSeconds += (double)number * 60;
+                    break;
+                case var u when u.StartsWith("s"):
+                    totalSeconds += (double)number;
+                    break;
+            }
+        }
+
+        return true;
+    }
+
+    internal static string? ExtractReminderText(string input)
+    {
+        string text = ReminderDurationSequencePattern.Replace(input, "", 1).Trim();
+
+        while (LeadingReminderSeparatorPattern.IsMatch(text))
+            text = LeadingReminderSeparatorPattern.Replace(text, "").TrimStart();
+
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
 }

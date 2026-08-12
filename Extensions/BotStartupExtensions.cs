@@ -95,7 +95,7 @@ public static class BotStartupExtensions
             q.ScheduleJob<BotAvatarJob>(trigger => trigger
                 .WithIdentity("botAvatarDaily", "discord")
                 .StartNow()
-                .WithCronSchedule("0 0 0 * * ?")
+                .WithCronSchedule("0 0 0 * * ?", schedule => schedule.InTimeZone(TimeZoneInfo.Utc))
             );
 
             q.ScheduleJob<TemporaryBansJob>(trigger => trigger
@@ -107,19 +107,19 @@ public static class BotStartupExtensions
             q.ScheduleJob<HoneypotRenameJob>(trigger => trigger
                 .WithIdentity("honeypotRenameDaily", "discord")
                 .StartNow()
-                .WithCronSchedule("0 5 0 * * ?")
+                .WithCronSchedule("0 5 0 * * ?", schedule => schedule.InTimeZone(TimeZoneInfo.Utc))
             );
 
             q.ScheduleJob<UbiJob>(trigger => trigger
                 .WithIdentity("ubiDistribution", "discord")
                 .StartNow()
-                .WithCronSchedule("0 0 0 * * ?")
+                .WithCronSchedule("0 0 0 * * ?", schedule => schedule.InTimeZone(TimeZoneInfo.Utc))
             );
 
             q.ScheduleJob<WealthTaxJob>(trigger => trigger
                 .WithIdentity("wealthTax", "discord")
                 .StartNow()
-                .WithCronSchedule("0 30 23 * * ?")
+                .WithCronSchedule("0 30 23 * * ?", schedule => schedule.InTimeZone(TimeZoneInfo.Utc))
             );
 
             q.ScheduleJob<StockUpdateJob>(trigger => trigger

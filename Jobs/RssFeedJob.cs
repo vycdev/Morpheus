@@ -17,9 +17,10 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
 {
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         List<RssSubscription> subscriptions = await db.RssSubscriptions
             .Include(s => s.Webhook)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (subscriptions.Count == 0)
             return;
@@ -28,10 +29,11 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
 
         foreach (IGrouping<string, RssSubscription> group in subscriptions.GroupBy(s => s.FeedUrl))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string feedUrl = group.Key;
             List<RssSubscription> subs = group.ToList();
 
-            (string? _, string? _, IReadOnlyList<RssFeedService.FeedEntry> entries) = await rssFeed.FetchAsync(feedUrl);
+            (string? _, string? _, IReadOnlyList<RssFeedService.FeedEntry> entries) = await rssFeed.FetchAsync(feedUrl, cancellationToken);
             if (entries.Count == 0)
                 continue;
 
@@ -39,16 +41,19 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
             HashSet<string> seen = (await db.RssSeenEntries
                     .Where(v => v.FeedUrl == feedUrl && entryIds.Contains(v.EntryId))
                     .Select(v => v.EntryId)
-                    .ToListAsync())
+                    .ToListAsync(cancellationToken))
                 .ToHashSet();
 
             // If nothing from this feed has ever been seen, this is an initial run: mark
             // everything seen and only post the latest entry to avoid backfilling history.
-            bool initialSeed = !entries.Any(e => seen.Contains(e.EntryId));
+            // Check all history for the feed because older seen entries may have rolled out of
+            // the feed's current response.
+            bool initialSeed = !await HasFeedHistoryAsync(db, feedUrl, cancellationToken);
             if (initialSeed)
             {
                 RssFeedService.FeedEntry latest = entries.OrderByDescending(e => e.Published).First();
-                await DispatchAsync(latest, subs);
+                if (!await DispatchAsync(latest, subs, (sub, content) => SendAsync(sub, content, cancellationToken), cancellationToken))
+                    continue;
 
                 foreach (RssFeedService.FeedEntry entry in entries)
                 {
@@ -61,10 +66,12 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
 
             foreach (RssFeedService.FeedEntry entry in entries.OrderBy(e => e.Published))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (seen.Contains(entry.EntryId))
                     continue;
 
-                await DispatchAsync(entry, subs);
+                if (!await DispatchAsync(entry, subs, (sub, content) => SendAsync(sub, content, cancellationToken), cancellationToken))
+                    continue;
 
                 db.RssSeenEntries.Add(new RssSeenEntry { FeedUrl = feedUrl, EntryId = entry.EntryId, SeenAt = DateTime.UtcNow });
                 seen.Add(entry.EntryId);
@@ -73,23 +80,45 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
         }
 
         if (changed)
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task DispatchAsync(RssFeedService.FeedEntry entry, List<RssSubscription> subs)
+    internal static async Task<bool> DispatchAsync(
+        RssFeedService.FeedEntry entry,
+        IReadOnlyList<RssSubscription> subs,
+        Func<RssSubscription, string, Task<bool>> sendAsync,
+        CancellationToken cancellationToken = default)
     {
         string content = !string.IsNullOrWhiteSpace(entry.Link) ? entry.Link : entry.Title;
         if (string.IsNullOrWhiteSpace(content))
-            return;
+            return true;
 
+        bool allSucceeded = true;
         foreach (RssSubscription sub in subs)
         {
-            if (sub.Webhook == null)
-                continue;
-
-            bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, content, sub.DisplayName, sub.AvatarUrl);
-            if (!ok)
-                logsService.Log($"RssFeedJob: failed to post entry from {sub.FeedUrl} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!await sendAsync(sub, content))
+                allSucceeded = false;
         }
+
+        return allSucceeded;
+    }
+
+    internal static Task<bool> HasFeedHistoryAsync(DB db, string feedUrl, CancellationToken cancellationToken = default) =>
+        db.RssSeenEntries.AnyAsync(entry => entry.FeedUrl == feedUrl, cancellationToken);
+
+    private async Task<bool> SendAsync(RssSubscription sub, string content, CancellationToken cancellationToken)
+    {
+        if (sub.Webhook == null)
+        {
+            logsService.Log($"RssFeedJob: no webhook available for {sub.FeedUrl} in channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            return false;
+        }
+
+        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, content, sub.DisplayName, sub.AvatarUrl, cancellationToken);
+        if (!ok)
+            logsService.Log($"RssFeedJob: failed to post entry from {sub.FeedUrl} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }

@@ -14,6 +14,21 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
 {
     private static readonly HttpClient httpClient = new();
 
+    internal static bool TryDownscaleImage(byte[] imageData, out byte[] result)
+    {
+        try
+        {
+            result = ImageResizer.DownscaleIfTooLarge(imageData);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IMAGE ERROR] Failed to inspect image: {ex}");
+            result = [];
+            return false;
+        }
+    }
+
     private readonly CommandService commands = commands;
     private readonly IServiceProvider serviceProvider = serviceProvider;
     private readonly DB dbContext = dbContext;
@@ -138,17 +153,17 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
         catch (HttpRequestException httpEx)
         {
             Console.WriteLine($"[DOG API HTTP ERROR] {httpEx}");
-            await ReplyAsync("Sorry, I couldn't connect to the cat API right now. Please try again later.");
+            await ReplyAsync("Sorry, I couldn't connect to the dog API right now. Please try again later.");
         }
         catch (JsonException jsonEx)
         {
             Console.WriteLine($"[DOG API JSON ERROR] {jsonEx}");
-            await ReplyAsync("Sorry, I received an unexpected response from the cat API. Please try again later.");
+            await ReplyAsync("Sorry, I received an unexpected response from the dog API. Please try again later.");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[DOG COMMAND UNEXPECTED ERROR] {ex}");
-            await ReplyAsync($"An unexpected error occurred while fetching a cat image. The hoomans have been notified (not really, but they should check the logs).");
+            await ReplyAsync($"An unexpected error occurred while fetching a dog image. The hoomans have been notified (not really, but they should check the logs).");
         }
     }
 
@@ -207,8 +222,23 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
             return;
         }
 
-        imageBytes = ImageResizer.DownscaleIfTooLarge(imageBytes);
-        byte[] deepfriedImage = ImageDeepFryer.DeepFry(imageBytes);
+        if (!TryDownscaleImage(imageBytes, out imageBytes))
+        {
+            await ReplyAsync("Failed to process the image. Please try again with a valid image file.");
+            return;
+        }
+
+        byte[] deepfriedImage;
+        try
+        {
+            deepfriedImage = ImageDeepFryer.DeepFry(imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEEPFRY ERROR] Processing failed: {ex}");
+            await ReplyAsync("Failed to deepfry the image. Please try again with a different image.");
+            return;
+        }
 
         if (deepfriedImage == null || deepfriedImage.Length == 0)
         {

@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Services;
@@ -80,6 +80,27 @@ public class QuoteServiceTests
     }
 
     [Fact]
+    public void FormatQuoteListFieldValue_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        QuoteListItem item = new(
+            Id: 1,
+            GuildId: 1,
+            UserId: 1,
+            Content: new string('x', 296) + "😀" + new string('x', 10),
+            InsertDate: new DateTime(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc),
+            Approved: true,
+            Removed: false,
+            Score: 0,
+            Author: "author");
+
+        string fieldValue = QuoteService.FormatQuoteListFieldValue(item);
+
+        string firstLine = fieldValue.Split('\n')[0];
+        Assert.Equal(new string('x', 296) + "...", firstLine);
+        Assert.False(char.IsSurrogate(firstLine[^4]));
+    }
+
+    [Fact]
     public void GetPreviousPeriodBounds_ReturnsPreviousMonthWindow()
     {
         DateTime now = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
@@ -97,6 +118,111 @@ public class QuoteServiceTests
     public void FormatSignedScore_AddsPlusForNonNegativeScores(int score, string expected)
     {
         Assert.Equal(expected, QuoteService.FormatSignedScore(score));
+    }
+
+    [Theory]
+    [InlineData("oldest")]
+    [InlineData("newest")]
+    public void ApplySort_UsesQuoteIdToBreakDateTies(string sort)
+    {
+        DateTime insertDate = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        Quote[] quotes =
+        [
+            new() { Id = 3, InsertDate = insertDate },
+            new() { Id = 1, InsertDate = insertDate },
+            new() { Id = 2, InsertDate = insertDate }
+        ];
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+        using DB db = new(options);
+        QuoteService service = new(db);
+
+        List<int> sortedIds = service.ApplySort(quotes.AsQueryable(), sort)
+            .Select(quote => quote.Id)
+            .ToList();
+
+        Assert.Equal([1, 2, 3], sortedIds);
+    }
+
+    [Fact]
+    public async Task ApplySort_UsesQuoteIdToBreakScoreTies()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        Quote first = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "first");
+        Quote second = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "second");
+        Quote third = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "third");
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = first.Id, UserId = user.Id, Score = 4 },
+            new QuoteScore { QuoteId = second.Id, UserId = user.Id, Score = 4 },
+            new QuoteScore { QuoteId = third.Id, UserId = user.Id, Score = 4 });
+        await testDb.Db.SaveChangesAsync();
+        Quote[] quotes = [third, first, second];
+        QuoteService service = new(testDb.Db);
+
+        List<int> sortedIds = service.ApplySort(quotes.AsQueryable(), "top")
+            .Select(quote => quote.Id)
+            .ToList();
+
+        Assert.Equal([first.Id, second.Id, third.Id], sortedIds);
+    }
+
+    [Fact]
+    public async Task GetQuotePageAsync_TiedScoresHaveStablePageBoundaries()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        DateTime insertDate = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        List<Quote> quotes = [.. Enumerable.Range(1, QuoteService.PageSize + 1).Select(index => new Quote
+        {
+            GuildId = guild.Id,
+            UserId = user.Id,
+            Content = $"quote {index}",
+            Approved = true,
+            InsertDate = insertDate
+        })];
+        testDb.Db.Quotes.AddRange(quotes);
+        await testDb.Db.SaveChangesAsync();
+        testDb.Db.QuoteScores.AddRange(quotes.Select(quote => new QuoteScore
+        {
+            QuoteId = quote.Id,
+            UserId = user.Id,
+            Score = 4
+        }));
+        await testDb.Db.SaveChangesAsync();
+        QuoteService service = new(testDb.Db);
+
+        QuotePage firstPage = await service.GetQuotePageAsync(1, "top", approvedOnly: true, guild.Id);
+        QuotePage secondPage = await service.GetQuotePageAsync(2, "top", approvedOnly: true, guild.Id);
+
+        Assert.Equal(quotes.Take(QuoteService.PageSize).Select(quote => quote.Id), firstPage.Items.Select(item => item.Id));
+        Assert.Equal([quotes[^1].Id], secondPage.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public async Task QuoteScoreAggregates_WidenBeforeSummingAndClampPublicTotals()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        User secondUser = new() { DiscordId = 789, Username = "second" };
+        await testDb.Db.Users.AddAsync(secondUser);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "high score");
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = quote.Id, UserId = user.Id, Score = int.MaxValue },
+            new QuoteScore { QuoteId = quote.Id, UserId = secondUser.Id, Score = 1 });
+        await testDb.Db.SaveChangesAsync();
+
+        QuoteService service = new(testDb.Db);
+
+        QuoteDetails details = await service.GetQuoteDetailsAsync(quote.Id)
+            ?? throw new InvalidOperationException("Quote details were not found.");
+        QuotePage page = await service.GetQuotePageAsync(1, "top", approvedOnly: true, guild.Id);
+
+        Assert.Equal(int.MaxValue, details.TotalScore);
+        Assert.Equal(int.MaxValue, Assert.Single(page.Items).Score);
     }
 
     [Fact]

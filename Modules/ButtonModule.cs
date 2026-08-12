@@ -9,6 +9,12 @@ using System.Text;
 
 namespace Morpheus.Modules;
 
+internal sealed class ButtonGuildScore
+{
+    public int? GuildId { get; init; }
+    public long Score { get; init; }
+}
+
 public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
     [Name("Press the Button")]
@@ -46,8 +52,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
             await ReplyAsync($"Congratz you are the first one to press the button! You received the impossible score of {buttonPress.Score}.");
         else
         {
-            if (buttonPress.Score > buttonGamePress.Score)
-                await ReplyAsync($"You pressed the button! You received {buttonPress.Score} points. You beat the previous best score of {buttonGamePress.Score} points.");
+            if (IsNewBestScore(buttonPress.Score, bestButtonPress?.Score))
+                await ReplyAsync($"You pressed the button! You received {buttonPress.Score} points. You beat the previous best score of {bestButtonPress!.Score} points.");
             else
                 await ReplyAsync($"You pressed the button! You received {buttonPress.Score} points. The most recent score was {buttonGamePress.Score} points.");
         }
@@ -55,6 +61,27 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         // Save changes to database
         await dbContext.SaveChangesAsync();
     }
+
+    internal static bool IsNewBestScore(long score, long? bestScore) =>
+        bestScore.HasValue && score > bestScore.Value;
+
+    internal static IOrderedQueryable<ButtonGamePress> OrderPressScores(
+        IQueryable<ButtonGamePress> presses) =>
+        presses
+            .OrderByDescending(press => press.Score)
+            .ThenBy(press => press.Id);
+
+    internal static IOrderedQueryable<ButtonGuildScore> OrderGuildScores(
+        IQueryable<ButtonGamePress> presses) =>
+        presses
+            .GroupBy(press => press.GuildId)
+            .Select(group => new ButtonGuildScore
+            {
+                GuildId = group.Key,
+                Score = group.Sum(press => press.Score)
+            })
+            .OrderByDescending(score => score.Score)
+            .ThenBy(score => score.GuildId);
 
     // Top global 
     [Name("Top Button Global")]
@@ -65,8 +92,7 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task TopGlobal()
     {
         // Get top 10 button presses 
-        List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
-            .OrderByDescending(b => b.Score)
+        List<ButtonGamePress> buttonGamePresses = await OrderPressScores(dbContext.ButtonGamePresses)
             .Take(10)
             .ToListAsync();
 
@@ -109,9 +135,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         Guild guild = Context.DbGuild!;
 
         // Get top 10 button presses 
-        List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
-            .Where(b => b.GuildId == guild.Id)
-            .OrderByDescending(b => b.Score)
+        List<ButtonGamePress> buttonGamePresses = await OrderPressScores(
+                dbContext.ButtonGamePresses.Where(b => b.GuildId == guild.Id))
             .Take(10)
             .ToListAsync();
 
@@ -148,9 +173,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task TopIndividualUser()
     {
         // Get top 10 button presses 
-        List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
-            .Where(b => b.GuildId == null)
-            .OrderByDescending(b => b.Score)
+        List<ButtonGamePress> buttonGamePresses = await OrderPressScores(
+                dbContext.ButtonGamePresses.Where(b => b.GuildId == null))
             .Take(10)
             .ToListAsync();
 
@@ -190,9 +214,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         User user = Context.DbUser!;
 
         // Get top 10 button presses 
-        List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
-            .Where(b => b.UserId == user.Id)
-            .OrderByDescending(b => b.Score)
+        List<ButtonGamePress> buttonGamePresses = await OrderPressScores(
+                dbContext.ButtonGamePresses.Where(b => b.UserId == user.Id))
             .Take(10)
             .ToListAsync();
 
@@ -235,9 +258,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
         Guild guild = Context.DbGuild!;
 
         // Get top 10 button presses 
-        List<ButtonGamePress> buttonGamePresses = await dbContext.ButtonGamePresses
-            .Where(b => b.UserId == user.Id && b.GuildId == guild.Id)
-            .OrderByDescending(b => b.Score)
+        List<ButtonGamePress> buttonGamePresses = await OrderPressScores(
+                dbContext.ButtonGamePresses.Where(b => b.UserId == user.Id && b.GuildId == guild.Id))
             .Take(10)
             .ToListAsync();
 
@@ -272,10 +294,8 @@ public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtende
     public async Task TopGuildGlobal()
     {
         // Get top 10 button presses 
-        var buttonGamePresses = await dbContext.ButtonGamePresses
-            .GroupBy(b => b.GuildId)
-            .Select(g => new { GuildId = g.Key, Score = g.Sum(b => b.Score) })
-            .OrderByDescending(g => g.Score)
+        List<ButtonGuildScore> buttonGamePresses = await OrderGuildScores(
+                dbContext.ButtonGamePresses)
             .Take(10)
             .ToListAsync();
 

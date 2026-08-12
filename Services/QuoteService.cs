@@ -514,7 +514,14 @@ public class QuoteService(DB dbContext)
         if (content.Length <= maxLength)
             return content;
 
-        return content[..(maxLength - 3)] + "...";
+        int contentLength = maxLength - 3;
+        if (char.IsHighSurrogate(content[contentLength - 1]) &&
+            char.IsLowSurrogate(content[contentLength]))
+        {
+            contentLength--;
+        }
+
+        return content[..contentLength] + "...";
     }
 
     private async Task<Quote?> FindApprovedQuoteByContentAsync(string quoteContent, int guildId, bool useGlobalQuotes)
@@ -534,27 +541,39 @@ public class QuoteService(DB dbContext)
             .AsNoTracking()
             .Where(score => quoteIds.Contains(score.QuoteId))
             .GroupBy(score => score.QuoteId)
-            .Select(group => new { Id = group.Key, Score = group.Sum(score => score.Score) })
+            .Select(group => new { Id = group.Key, Score = group.Sum(score => (long)score.Score) })
             .ToListAsync();
 
-        return scores.ToDictionary(score => score.Id, score => score.Score);
+        return scores.ToDictionary(score => score.Id, score => ClampScore(score.Score));
     }
 
-    private async Task<int> GetTotalScoreAsync(int quoteId) =>
-        await dbContext.QuoteScores
+    private async Task<int> GetTotalScoreAsync(int quoteId)
+    {
+        long total = await dbContext.QuoteScores
             .AsNoTracking()
             .Where(score => score.QuoteId == quoteId)
-            .SumAsync(score => (int?)score.Score) ?? 0;
+            .SumAsync(score => (long?)score.Score) ?? 0L;
 
-    private IQueryable<Quote> ApplySort(IQueryable<Quote> quotesQuery, string sort) =>
+        return ClampScore(total);
+    }
+
+    private static int ClampScore(long score) =>
+        (int)Math.Clamp(score, (long)int.MinValue, (long)int.MaxValue);
+
+    internal IQueryable<Quote> ApplySort(IQueryable<Quote> quotesQuery, string sort) =>
         sort.ToLowerInvariant() switch
         {
             "top" or "top-rated" or "toprated" => quotesQuery
                 .OrderByDescending(quote => dbContext.QuoteScores
                     .Where(score => score.QuoteId == quote.Id)
-                    .Sum(score => score.Score)),
-            "newest" => quotesQuery.OrderByDescending(quote => quote.InsertDate),
-            _ => quotesQuery.OrderBy(quote => quote.InsertDate)
+                    .Sum(score => (long)score.Score))
+                .ThenBy(quote => quote.Id),
+            "newest" => quotesQuery
+                .OrderByDescending(quote => quote.InsertDate)
+                .ThenBy(quote => quote.Id),
+            _ => quotesQuery
+                .OrderBy(quote => quote.InsertDate)
+                .ThenBy(quote => quote.Id)
         };
 }
 

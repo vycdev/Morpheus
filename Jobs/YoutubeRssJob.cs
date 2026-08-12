@@ -20,9 +20,10 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         List<YoutubeSubscription> subscriptions = await db.YoutubeSubscriptions
             .Include(s => s.Webhook)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (subscriptions.Count == 0)
             return;
@@ -31,10 +32,11 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
 
         foreach (IGrouping<string, YoutubeSubscription> group in subscriptions.GroupBy(s => s.YoutubeChannelId))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string youtubeChannelId = group.Key;
             List<YoutubeSubscription> subs = group.ToList();
 
-            (string? channelTitle, IReadOnlyList<YoutubeFeedService.VideoEntry> entries) = await youtubeFeed.FetchFeedAsync(youtubeChannelId);
+            (string? channelTitle, IReadOnlyList<YoutubeFeedService.VideoEntry> entries) = await youtubeFeed.FetchFeedAsync(youtubeChannelId, cancellationToken);
             if (entries.Count == 0)
                 continue;
 
@@ -42,7 +44,7 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
             string username = !string.IsNullOrWhiteSpace(channelTitle) ? channelTitle! : subs[0].YoutubeChannelTitle;
             string? avatar = subs.Select(s => s.YoutubeAvatarUrl).FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
             if (string.IsNullOrWhiteSpace(avatar))
-                avatar = await YoutubeUtils.GetChannelAvatarAsync(HttpClient, youtubeChannelId);
+                avatar = await YoutubeUtils.GetChannelAvatarAsync(HttpClient, youtubeChannelId, cancellationToken);
 
             foreach (YoutubeSubscription sub in subs)
             {
@@ -62,16 +64,19 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
             HashSet<string> seen = (await db.YoutubeSeenVideos
                     .Where(v => videoIds.Contains(v.VideoId))
                     .Select(v => v.VideoId)
-                    .ToListAsync())
+                    .ToListAsync(cancellationToken))
                 .ToHashSet();
 
             // If nothing from this channel has ever been seen, this is an initial run for it:
             // mark everything seen and only post the latest video to avoid backfilling history.
-            bool initialSeed = !entries.Any(e => seen.Contains(e.VideoId));
+            // Check all history for the channel because older seen videos may have rolled out of
+            // the feed's current response.
+            bool initialSeed = !await HasFeedHistoryAsync(db, youtubeChannelId, cancellationToken);
             if (initialSeed)
             {
                 YoutubeFeedService.VideoEntry latest = entries.OrderByDescending(e => e.Published).First();
-                await DispatchAsync(latest, subs, username, avatar);
+                if (!await DispatchAsync(subs, sub => SendAsync(sub, latest, username, avatar, cancellationToken), cancellationToken))
+                    continue;
 
                 foreach (YoutubeFeedService.VideoEntry entry in entries)
                 {
@@ -84,10 +89,12 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
 
             foreach (YoutubeFeedService.VideoEntry entry in entries.OrderBy(e => e.Published))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (seen.Contains(entry.VideoId))
                     continue;
 
-                await DispatchAsync(entry, subs, username, avatar);
+                if (!await DispatchAsync(subs, sub => SendAsync(sub, entry, username, avatar, cancellationToken), cancellationToken))
+                    continue;
 
                 db.YoutubeSeenVideos.Add(new YoutubeSeenVideo { YoutubeChannelId = youtubeChannelId, VideoId = entry.VideoId, SeenAt = DateTime.UtcNow });
                 seen.Add(entry.VideoId);
@@ -96,19 +103,45 @@ public class YoutubeRssJob(DB db, YoutubeFeedService youtubeFeed, DiscordWebhook
         }
 
         if (changed)
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task DispatchAsync(YoutubeFeedService.VideoEntry entry, List<YoutubeSubscription> subs, string username, string? avatar)
+    internal static async Task<bool> DispatchAsync(
+        IReadOnlyList<YoutubeSubscription> subs,
+        Func<YoutubeSubscription, Task<bool>> sendAsync,
+        CancellationToken cancellationToken = default)
     {
+        bool allSucceeded = true;
         foreach (YoutubeSubscription sub in subs)
         {
-            if (sub.Webhook == null)
-                continue;
-
-            bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, entry.Link, username, avatar);
-            if (!ok)
-                logsService.Log($"YoutubeRssJob: failed to post {entry.VideoId} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!await sendAsync(sub))
+                allSucceeded = false;
         }
+
+        return allSucceeded;
+    }
+
+    internal static Task<bool> HasFeedHistoryAsync(DB db, string youtubeChannelId, CancellationToken cancellationToken = default) =>
+        db.YoutubeSeenVideos.AnyAsync(video => video.YoutubeChannelId == youtubeChannelId, cancellationToken);
+
+    private async Task<bool> SendAsync(
+        YoutubeSubscription sub,
+        YoutubeFeedService.VideoEntry entry,
+        string username,
+        string? avatar,
+        CancellationToken cancellationToken)
+    {
+        if (sub.Webhook == null)
+        {
+            logsService.Log($"YoutubeRssJob: no webhook available for {sub.YoutubeChannelId} in channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+            return false;
+        }
+
+        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, entry.Link, username, avatar, cancellationToken);
+        if (!ok)
+            logsService.Log($"YoutubeRssJob: failed to post {entry.VideoId} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
+
+        return ok;
     }
 }

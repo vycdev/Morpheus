@@ -415,13 +415,22 @@ namespace Morpheus.Migrations
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("numeric(20,0)");
 
+                    b.Property<int>("DeliveryFailureCount")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("FirstDeliveryFailureAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("GuildId")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("InsertDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NextDeliveryAttemptAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Text")
@@ -929,6 +938,32 @@ namespace Morpheus.Migrations
                     b.ToTable("Webhooks");
                 });
 
+            modelBuilder.Entity("Morpheus.Database.Models.XkcdDeliveryRetry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Link")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Link")
+                        .IsUnique();
+
+                    b.ToTable("XkcdDeliveryRetries");
+                });
+
             modelBuilder.Entity("Morpheus.Database.Models.XkcdSeen", b =>
                 {
                     b.Property<int>("Id")
@@ -1005,6 +1040,8 @@ namespace Morpheus.Migrations
 
                     b.HasIndex("VideoId")
                         .IsUnique();
+
+                    b.HasIndex("YoutubeChannelId");
 
                     b.ToTable("YoutubeSeenVideos");
                 });

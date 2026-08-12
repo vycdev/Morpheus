@@ -1,9 +1,9 @@
+using Discord;
+using Morpheus.Utilities;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Discord;
-using Morpheus.Utilities;
 
 namespace Morpheus.Services;
 
@@ -13,21 +13,40 @@ namespace Morpheus.Services;
 /// those are absent, <see cref="IsConfigured"/> is false and all calls no-op. Uses the
 /// client-credentials (app access token) flow, caching the token until shortly before it expires.
 /// </summary>
-public class TwitchService(LogsService logsService)
+public class TwitchService
 {
-    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient SharedHttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly LogsService logsService;
+    private readonly HttpClient httpClient;
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
-    private readonly string? _clientId = Env.Get<string?>("TWITCH_CLIENT_ID");
-    private readonly string? _clientSecret = Env.Get<string?>("TWITCH_CLIENT_SECRET");
+    private readonly string? _clientId;
+    private readonly string? _clientSecret;
 
     private string? _accessToken;
     private DateTime _tokenExpiresAt = DateTime.MinValue;
+
+    public TwitchService(LogsService logsService) : this(
+        logsService,
+        SharedHttpClient,
+        Env.Get<string?>("TWITCH_CLIENT_ID"),
+        Env.Get<string?>("TWITCH_CLIENT_SECRET"))
+    {
+    }
+
+    internal TwitchService(LogsService logsService, HttpClient httpClient, string? clientId, string? clientSecret)
+    {
+        this.logsService = logsService;
+        this.httpClient = httpClient;
+        _clientId = clientId;
+        _clientSecret = clientSecret;
+    }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_clientId) && !string.IsNullOrWhiteSpace(_clientSecret);
 
     public record TwitchUser(string Id, string Login, string DisplayName, string? ProfileImageUrl);
     public record TwitchStream(string Id, string Title);
+    public record LiveStreamsResult(IReadOnlyDictionary<string, TwitchStream> Streams, bool Succeeded);
 
     /// <summary>Resolves a Twitch login (handle) to its user, or null if not found / not configured.</summary>
     public async Task<TwitchUser?> GetUserAsync(string login, CancellationToken ct = default)
@@ -50,18 +69,32 @@ public class TwitchService(LogsService logsService)
     /// </summary>
     public async Task<IReadOnlyDictionary<string, TwitchStream>> GetLiveStreamsAsync(IReadOnlyCollection<string> userIds, CancellationToken ct = default)
     {
+        LiveStreamsResult result = await GetLiveStreamsResultAsync(userIds, ct);
+        return result.Streams;
+    }
+
+    /// <summary>
+    /// Returns currently-live streams together with whether every Twitch request completed.
+    /// An unsuccessful result must not be interpreted as "everyone is offline" by polling jobs.
+    /// </summary>
+    public async Task<LiveStreamsResult> GetLiveStreamsResultAsync(IReadOnlyCollection<string> userIds, CancellationToken ct = default)
+    {
         Dictionary<string, TwitchStream> live = new();
         if (!IsConfigured || userIds.Count == 0)
-            return live;
+            return new LiveStreamsResult(live, true);
 
         // Helix allows up to 100 user_id params per request.
-        foreach (string[] batch in userIds.Distinct().Chunk(100))
+        foreach (string[] batch in userIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Chunk(100))
         {
             string query = string.Join("&", batch.Select(id => $"user_id={Uri.EscapeDataString(id)}"));
             string url = $"https://api.twitch.tv/helix/streams?{query}";
             HelixStreamsResponse? resp = await SendHelixAsync<HelixStreamsResponse>(url, ct);
             if (resp?.Data == null)
-                continue;
+                return new LiveStreamsResult(live, false);
 
             foreach (StreamPayload s in resp.Data)
             {
@@ -70,7 +103,7 @@ public class TwitchService(LogsService logsService)
             }
         }
 
-        return live;
+        return new LiveStreamsResult(live, true);
     }
 
     private async Task<T?> SendHelixAsync<T>(string url, CancellationToken ct) where T : class
@@ -87,7 +120,7 @@ public class TwitchService(LogsService logsService)
 
             try
             {
-                using HttpResponseMessage resp = await HttpClient.SendAsync(req, ct).ConfigureAwait(false);
+                using HttpResponseMessage resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
 
                 if (resp.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
                     continue; // token likely expired early — refresh and retry once
@@ -100,6 +133,10 @@ public class TwitchService(LogsService logsService)
                 }
 
                 return await resp.Content.ReadFromJsonAsync<T>(cancellationToken: ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -134,7 +171,7 @@ public class TwitchService(LogsService logsService)
             };
 
             using FormUrlEncodedContent content = new(form);
-            using HttpResponseMessage resp = await HttpClient.PostAsync(url, content, ct).ConfigureAwait(false);
+            using HttpResponseMessage resp = await httpClient.PostAsync(url, content, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
                 string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -150,6 +187,10 @@ public class TwitchService(LogsService logsService)
             // Refresh a minute early to avoid using an about-to-expire token.
             _tokenExpiresAt = DateTime.UtcNow.Add(CalculateTokenCacheDuration(token.ExpiresIn));
             return _accessToken;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

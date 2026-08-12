@@ -11,8 +11,7 @@ internal static partial class SubscriptionInputParser
         string Host,
         int Port,
         string UserInfo,
-        string PathAndQuery,
-        string Fragment);
+        string PathAndQuery);
 
     public static SourceList ParseSources(string input)
     {
@@ -41,12 +40,12 @@ internal static partial class SubscriptionInputParser
 
         if (lines.Length == 1)
         {
-            string[] tokens = SplitTokens(lines[0]).ToArray();
+            string[] tokens = SplitRssTokens(lines[0]).ToArray();
             string[] urls = tokens.Where(IsHttpUrl).ToArray();
             if (urls.Length > 1)
                 return urls
                     .GroupBy(GetRssUrlKey)
-                    .Select(group => new RssSource(group.First(), null))
+                    .Select(group => new RssSource(RemoveRssFragment(group.First()), null))
                     .ToArray();
         }
 
@@ -57,7 +56,10 @@ internal static partial class SubscriptionInputParser
             if (separatorIndex < 0)
             {
                 int commaIndex = line.IndexOf(',');
-                if (commaIndex > 0 && IsHttpUrl(line[..commaIndex].Trim()))
+                int queryIndex = line.IndexOf('?');
+                if (commaIndex > 0 &&
+                    (queryIndex < 0 || commaIndex < queryIndex) &&
+                    IsHttpUrl(line[..commaIndex].Trim()))
                     separatorIndex = commaIndex;
             }
 
@@ -73,7 +75,11 @@ internal static partial class SubscriptionInputParser
 
         return sources
             .GroupBy(source => GetRssUrlKey(source.Url))
-            .Select(group => group.First())
+            .Select(group =>
+            {
+                RssSource source = group.First();
+                return source with { Url = RemoveRssFragment(source.Url) };
+            })
             .ToArray();
     }
 
@@ -85,16 +91,40 @@ internal static partial class SubscriptionInputParser
             uri.IdnHost.ToLowerInvariant(),
             uri.Port,
             uri.UserInfo,
-            uri.PathAndQuery,
-            uri.Fragment);
+            uri.PathAndQuery);
+    }
+
+    internal static string RemoveRssFragment(string value)
+    {
+        int fragmentIndex = value.IndexOf('#');
+        return fragmentIndex >= 0 ? value[..fragmentIndex] : value;
     }
 
     private static IEnumerable<string> SplitTokens(string input) => input
         .Split([' ', '\t', '\r', '\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static IReadOnlyList<string> Deduplicate(IEnumerable<string> values) => values
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    private static IEnumerable<string> SplitRssTokens(string input) => RssUrlSeparatorRegex()
+        .Split(input)
+        .Where(token => !string.IsNullOrWhiteSpace(token));
+
+    private static IReadOnlyList<string> Deduplicate(IEnumerable<string> values)
+    {
+        List<string> unique = [];
+        HashSet<string> seenCaseSensitive = new(StringComparer.Ordinal);
+        HashSet<string> seenCaseInsensitive = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string value in values)
+        {
+            HashSet<string> seen = YoutubeChannelIdRegex().IsMatch(value)
+                ? seenCaseSensitive
+                : seenCaseInsensitive;
+
+            if (seen.Add(value))
+                unique.Add(value);
+        }
+
+        return unique;
+    }
 
     private static bool IsHttpUrl(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) &&
@@ -104,4 +134,10 @@ internal static partial class SubscriptionInputParser
 
     [GeneratedRegex("^<#(\\d+)>$")]
     private static partial Regex ChannelMentionRegex();
+
+    [GeneratedRegex("^UC[0-9A-Za-z_-]{22}$")]
+    private static partial Regex YoutubeChannelIdRegex();
+
+    [GeneratedRegex(@"(?:\s*[,;]\s*|\s+)(?=https?://)", RegexOptions.IgnoreCase)]
+    private static partial Regex RssUrlSeparatorRegex();
 }

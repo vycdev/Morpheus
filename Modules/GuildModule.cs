@@ -1,14 +1,14 @@
-﻿using Discord.Commands;
+﻿using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Attributes;
 using Morpheus.Database;
+using Morpheus.Database.Models;
 using Morpheus.Extensions;
 using Morpheus.Handlers;
-using Discord;
-using Morpheus.Utilities;
-using Morpheus.Database.Models;
-using Microsoft.EntityFrameworkCore;
 using Morpheus.Services;
+using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
@@ -27,7 +27,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetWelcomeChanelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetWelcomeChanelAsync([Remainder] SocketTextChannel? channel = null)
     {
         // Load tracked Guild entity from DB instead of using Context.DbGuild (which may be detached)
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
@@ -51,7 +51,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     }
 
     [Name("Set Commands Prefix")]
-    [Summary("Sets the welcome channel where new join messages will appear.")]
+    [Summary("Sets the command prefix for this guild.")]
     [Command("setprefix")]
     [Alias("setcommandsprefix", "setcp")]
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
@@ -68,15 +68,15 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
 
         prefix ??= guildPrefixService.DefaultPrefix;
 
-        if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 3)
+        if (!TryValidatePrefix(prefix, out string normalizedPrefix))
         {
-            await ReplyAsync($"The prefix you picked, `{prefix}`, is not valid. Make sure that the prefix is not empty and at most 3 characters.");
+            await ReplyAsync($"The prefix you picked, `{prefix}`, is not valid. Make sure that the prefix is not empty, at most 3 characters, and contains no whitespace.");
             return;
         }
 
-        guild.Prefix = prefix;
+        guild.Prefix = normalizedPrefix;
         await dbContext.SaveChangesAsync();
-        guildPrefixService.SetPrefix(Context.Guild.Id, prefix);
+        guildPrefixService.SetPrefix(Context.Guild.Id, normalizedPrefix);
 
         if (prefix == guildPrefixService.DefaultPrefix)
         {
@@ -94,7 +94,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetPinsChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetPinsChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -123,7 +123,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetLevelUpMessagesChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -151,7 +151,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetLevelUpQuotesChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -251,7 +251,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireUserPermission(Discord.GuildPermission.Administrator)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetQuotesApprovalChannel([Remainder] SocketChannel? channel = null)
+    public async Task SetQuotesApprovalChannel([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -346,7 +346,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
     [RequireBotPermission(GuildPermission.BanMembers)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(1, 10)]
-    public async Task SetHoneypotChannelAsync([Remainder] SocketChannel? channel = null)
+    public async Task SetHoneypotChannelAsync([Remainder] SocketTextChannel? channel = null)
     {
         var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.DiscordId == Context.Guild.Id);
         if (guild == null)
@@ -444,5 +444,12 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         };
 
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static bool TryValidatePrefix(string? value, out string prefix)
+    {
+        prefix = value ?? string.Empty;
+        return prefix.Length is > 0 and <= 3 &&
+            prefix.All(character => !char.IsWhiteSpace(character) && !char.IsControl(character));
     }
 }

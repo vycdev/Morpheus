@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Morpheus Bot + API",
+            "name": "Morpheus Bot",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
@@ -13,7 +13,7 @@
             "stopAtEntry": false
         },
         {
-            "name": "Morpheus Bot + API (no debug)",
+            "name": "Morpheus Bot (no debug)",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
@@ -25,36 +25,11 @@
             "noDebug": true
         },
         {
-            "name": "Dashboard Web",
-            "type": "node-terminal",
-            "request": "launch",
-            "command": "npm run dev:local",
-            "cwd": "${workspaceFolder}/DashboardWeb"
-        },
-        {
-            "name": "Open Dashboard",
-            "type": "node-terminal",
-            "request": "launch",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\.vscode\\open-dashboard.ps1\"",
-            "cwd": "${workspaceFolder}"
-        },
-        {
             "name": "Attach to dotnet run",
             "type": "coreclr",
             "request": "attach",
             "processId": "${command:pickProcess}",
             "preLaunchTask": "dotnet run (background)"
-        }
-    ],
-    "compounds": [
-        {
-            "name": "Morpheus Dashboard Stack",
-            "configurations": [
-                "Morpheus Bot + API",
-                "Dashboard Web",
-                "Open Dashboard"
-            ],
-            "stopAll": true
         }
     ]
 }

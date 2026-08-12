@@ -11,7 +11,15 @@ public class ChannelService(DB dbContext, LogsService logsService)
         Channel? channel = await dbContext.Channels.FirstOrDefaultAsync(c => c.DiscordId == discordId);
 
         if (channel != null)
+        {
+            if (channel.Name != name)
+            {
+                channel.Name = name;
+                await dbContext.SaveChangesAsync();
+            }
+
             return channel;
+        }
 
         channel = new Channel
         {
@@ -20,7 +28,27 @@ public class ChannelService(DB dbContext, LogsService logsService)
         };
 
         await dbContext.Channels.AddAsync(channel);
-        await dbContext.SaveChangesAsync();
+        try
+        {
+            await dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Another handler may have created the same Discord channel after our initial lookup.
+            // Clear the failed insert and use the row protected by the unique DiscordId index.
+            dbContext.ChangeTracker.Clear();
+            Channel? concurrentChannel = await dbContext.Channels.FirstOrDefaultAsync(c => c.DiscordId == discordId);
+            if (concurrentChannel == null)
+                throw;
+
+            if (concurrentChannel.Name != name)
+            {
+                concurrentChannel.Name = name;
+                await dbContext.SaveChangesAsync();
+            }
+
+            return concurrentChannel;
+        }
 
         logsService.Log($"New channel created {name}", Discord.LogSeverity.Verbose);
 

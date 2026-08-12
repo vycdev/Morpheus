@@ -1,11 +1,11 @@
-using System.Text;
-using Discord.Commands;
 using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Database;
 using Morpheus.Extensions;
 using Morpheus.Utilities;
+using System.Text;
 
 namespace Morpheus.Modules;
 
@@ -19,8 +19,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task DumpLogsAsync(int page = 1)
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Env.Variables["OWNER_ID"];
-        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        if (!TryParseOwnerId(Env.Variables.GetValueOrDefault("OWNER_ID"), out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
             return;
@@ -41,7 +40,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
         const int pageSize = 25;
         var logs = dbContext.Logs
             .OrderByDescending(l => l.InsertDate)
-            .Skip((page - 1) * pageSize)
+            .Skip(CalculateLogSkipCount(page, pageSize))
             .Take(pageSize)
             .ToList();
 
@@ -59,24 +58,8 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
             lines.Add($"[{time}] (v{log.Version}) [Severity:{log.Severity}] {log.Message}");
         }
 
-        const int maxMessageSize = 1900; // leave room for code fences
-        var sb = new StringBuilder();
-
-        foreach (var line in lines)
-        {
-            if (sb.Length + line.Length + 4 > maxMessageSize) // send current chunk
-            {
-                await ReplyAsync("```\n" + sb.ToString().TrimEnd() + "\n```");
-                sb.Clear();
-            }
-
-            sb.AppendLine(line);
-        }
-
-        if (sb.Length > 0)
-        {
-            await ReplyAsync("```\n" + sb.ToString().TrimEnd() + "\n```");
-        }
+        foreach (string message in BuildLogMessages(lines))
+            await ReplyAsync(message);
     }
 
     [Name("Guild Count")]
@@ -88,8 +71,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task GuildCountAsync()
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Env.Variables["OWNER_ID"];
-        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        if (!TryParseOwnerId(Env.Variables.GetValueOrDefault("OWNER_ID"), out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
             return;
@@ -114,8 +96,7 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
     public async Task SendToChannelAsync(ulong channelId, [Remainder] string text)
     {
         // Check OWNER_ID environment variable
-        string? ownerEnv = Env.Variables["OWNER_ID"];
-        if (string.IsNullOrWhiteSpace(ownerEnv) || !ulong.TryParse(ownerEnv, out var ownerId))
+        if (!TryParseOwnerId(Env.Variables.GetValueOrDefault("OWNER_ID"), out var ownerId))
         {
             await ReplyAsync("Owner not configured.");
             return;
@@ -163,5 +144,83 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mod
         {
             await ReplyAsync($"Failed to send message: {ex.Message}");
         }
+    }
+
+    internal static int CalculateLogSkipCount(int page, int pageSize)
+    {
+        if (page <= 1)
+            return 0;
+
+        long skip = ((long)page - 1) * pageSize;
+        return (int)Math.Min(skip, int.MaxValue);
+    }
+
+    internal static bool TryParseOwnerId(string? value, out ulong ownerId)
+    {
+        ownerId = 0;
+        return !string.IsNullOrWhiteSpace(value) && ulong.TryParse(value, out ownerId);
+    }
+
+    internal static IReadOnlyList<string> BuildLogMessages(IEnumerable<string> lines)
+    {
+        const string prefix = "```\n";
+        const string suffix = "\n```";
+        const int maxMessageLength = 2000;
+        int maxContentLength = maxMessageLength - prefix.Length - suffix.Length;
+
+        var messages = new List<string>();
+        var chunk = new StringBuilder();
+
+        void Flush()
+        {
+            if (chunk.Length == 0)
+                return;
+
+            messages.Add(prefix + chunk + suffix);
+            chunk.Clear();
+        }
+
+        foreach (string line in lines)
+        {
+            int offset = 0;
+
+            while (offset < line.Length)
+            {
+                int separatorLength = chunk.Length > 0 ? 1 : 0;
+                int available = maxContentLength - chunk.Length - separatorLength;
+
+                if (available <= 0)
+                {
+                    Flush();
+                    continue;
+                }
+
+                int take = Math.Min(available, line.Length - offset);
+                if (offset + take < line.Length
+                    && char.IsHighSurrogate(line[offset + take - 1])
+                    && char.IsLowSurrogate(line[offset + take]))
+                {
+                    take--;
+                }
+
+                if (take == 0)
+                {
+                    Flush();
+                    continue;
+                }
+
+                if (separatorLength > 0)
+                    chunk.Append('\n');
+
+                chunk.Append(line.AsSpan(offset, take));
+                offset += take;
+
+                if (offset < line.Length)
+                    Flush();
+            }
+        }
+
+        Flush();
+        return messages;
     }
 }

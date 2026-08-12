@@ -66,7 +66,7 @@ public class ActivityGraphService(DB dbContext)
         bool cumulative,
         int? rollingWindowDays)
     {
-        Dictionary<DateTime, int> dailyAggregate = await GetGuildAggregateByDayAsync(range.Start, range.Days, guildId);
+        Dictionary<DateTime, long> dailyAggregate = await GetGuildAggregateByDayAsync(range.Start, range.Days, guildId);
         Dictionary<string, List<int>> series = await BuildGuildSeriesAsync(dailyAggregate, range.Start, range.Days, cumulative, guildId);
         if (rollingWindowDays.HasValue)
             series = RollingAverage(series, rollingWindowDays.Value);
@@ -136,29 +136,25 @@ public class ActivityGraphService(DB dbContext)
     {
         string[] parts = input.Split([".."], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2 ||
-            !DateTime.TryParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTime start) ||
-            !DateTime.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTime end))
+            !DateOnly.TryParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly start) ||
+            !DateOnly.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly end))
         {
             return ActivityGraphParseResult.Error(
                 $"Invalid date range format. Use YYYY-MM-DD..YYYY-MM-DD and ensure the range is at most {maxDays} days and start <= end.");
         }
 
-        start = start.Date;
-        end = end.Date;
         if (end < start)
             (start, end) = (end, start);
 
-        double span = (end - start).TotalDays + 1;
+        int span = end.DayNumber - start.DayNumber + 1;
         if (span < 7)
-        {
-            end = start.AddDays(6);
             span = 7;
-        }
 
         if (!isOwner && span > maxDays)
             return ActivityGraphParseResult.Error($"Date range exceeds maximum of {maxDays} days.");
 
-        return ActivityGraphParseResult.Valid((int)span, NormalizeToUtc(start));
+        DateTime explicitStart = start.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        return ActivityGraphParseResult.Valid(span, explicitStart);
     }
 
     private static int NormalizeDayCount(int days, bool isOwner, int maxDays)
@@ -186,8 +182,9 @@ public class ActivityGraphService(DB dbContext)
 
         var top = await query
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => (long)x.XpGained) })
             .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.UserId)
             .Take(10)
             .ToListAsync();
 
@@ -195,14 +192,14 @@ public class ActivityGraphService(DB dbContext)
         if (userIds.Count == 0)
             return [];
 
-        Dictionary<int, Dictionary<DateTime, int>> byDay = await GetUserActivityByDayAsync(query.Where(ua => userIds.Contains(ua.UserId)));
+        Dictionary<int, Dictionary<DateTime, long>> byDay = await GetUserActivityByDayAsync(query.Where(ua => userIds.Contains(ua.UserId)));
 
         return [.. top.Select(t => new UserActivityAggregate(
             t.UserId,
-            (int)t.Total,
-            byDay.TryGetValue(t.UserId, out Dictionary<DateTime, int>? days)
+            t.Total,
+            byDay.TryGetValue(t.UserId, out Dictionary<DateTime, long>? days)
                 ? days
-                : new Dictionary<DateTime, int>()))];
+                : new Dictionary<DateTime, long>()))];
     }
 
     private async Task<List<UserActivityAggregate>> GetTopUsersByWindowForMentionsAsync(
@@ -230,18 +227,19 @@ public class ActivityGraphService(DB dbContext)
 
         var totals = await query
             .GroupBy(ua => ua.UserId)
-            .Select(g => new { UserId = g.Key, Total = g.Sum(x => x.XpGained) })
+            .Select(g => new { UserId = g.Key, Total = g.Sum(x => (long)x.XpGained) })
             .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.UserId)
             .ToListAsync();
 
-        Dictionary<int, Dictionary<DateTime, int>> byDay = await GetUserActivityByDayAsync(query);
+        Dictionary<int, Dictionary<DateTime, long>> byDay = await GetUserActivityByDayAsync(query);
 
         return [.. totals.Select(t => new UserActivityAggregate(
             t.UserId,
-            (int)t.Total,
-            byDay.TryGetValue(t.UserId, out Dictionary<DateTime, int>? days)
+            t.Total,
+            byDay.TryGetValue(t.UserId, out Dictionary<DateTime, long>? days)
                 ? days
-                : new Dictionary<DateTime, int>()))];
+                : new Dictionary<DateTime, long>()))];
     }
 
     private IQueryable<UserActivity> GetActivityQuery(DateTime start, int days, int? guildId, bool global)
@@ -257,16 +255,16 @@ public class ActivityGraphService(DB dbContext)
         return query;
     }
 
-    private static async Task<Dictionary<int, Dictionary<DateTime, int>>> GetUserActivityByDayAsync(IQueryable<UserActivity> query)
+    private static async Task<Dictionary<int, Dictionary<DateTime, long>>> GetUserActivityByDayAsync(IQueryable<UserActivity> query)
     {
         var byDay = await query
             .GroupBy(ua => new { ua.UserId, Day = ua.InsertDate.Date })
-            .Select(g => new { g.Key.UserId, g.Key.Day, Xp = g.Sum(x => x.XpGained) })
+            .Select(g => new { g.Key.UserId, g.Key.Day, Xp = g.Sum(x => (long)x.XpGained) })
             .ToListAsync();
 
         return byDay
             .GroupBy(x => x.UserId)
-            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Day, x => (int)x.Xp));
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Day, x => x.Xp));
     }
 
     private async Task<Dictionary<string, List<int>>> BuildUserSeriesAsync(
@@ -294,47 +292,64 @@ public class ActivityGraphService(DB dbContext)
 
             var baseList = await baseQuery
                 .GroupBy(ua => ua.UserId)
-                .Select(g => new { UserId = g.Key, Baseline = (long)g.Sum(x => x.XpGained) })
+                .Select(g => new { UserId = g.Key, Baseline = g.Sum(x => (long)x.XpGained) })
                 .ToListAsync();
 
             baselineMap = baseList.ToDictionary(x => x.UserId, x => x.Baseline);
         }
 
-        Dictionary<int, string> names = await dbContext.Users
+        var users = await dbContext.Users
             .AsNoTracking()
             .Where(user => userIds.Contains(user.Id))
-            .Select(user => new { user.Id, user.Username })
-            .ToDictionaryAsync(user => user.Id, user => user.Username);
+            .Select(user => new { user.Id, user.Username, user.DiscordId })
+            .ToListAsync();
+        Dictionary<int, (string Username, ulong DiscordId)> userLabels = users
+            .ToDictionary(user => user.Id, user => (user.Username, user.DiscordId));
 
         Dictionary<string, List<int>> series = [];
+        HashSet<string> usedLabels = [];
         foreach (UserActivityAggregate userAgg in perUser)
         {
-            string label = names.TryGetValue(userAgg.UserId, out string? username)
-                ? username
-                : userAgg.UserId.ToString();
+            string label = userLabels.TryGetValue(userAgg.UserId, out (string Username, ulong DiscordId) user)
+                ? GetUniqueUserLabel(user.Username, user.DiscordId, usedLabels)
+                : GetUniqueUserLabel(userAgg.UserId.ToString(), (ulong)userAgg.UserId, usedLabels);
 
-            List<int> daily = BuildDailyValues(userAgg.ByDay, start, days);
+            List<long> daily = BuildDailyValues(userAgg.ByDay, start, days);
             series[label] = cumulative
                 ? BuildCumulativeValues(daily, baselineMap.GetValueOrDefault(userAgg.UserId))
-                : daily;
+                : [.. daily.Select(ClampToInt)];
         }
 
         return series;
     }
 
-    private async Task<Dictionary<DateTime, int>> GetGuildAggregateByDayAsync(DateTime start, int days, int guildId)
+    private static string GetUniqueUserLabel(string username, ulong discordId, HashSet<string> usedLabels)
+    {
+        string baseLabel = string.IsNullOrWhiteSpace(username) ? discordId.ToString() : username;
+        if (usedLabels.Add(baseLabel))
+            return baseLabel;
+
+        string label = $"{baseLabel} ({discordId})";
+        int suffix = 2;
+        while (!usedLabels.Add(label))
+            label = $"{baseLabel} ({discordId}, {suffix++})";
+
+        return label;
+    }
+
+    private async Task<Dictionary<DateTime, long>> GetGuildAggregateByDayAsync(DateTime start, int days, int guildId)
     {
         DateTime endExclusive = start.AddDays(days);
         return await dbContext.UserActivity
             .AsNoTracking()
             .Where(ua => ua.InsertDate >= start && ua.InsertDate < endExclusive && ua.GuildId == guildId)
             .GroupBy(ua => ua.InsertDate.Date)
-            .Select(g => new { Day = g.Key, Xp = g.Sum(x => x.XpGained) })
-            .ToDictionaryAsync(x => x.Day, x => (int)x.Xp);
+            .Select(g => new { Day = g.Key, Xp = g.Sum(x => (long)x.XpGained) })
+            .ToDictionaryAsync(x => x.Day, x => x.Xp);
     }
 
     private async Task<Dictionary<string, List<int>>> BuildGuildSeriesAsync(
-        Dictionary<DateTime, int> dailyAggregate,
+        Dictionary<DateTime, long> dailyAggregate,
         DateTime start,
         int days,
         bool cumulative,
@@ -343,9 +358,9 @@ public class ActivityGraphService(DB dbContext)
         if (dailyAggregate.Count == 0)
             return [];
 
-        List<int> daily = BuildDailyValues(dailyAggregate, start, days);
+        List<long> daily = BuildDailyValues(dailyAggregate, start, days);
         if (!cumulative)
-            return new Dictionary<string, List<int>> { ["Guild Activity"] = daily };
+            return new Dictionary<string, List<int>> { ["Guild Activity"] = [.. daily.Select(ClampToInt)] };
 
         long baseline = await dbContext.UserActivity
             .AsNoTracking()
@@ -355,9 +370,9 @@ public class ActivityGraphService(DB dbContext)
         return new Dictionary<string, List<int>> { ["Guild Activity"] = BuildCumulativeValues(daily, baseline) };
     }
 
-    internal static List<int> BuildDailyValues(IReadOnlyDictionary<DateTime, int> valuesByDay, DateTime start, int days)
+    internal static List<long> BuildDailyValues(IReadOnlyDictionary<DateTime, long> valuesByDay, DateTime start, int days)
     {
-        List<int> daily = new(new int[days]);
+        List<long> daily = new(new long[days]);
         for (int i = 0; i < days; i++)
         {
             DateTime day = start.AddDays(i);
@@ -367,19 +382,21 @@ public class ActivityGraphService(DB dbContext)
         return daily;
     }
 
-    internal static List<int> BuildCumulativeValues(IReadOnlyList<int> daily, long baseline)
+    internal static List<int> BuildCumulativeValues(IReadOnlyList<long> daily, long baseline)
     {
-        int running = (int)baseline;
+        long running = baseline;
         List<int> cumulative = new(daily.Count);
 
-        foreach (int value in daily)
+        foreach (long value in daily)
         {
             running += value;
-            cumulative.Add(running);
+            cumulative.Add(ClampToInt(running));
         }
-
         return cumulative;
     }
+
+    internal static int ClampToInt(long value) =>
+        value > int.MaxValue ? int.MaxValue : value < int.MinValue ? int.MinValue : (int)value;
 }
 
 public sealed record ActivityGraphParseResult(bool Success, int Days, DateTime? ExplicitStart, string? ErrorMessage)
@@ -405,5 +422,5 @@ public sealed record ActivityGraphBuildResult(
 
 internal sealed record UserActivityAggregate(
     int UserId,
-    int Total,
-    IReadOnlyDictionary<DateTime, int> ByDay);
+    long Total,
+    IReadOnlyDictionary<DateTime, long> ByDay);
