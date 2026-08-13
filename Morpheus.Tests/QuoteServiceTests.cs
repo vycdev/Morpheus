@@ -226,6 +226,33 @@ public class QuoteServiceTests
     }
 
     [Fact]
+    public async Task GetTopQuoteSinceAsync_WidensScoreSumAndClampsTotal()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        User secondUser = new() { DiscordId = 789, Username = "second" };
+        await testDb.Db.Users.AddAsync(secondUser);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "period winner");
+        DateTime scoredAt = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = quote.Id, UserId = user.Id, Score = int.MaxValue, InsertDate = scoredAt },
+            new QuoteScore { QuoteId = quote.Id, UserId = secondUser.Id, Score = 1, InsertDate = scoredAt });
+        await testDb.Db.SaveChangesAsync();
+        QuoteService service = new(testDb.Db);
+
+        QuotePeriodResult result = await service.GetTopQuoteSinceAsync(
+            scoredAt.AddMinutes(-1),
+            scoredAt.AddMinutes(1),
+            guild.Id);
+
+        Assert.Equal(quote.Id, result.QuoteId);
+        Assert.Equal("period winner", result.Content);
+        Assert.Equal(int.MaxValue, result.TotalScore);
+    }
+
+    [Fact]
     public void DbModel_ConfiguresOneScorePerQuoteAndUser()
     {
         DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
