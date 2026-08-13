@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Enums;
 using Morpheus.Database.Models;
@@ -23,8 +24,12 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
+
         // Take all guilds that has activity roles enabled
-        List<Guild> guilds = dB.Guilds.Where(g => g.UseActivityRoles).ToList();
+        List<Guild> guilds = await dB.Guilds
+            .Where(g => g.UseActivityRoles)
+            .ToListAsync(cancellationToken);
         if (!guilds.Any())
         {
             Log("No guilds with activity roles enabled found.");
@@ -45,9 +50,11 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
                 }
 
                 Log($"Grabbing guild users for {guild.Name}.");
+                cancellationToken.ThrowIfCancellationRequested();
                 List<IGuildUser> guildUsers = [.. (await discordGuild.GetUsersAsync().FlattenAsync()).Where(u => !u.IsBot)];
 
                 Log($"Grabbing most active users for {guild.Name}.");
+                cancellationToken.ThrowIfCancellationRequested();
                 ActivityRoleAssignmentResult assignments = activityService.GetActivityRoleAssignments(guild.Id, guildUsers.Select(u => u.Id));
 
                 Log($"Eligible active users: {assignments.EligibleUserCount}");
@@ -59,7 +66,7 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
                     RoleType roleType = definition.RoleType;
                     try
                     {
-                        Role? role = await EnsureActivityRole(discordGuild, guild, roleType);
+                        Role? role = await EnsureActivityRole(discordGuild, guild, roleType, cancellationToken);
 
                         if (role == null)
                         {
@@ -67,7 +74,17 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
                             continue;
                         }
 
-                        await ReconcileActivityRoleUsers(discordGuild, guildUsers, roleType, role.RoleId, assignments.UsersByRole[roleType]);
+                        await ReconcileActivityRoleUsers(
+                            discordGuild,
+                            guildUsers,
+                            roleType,
+                            role.RoleId,
+                            assignments.UsersByRole[roleType],
+                            cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
                     }
                     catch (Exception ex)
                     {
@@ -76,16 +93,20 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
                     }
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 LogError($"Error processing activity roles for guild {guild.Name}", ex);
             }
 
-            await Task.Delay(1000);
+            await Task.Delay(1000, cancellationToken);
         }
     }
 
-    private async Task<Role?> EnsureActivityRole(SocketGuild discordGuild, Guild guild, RoleType roleType)
+    private async Task<Role?> EnsureActivityRole(SocketGuild discordGuild, Guild guild, RoleType roleType, CancellationToken cancellationToken)
     {
         List<Role> roleRecords = [.. dB.Roles.Where(r => r.GuildId == guild.Id && r.RoleType == roleType)];
         Role? role = roleRecords.FirstOrDefault(r => discordGuild.GetRole(r.RoleId) != null)
@@ -130,12 +151,18 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
         }
 
         if (dbChanged)
-            await dB.SaveChangesAsync();
+            await dB.SaveChangesAsync(cancellationToken);
 
         return role;
     }
 
-    private async Task ReconcileActivityRoleUsers(SocketGuild discordGuild, List<IGuildUser> guildUsers, RoleType roleType, ulong roleId, IReadOnlyCollection<User> desiredUsers)
+    private async Task ReconcileActivityRoleUsers(
+        SocketGuild discordGuild,
+        List<IGuildUser> guildUsers,
+        RoleType roleType,
+        ulong roleId,
+        IReadOnlyCollection<User> desiredUsers,
+        CancellationToken cancellationToken)
     {
         string roleName = discordGuild.GetRole(roleId)?.Name ?? roleType.GetDisplayName() ?? roleType.ToString();
         HashSet<ulong> desiredUserIds = [.. desiredUsers.Select(u => u.DiscordId)];
@@ -152,14 +179,19 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await user.RemoveRoleAsync(roleId);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 LogWarning($"Failed to remove role {roleName} from user {user.Username} ({user.Id}) in guild {discordGuild.Name}", ex);
             }
 
-            await Task.Delay(100);
+            await Task.Delay(100, cancellationToken);
         }
 
         foreach (ulong desiredUserId in desiredUserIds)
@@ -171,15 +203,20 @@ public class ActivityRolesJob(LogsService logsService, DB dB, DiscordSocketClien
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await user.AddRoleAsync(roleId);
                 usersWithRoleIds.Add(desiredUserId);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 LogWarning($"Failed to add role {roleName} to user {user.Username} ({user.Id}) in guild {discordGuild.Name}", ex);
             }
 
-            await Task.Delay(100);
+            await Task.Delay(100, cancellationToken);
         }
     }
 
