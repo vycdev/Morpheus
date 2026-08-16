@@ -13,7 +13,7 @@ public class DeleteOldLogsJob(LogsService logsService, DB dB) : IJob
 
         int count = await dB.Logs
             .Where(log => log.InsertDate < date) // Adjust the time span as needed
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync(context.CancellationToken);
 
         logsService.Log($"Quartz Job - Deleted {count} old logs.");
     }
