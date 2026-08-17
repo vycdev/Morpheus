@@ -102,6 +102,40 @@ public class EmojisModuleTests
     }
 
     [Fact]
+    public void BuildEmojiListMessages_SplitsEntriesWithinDiscordLimit()
+    {
+        string[] entries = [.. Enumerable.Range(1, 100)
+            .Select(index => $"emoji-{index:D3} - <:emoji_{index:D3}:123456789012345678>")];
+
+        IReadOnlyList<string> messages = EmojisModule.BuildEmojiListMessages(entries);
+
+        Assert.True(messages.Count > 1);
+        Assert.All(messages, message => Assert.InRange(message.Length, 1, 2000));
+        Assert.All(messages, message => Assert.StartsWith("**Custom Emojis:**\n", message));
+        Assert.Equal(
+            entries,
+            messages.SelectMany(message => message.Split('\n').Skip(1)));
+    }
+
+    [Fact]
+    public void BuildEmojiListMessages_SplitsOversizedEntriesWithoutBreakingUnicode()
+    {
+        const string header = "**Custom Emojis:**\n";
+        string entry = new string('x', 1980) + "😀" + new string('y', 100);
+
+        IReadOnlyList<string> messages = EmojisModule.BuildEmojiListMessages([entry]);
+        string[] payloads = [.. messages.Select(message => message[header.Length..])];
+
+        Assert.All(messages, message => Assert.InRange(message.Length, 1, 2000));
+        Assert.Equal(entry, string.Concat(payloads));
+        Assert.All(payloads, payload =>
+        {
+            Assert.False(char.IsHighSurrogate(payload[^1]));
+            Assert.False(char.IsLowSurrogate(payload[0]));
+        });
+    }
+
+    [Fact]
     public async Task ImportSessionStore_AppliesConcurrentPageUpdatesWithoutLosingChanges()
     {
         var store = new EmojiImportSessionStore();
