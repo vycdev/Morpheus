@@ -8,6 +8,6 @@ public class UbiJob(EconomyService economyService) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
-        await economyService.DistributeUbi();
+        await economyService.DistributeUbi(context.CancellationToken);
     }
 }
