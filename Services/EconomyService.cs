@@ -148,7 +148,7 @@ public class EconomyService(DB dbContext, LogsService logsService)
     /// <summary>
     /// Collects a 0.01% wealth tax from all users' liquid balances and adds it to the UBI pool.
     /// </summary>
-    public async Task CollectWealthTax()
+    public async Task CollectWealthTax(CancellationToken cancellationToken = default)
     {
         const decimal TaxRate = 0.0001m; // 0.01%
 
@@ -162,10 +162,10 @@ public class EconomyService(DB dbContext, LogsService logsService)
         // B. Update Users (Balance = Balance * 0.9999)
         // C. Add difference to Pool
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         try
         {
-            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
+            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m, cancellationToken);
 
             decimal totalTaxCollected = await dbContext.Database.SqlQueryRaw<decimal>(
                 """
@@ -179,17 +179,22 @@ public class EconomyService(DB dbContext, LogsService logsService)
                 FROM taxed
                 """,
                 TaxRate)
-                .SingleAsync();
+                .SingleAsync(cancellationToken);
 
             if (totalTaxCollected <= 0) return;
 
             pool.Setting.Value = FormatMoneyForStorage(pool.Amount + totalTaxCollected);
             pool.Setting.UpdateDate = DateTime.UtcNow;
 
-            await dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             logsService.Log($"Wealth Tax Collected: ${totalTaxCollected:F2}", Discord.LogSeverity.Info);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
         }
         catch (Exception ex)
         {
@@ -446,12 +451,16 @@ public class EconomyService(DB dbContext, LogsService logsService)
         return updated;
     }
 
-    private async Task<MoneySetting> GetMoneySettingForUpdate(string key, decimal defaultAmount)
+    private async Task<MoneySetting> GetMoneySettingForUpdate(
+        string key,
+        decimal defaultAmount,
+        CancellationToken cancellationToken = default)
     {
         EnsureCurrentTransaction();
 
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"""SELECT pg_advisory_xact_lock(hashtext({key}))""");
+            $"""SELECT pg_advisory_xact_lock(hashtext({key}))""",
+            cancellationToken);
 
         List<BotSetting> settings = await dbContext.BotSettings
             .FromSqlInterpolated($"""
@@ -461,7 +470,7 @@ public class EconomyService(DB dbContext, LogsService logsService)
                 ORDER BY "Id"
                 FOR UPDATE
                 """)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (settings.Count == 0)
         {
@@ -473,13 +482,13 @@ public class EconomyService(DB dbContext, LogsService logsService)
             };
 
             dbContext.BotSettings.Add(setting);
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(cancellationToken);
 
             return new MoneySetting(setting, defaultAmount);
         }
 
         foreach (BotSetting setting in settings)
-            await dbContext.Entry(setting).ReloadAsync();
+            await dbContext.Entry(setting).ReloadAsync(cancellationToken);
 
         BotSetting primary = settings[0];
         decimal amount = settings.Sum(setting => ParseMoneyFromStorage(setting.Value, defaultAmount));
@@ -490,7 +499,7 @@ public class EconomyService(DB dbContext, LogsService logsService)
             primary.UpdateDate = DateTime.UtcNow;
 
             dbContext.BotSettings.RemoveRange(settings.Skip(1));
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
         return new MoneySetting(primary, amount);
