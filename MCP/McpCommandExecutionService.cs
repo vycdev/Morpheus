@@ -408,7 +408,8 @@ public sealed class McpCommandExecutionService : IDisposable
             if (attachment is null)
                 throw new ArgumentException("Attachments cannot contain null entries.", nameof(attachments));
             if (string.IsNullOrWhiteSpace(attachment.Filename) || attachment.Filename.Length > 255 ||
-                Path.GetFileName(attachment.Filename) != attachment.Filename)
+                attachment.Filename is "." or ".." ||
+                attachment.Filename.IndexOfAny(['/', '\\']) >= 0)
                 throw new ArgumentException("Attachment filenames must be plain names containing at most 255 characters.", nameof(attachments));
             if (string.IsNullOrWhiteSpace(attachment.Url) || attachment.Url.Length > 2048)
                 throw new ArgumentException("Attachment URLs must contain at most 2048 characters.", nameof(attachments));
@@ -518,7 +519,10 @@ public sealed class McpCommandExecutionService : IDisposable
                 throw new ArgumentException("locale must be a recognized culture name containing at most 35 characters.", nameof(locale));
             try
             {
-                _ = CultureInfo.GetCultureInfo(locale);
+                CultureInfo culture = CultureInfo.GetCultureInfo(locale);
+                if (!CultureInfo.GetCultures(CultureTypes.AllCultures)
+                    .Any(candidate => candidate.Name.Equals(culture.Name, StringComparison.OrdinalIgnoreCase)))
+                    throw new CultureNotFoundException(nameof(locale), locale, "The culture name is not installed.");
             }
             catch (CultureNotFoundException ex)
             {
