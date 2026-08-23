@@ -10,6 +10,7 @@ using Morpheus.Utilities;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO.Compression;
+using System.Text;
 
 namespace Morpheus.Modules;
 
@@ -161,8 +162,71 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        string emojiList = string.Join("\n", emotes.Select(e => e.Name + " - " + e.ToString()));
-        await ReplyAsync($"**Custom Emojis:**\n{emojiList}");
+        IReadOnlyList<string> messages = BuildEmojiListMessages(
+            emotes.Select(e => e.Name + " - " + e.ToString()));
+
+        foreach (string message in messages)
+            await ReplyAsync(message);
+    }
+
+    internal static IReadOnlyList<string> BuildEmojiListMessages(IEnumerable<string> emojiEntries)
+    {
+        const string header = "**Custom Emojis:**";
+        const int maxMessageLength = 2000;
+        var messages = new List<string>();
+        var chunk = new StringBuilder(header);
+
+        void Flush()
+        {
+            if (chunk.Length == header.Length)
+                return;
+
+            messages.Add(chunk.ToString());
+            chunk.Clear().Append(header);
+        }
+
+        foreach (string entry in emojiEntries)
+        {
+            if (chunk.Length > header.Length
+                && chunk.Length + 1 + entry.Length > maxMessageLength)
+            {
+                Flush();
+            }
+
+            int offset = 0;
+            while (offset < entry.Length)
+            {
+                int available = maxMessageLength - chunk.Length - 1;
+                if (available <= 0)
+                {
+                    Flush();
+                    continue;
+                }
+
+                int take = Math.Min(available, entry.Length - offset);
+                if (offset + take < entry.Length
+                    && char.IsHighSurrogate(entry[offset + take - 1])
+                    && char.IsLowSurrogate(entry[offset + take]))
+                {
+                    take--;
+                }
+
+                if (take == 0)
+                {
+                    Flush();
+                    continue;
+                }
+
+                chunk.Append('\n').Append(entry.AsSpan(offset, take));
+                offset += take;
+
+                if (offset < entry.Length)
+                    Flush();
+            }
+        }
+
+        Flush();
+        return messages;
     }
 
     [Name("Download Emojis")]
