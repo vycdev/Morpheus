@@ -58,6 +58,26 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_WhenLinkUsesHrefAttribute_ReturnsHref()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>entry-1</guid>
+                  <title>Entry</title>
+                  <link href="https://example.com/entry-1" />
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+
+        Assert.Equal("https://example.com/entry-1", entry.Link);
+    }
+
+    [Fact]
     public void ParseEntries_WhenGuidIsBlank_UsesLinkAsEntryId()
     {
         XDocument document = XDocument.Parse("""
