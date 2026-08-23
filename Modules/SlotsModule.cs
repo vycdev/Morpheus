@@ -18,7 +18,7 @@ namespace Morpheus.Modules;
 
 [Name("Slots")]
 [Summary("Slot machine gambling — spin the reels and test your luck.")]
-public class SlotsModule : ModuleBase<SocketCommandContextExtended>
+public class SlotsModule : MorpheusModuleBase
 {
     private readonly DB dbContext;
     private readonly EconomyService economyService;

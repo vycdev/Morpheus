@@ -1,8 +1,11 @@
 using System.Threading.RateLimiting;
+using Discord.Commands;
+using Discord.WebSocket;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Morpheus.MCP;
 
@@ -22,6 +25,10 @@ public static class McpApiExtensions
             return services;
 
         services.AddScoped<McpService>();
+        services.TryAddSingleton<CommandService>();
+        services.TryAddSingleton<DiscordSocketClient>();
+        services.AddSingleton<McpCommandCatalog>();
+        services.AddSingleton<McpCommandExecutionService>();
 
         services
             .AddMcpServer()

@@ -1,5 +1,6 @@
-﻿using Discord.Commands;
 using System.Diagnostics;
+using Discord.Commands;
+using Morpheus.Extensions;
 
 namespace Morpheus.Attributes;
 
@@ -26,7 +27,6 @@ public static class RateLimitPolicy
         if (rateLimitData.TryGetValue(key, out RateLimitData? data))
         {
             TimeSpan elapsed = now - data.StartTime;
-
             if (elapsed < period)
             {
                 if (data.Count >= uses)
@@ -44,49 +44,61 @@ public static class RateLimitPolicy
         rateLimitData[key] = new RateLimitData { StartTime = now, Count = 1 };
         return RateLimitDecision.Allowed;
     }
+
+    public static RateLimitDecision Check(
+        IReadOnlyDictionary<(ulong UserId, string CommandName), RateLimitData> rateLimitData,
+        (ulong UserId, string CommandName) key,
+        int uses,
+        TimeSpan period,
+        DateTime now)
+    {
+        if (!rateLimitData.TryGetValue(key, out RateLimitData? data))
+            return RateLimitDecision.Allowed;
+
+        TimeSpan elapsed = now - data.StartTime;
+        return elapsed < period && data.Count >= uses
+            ? new RateLimitDecision(false, period - elapsed)
+            : RateLimitDecision.Allowed;
+    }
 }
 
-/// <summary>
-/// Rate limit attribute for commands.
-/// </summary>
-/// <param name="uses"></param>
-/// <param name="seconds"></param>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+/// <summary>Rate limit attribute for commands.</summary>
 public class RateLimitAttribute(int uses, int seconds) : PreconditionAttribute
 {
-    // A simple dictionary to track the last usage per user and command.
-    private static readonly Dictionary<(ulong, string), RateLimitData> _rateLimitData = [];
-    private static readonly object _rateLimitLock = new();
+    private static readonly Dictionary<(ulong, string), RateLimitData> RateLimitData = [];
+    private static readonly object RateLimitLock = new();
 
-    public override Task<PreconditionResult> CheckPermissionsAsync(ICommandContext context, CommandInfo command, IServiceProvider services)
+    public override Task<PreconditionResult> CheckPermissionsAsync(
+        ICommandContext context,
+        CommandInfo command,
+        IServiceProvider services)
     {
-        // Skip cooldown in debugging mode
         if (Debugger.IsAttached)
             return Task.FromResult(PreconditionResult.FromSuccess());
 
-        return ApplyRateLimit(context, command);
-    }
-
-    private Task<PreconditionResult> ApplyRateLimit(ICommandContext context, CommandInfo command)
-    {
         (ulong Id, string Name) key = (context.User.Id, command.Name);
-
         RateLimitDecision decision;
 
-        lock (_rateLimitLock)
+        lock (RateLimitLock)
         {
-            decision = RateLimitPolicy.Apply(
-                _rateLimitData,
-                key,
-                uses,
-                TimeSpan.FromSeconds(seconds),
-                DateTime.UtcNow);
+            decision = context is SocketCommandContextExtended { IsValidation: true }
+                ? RateLimitPolicy.Check(
+                    RateLimitData,
+                    key,
+                    uses,
+                    TimeSpan.FromSeconds(seconds),
+                    DateTime.UtcNow)
+                : RateLimitPolicy.Apply(
+                    RateLimitData,
+                    key,
+                    uses,
+                    TimeSpan.FromSeconds(seconds),
+                    DateTime.UtcNow);
         }
 
-        if (decision.IsAllowed)
-            return Task.FromResult(PreconditionResult.FromSuccess());
-
-        return Task.FromResult(PreconditionResult.FromError(
-            $"Command is on cooldown. Try again in {decision.RetryAfter.TotalSeconds:F0} seconds."));
+        return Task.FromResult(decision.IsAllowed
+            ? PreconditionResult.FromSuccess()
+            : PreconditionResult.FromError(
+                $"Command is on cooldown. Try again in {decision.RetryAfter.TotalSeconds:F0} seconds."));
     }
 }

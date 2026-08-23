@@ -14,7 +14,7 @@ using Morpheus.Utilities;
 namespace Morpheus.Modules;
 
 [Name("Subscriptions")]
-public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
+public class SubscriptionsModule : MorpheusModuleBase
 {
     private const string BrowserCustomIdPrefix = "subscriptions_browser:";
     private static readonly TimeSpan BrowserSessionLifetime = TimeSpan.FromMinutes(15);
@@ -170,7 +170,7 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        using IDisposable typing = Context.Channel.EnterTypingState();
+        using IDisposable typing = EnterTypingState();
         List<BulkSubscribeResult> results = [];
         foreach (string source in parsed.Sources)
         {
@@ -273,7 +273,7 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        using IDisposable typing = Context.Channel.EnterTypingState();
+        using IDisposable typing = EnterTypingState();
         List<BulkSubscribeResult> results = [];
         foreach (SubscriptionInputParser.RssSource source in sources)
         {
@@ -384,7 +384,7 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
             return;
         }
 
-        using IDisposable typing = Context.Channel.EnterTypingState();
+        using IDisposable typing = EnterTypingState();
         List<BulkSubscribeResult> results = [];
         foreach (string source in parsed.Sources)
         {
@@ -834,7 +834,7 @@ public class SubscriptionsModule : ModuleBase<SocketCommandContextExtended>
         if (!string.IsNullOrWhiteSpace(input))
             parts.Add(input);
 
-        foreach (Attachment attachment in Context.Message.Attachments)
+        foreach (IAttachment attachment in Context.Message.Attachments)
         {
             if (attachment.Size > 256 * 1024)
                 throw new InvalidOperationException($"Attachment `{attachment.Filename}` is too large. Bulk-list files must be 256 KB or smaller.");

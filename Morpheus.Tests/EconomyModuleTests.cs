@@ -32,7 +32,7 @@ public class EconomyModuleTests
         SocketCommandContextExtended context =
             (SocketCommandContextExtended)RuntimeHelpers.GetUninitializedObject(
                 typeof(SocketCommandContextExtended));
-        typeof(SocketCommandContext)
+        typeof(SocketCommandContextExtended)
             .GetField("<User>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(context, robber);
         ((IModuleBase)module).SetContext(context);

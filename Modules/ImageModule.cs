@@ -10,7 +10,7 @@ using System.Text.Json;
 
 namespace Morpheus.Modules;
 
-public class ImageModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class ImageModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : MorpheusModuleBase
 {
     private static readonly HttpClient httpClient = new();
 
@@ -248,7 +248,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
 
         // Upload the deepfried image to Discord
         MemoryStream stream = new(deepfriedImage);
-        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: false);
+        IUserMessage uploadResult = await SendFileResponseAsync(stream, "deepfried_image.png", "Here's your deepfried image!", isSpoiler: false);
         stream.Dispose();
 
         if (uploadResult == null)
@@ -268,7 +268,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
     [RateLimit(3, 30)]
     public async Task DeepfryExtraAsync()
     {
-        using var typing = Context.Channel.EnterTypingState();
+        using var typing = EnterTypingState();
 
         IAttachment? attachment = null;
         if (Context.Message.Attachments.Count > 0)
@@ -336,7 +336,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
         }
 
         MemoryStream stream = new(deepfriedImage);
-        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "deepfried_extra.jpg", "Here's your extra crispy deepfried image! 🔥", isSpoiler: false);
+        IUserMessage uploadResult = await SendFileResponseAsync(stream, "deepfried_extra.jpg", "Here's your extra crispy deepfried image! 🔥", isSpoiler: false);
         stream.Dispose();
 
         if (uploadResult == null)
@@ -356,7 +356,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
     [RateLimit(3, 30)]
     public async Task MemefyAsync([Remainder] string text = "")
     {
-        using var typing = Context.Channel.EnterTypingState();
+        using var typing = EnterTypingState();
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -430,7 +430,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
         }
 
         MemoryStream stream = new(result);
-        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "meme.png", isSpoiler: false);
+        IUserMessage uploadResult = await SendFileResponseAsync(stream, "meme.png", isSpoiler: false);
         stream.Dispose();
 
         if (uploadResult == null)
@@ -459,7 +459,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
 
         // Upload the captcha image to Discord
         MemoryStream stream = new(captchaImage.CaptchaImageBytes);
-        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "captcha.png",
+        IUserMessage uploadResult = await SendFileResponseAsync(stream, "captcha.png",
             $"Here's your captcha image containing the text: {captchaImage.CaptchaText}", isSpoiler: false);
 
         stream.Dispose();
@@ -495,7 +495,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
 
             // Upload the QR code image to Discord
             MemoryStream stream = new(qrCodeImage);
-            Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "qrcode.png", "Here's your QR code!", isSpoiler: false);
+            IUserMessage uploadResult = await SendFileResponseAsync(stream, "qrcode.png", "Here's your QR code!", isSpoiler: false);
             stream.Dispose();
             if (uploadResult == null)
             {
@@ -588,7 +588,7 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
         }
 
         using MemoryStream stream = new(outBytes);
-        Discord.Rest.RestUserMessage uploadResult = await Context.Channel.SendFileAsync(stream, "blurpified.png", "Here's your blurpified image!", isSpoiler: false);
+        IUserMessage uploadResult = await SendFileResponseAsync(stream, "blurpified.png", "Here's your blurpified image!", isSpoiler: false);
         if (uploadResult == null)
         {
             await ReplyAsync("Failed to upload the processed image. Please try again later.");

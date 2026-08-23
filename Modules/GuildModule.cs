@@ -12,7 +12,7 @@ using Morpheus.Utilities;
 
 namespace Morpheus.Modules;
 
-public class GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext, GuildPrefixService guildPrefixService) : ModuleBase<SocketCommandContextExtended>
+public class GuildModule(DiscordSocketClient client, CommandService commands, InteractionsHandler interactionHandler, IServiceProvider serviceProvider, DB dbContext, GuildPrefixService guildPrefixService) : MorpheusModuleBase
 {
     private readonly CommandService commands = commands;
     private readonly DiscordSocketClient client = client;

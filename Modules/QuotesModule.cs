@@ -11,7 +11,7 @@ using System.Globalization;
 
 namespace Morpheus.Modules;
 
-public class QuotesModule : ModuleBase<SocketCommandContextExtended>
+public class QuotesModule : MorpheusModuleBase
 {
     private readonly UsersService usersService;
     private readonly LogsService logsService;

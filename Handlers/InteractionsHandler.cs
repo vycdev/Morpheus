@@ -1,9 +1,11 @@
-﻿using Discord.WebSocket;
+using System.Collections.Concurrent;
+using Discord.WebSocket;
 
 namespace Morpheus.Handlers;
+
 public class InteractionsHandler(DiscordSocketClient client)
 {
-    static readonly Dictionary<string, Func<SocketInteraction, Task>> InteractionIds = [];
+    private static readonly ConcurrentDictionary<string, Func<SocketInteraction, Task>> InteractionIds = [];
 
     public void RegisterInteraction(string id, Func<SocketInteraction, Task> func)
     {

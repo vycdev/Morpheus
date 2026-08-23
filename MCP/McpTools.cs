@@ -4,8 +4,48 @@ using ModelContextProtocol.Server;
 namespace Morpheus.MCP;
 
 [McpServerToolType]
-public sealed class McpTools(McpService service)
+public sealed class McpTools(
+    McpService service,
+    McpCommandCatalog commandCatalog,
+    McpCommandExecutionService commandExecution)
 {
+    [McpServerTool(
+        Name = "list_commands",
+        ReadOnly = true,
+        Destructive = false,
+        OpenWorld = false,
+        UseStructuredContent = true)]
+    [Description("List every non-hidden Morpheus text command and alias directly from the live Discord command registry, including parameters, preconditions, and possible effects.")]
+    public McpCommandManifest ListCommands() => commandCatalog.GetManifest();
+
+    [McpServerTool(
+        Name = "describe_command",
+        ReadOnly = true,
+        Destructive = false,
+        OpenWorld = false,
+        UseStructuredContent = true)]
+    [Description("Describe one Morpheus text command by any registered alias.")]
+    public McpCommandCapability? DescribeCommand(
+        [Description("A command name or alias without the Discord prefix.")] string alias)
+    {
+        if (string.IsNullOrWhiteSpace(alias) || alias.Length > 100)
+            throw new ArgumentException("alias must contain between 1 and 100 characters.", nameof(alias));
+
+        return commandCatalog.FindByAlias(alias);
+    }
+
+    [McpServerTool(
+        Name = "run_command",
+        ReadOnly = false,
+        Destructive = true,
+        OpenWorld = true,
+        UseStructuredContent = true)]
+    [Description("Validate or execute any non-hidden Morpheus text command using a Discord-equivalent context. Identities and permissions are resolved by Morpheus from Discord; supplied ids never grant permissions. Use validate first. Execute mode must be enabled by the server and requires a real source message plus a unique idempotency key because database, Discord, or external side effects may occur.")]
+    public Task<McpCommandExecutionResult> RunCommandAsync(
+        [Description("The complete command invocation and Discord context. Command text must omit the server prefix. IDs are decimal strings. Execute mode requires sourceMessageId. Validate mode may omit it, in which case Morpheus creates a bounded synthetic message from the supplied content, reply id, and Discord-CDN attachments. Optional locale and timeZoneId are validated context metadata; command authorization and server time remain authoritative.")] McpCommandInvocation invocation,
+        CancellationToken cancellationToken = default) =>
+        commandExecution.InvokeAsync(invocation, cancellationToken);
+
     [McpServerTool(
         Name = "get_activity_overview",
         ReadOnly = true,

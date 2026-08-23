@@ -11,7 +11,7 @@ using Morpheus.Services;
 
 namespace Morpheus.Modules;
 
-public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
+public class ReactionRolesModule : MorpheusModuleBase
 {
     private const string CustomIdPrefix = "rr:";
     private static readonly string[] NumericEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
@@ -53,7 +53,9 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
         if (!useEmojis)
             useButtons = true;
 
-        var roles = Context.Message.MentionedRoles
+        var roles = Context.Message.MentionedRoleIds
+            .Select(Context.Guild.GetRole)
+            .Where(role => role is not null)
             .DistinctBy(r => r.Id)
             .ToList();
 
@@ -114,7 +116,7 @@ public class ReactionRolesModule : ModuleBase<SocketCommandContextExtended>
             content = $"React to toggle roles:\n{lines}";
         }
 
-        var message = await Context.Channel.SendMessageAsync(content, components: componentBuilder?.Build(), allowedMentions: AllowedMentions.None);
+        var message = await ReplyAsync(content, components: componentBuilder?.Build(), allowedMentions: AllowedMentions.None);
 
         if (useEmojis)
         {
