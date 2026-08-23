@@ -110,6 +110,24 @@ public class MiscModuleTests
     }
 
     [Fact]
+    public void ParseChoices_TruncatesOptionsToKeepReplyWithinDiscordLimit()
+    {
+        string[] result = MiscModule.ParseChoices($"{new string('x', 1986)}\nshort");
+
+        Assert.Equal(2000 - "Hmmm I choose: ".Length, result[0].Length);
+        Assert.EndsWith("…", result[0]);
+        Assert.Equal("short", result[1]);
+    }
+
+    [Fact]
+    public void ParseChoices_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        string[] result = MiscModule.ParseChoices(new string('x', 1983) + "😀tail\nshort");
+
+        Assert.Equal(new string('x', 1983) + "…", result[0]);
+    }
+
+    [Fact]
     public void GenerateRandomNumber_SupportsIntMaxValueAsInclusiveUpperBound()
     {
         int result = MiscModule.GenerateRandomNumber(int.MaxValue, int.MaxValue);

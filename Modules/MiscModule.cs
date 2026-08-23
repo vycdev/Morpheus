@@ -18,6 +18,9 @@ namespace Morpheus.Modules;
 
 public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
+    private const int DiscordMessageMaxLength = 2000;
+    private const string ChoiceReplyPrefix = "Hmmm I choose: ";
+    private static readonly int MaxChoiceLength = DiscordMessageMaxLength - ChoiceReplyPrefix.Length;
     private static readonly HttpClient httpClient = new();
 
     private readonly CommandService commands = commands;
@@ -248,14 +251,28 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
 
         Random random = new();
         string choice = parts[random.Next(parts.Length)];
-        await ReplyAsync($"Hmmm I choose: {choice}");
+        await ReplyAsync(ChoiceReplyPrefix + choice);
     }
 
     internal static string[] ParseChoices(string options)
     {
         return options.Split(
             '\n',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(TruncateChoice)
+            .ToArray();
+    }
+
+    private static string TruncateChoice(string choice)
+    {
+        if (choice.Length <= MaxChoiceLength)
+            return choice;
+
+        int prefixLength = MaxChoiceLength - 1;
+        if (char.IsHighSurrogate(choice[prefixLength - 1]) && char.IsLowSurrogate(choice[prefixLength]))
+            prefixLength--;
+
+        return string.Concat(choice.AsSpan(0, prefixLength), "…");
     }
 
     [Name("Random Number")]
