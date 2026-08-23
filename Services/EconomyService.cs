@@ -153,7 +153,7 @@ public class EconomyService(DB dbContext, LogsService logsService)
     /// <summary>
     /// Collects a 0.01% wealth tax from all users' liquid balances and adds it to the UBI pool.
     /// </summary>
-    public async Task CollectWealthTax()
+    public async Task CollectWealthTax(CancellationToken cancellationToken = default)
     {
         const decimal TaxRate = 0.0001m; // 0.01%
 
@@ -167,10 +167,10 @@ public class EconomyService(DB dbContext, LogsService logsService)
         // B. Update Users (Balance = Balance * 0.9999)
         // C. Add difference to Pool
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         try
         {
-            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m);
+            MoneySetting pool = await GetMoneySettingForUpdate(UbiPoolKey, 0m, cancellationToken);
 
             decimal totalTaxCollected = await dbContext.Database.SqlQueryRaw<decimal>(
                 """
@@ -184,17 +184,22 @@ public class EconomyService(DB dbContext, LogsService logsService)
                 FROM taxed
                 """,
                 TaxRate)
-                .SingleAsync();
+                .SingleAsync(cancellationToken);
 
             if (totalTaxCollected <= 0) return;
 
             pool.Setting.Value = FormatMoneyForStorage(pool.Amount + totalTaxCollected);
             pool.Setting.UpdateDate = DateTime.UtcNow;
 
-            await dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             logsService.Log($"Wealth Tax Collected: ${totalTaxCollected:F2}", Discord.LogSeverity.Info);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
         }
         catch (Exception ex)
         {
