@@ -277,6 +277,8 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
 
         type = ActivityType.Playing;
 
+        context.CancellationToken.ThrowIfCancellationRequested();
+
         // 6) Set the activity
         await discordClient.SetActivityAsync(new Game(description, type));
         logsService.Log($"Quartz Job - Activity set {type} \"{description}\"");
