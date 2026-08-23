@@ -11,7 +11,8 @@ public sealed record McpCommandParameter(
     bool Required,
     bool Remainder,
     bool Multiple,
-    string? DefaultValue);
+    bool HasDefaultValue,
+    string DefaultValue);
 
 public sealed record McpCommandCapability(
     string Id,
@@ -40,7 +41,7 @@ public sealed record McpCommandManifest(
 public sealed class McpCommandCatalog(CommandService commandService)
 {
     // Update only after reviewing the MCP safety and context needs of every changed command.
-    internal const string ReviewedRegistryFingerprint = "d70858444c51eaeee88102bcfb3c991c24c1bd5af6189504892bce3e44241ec9";
+    internal const string ReviewedRegistryFingerprint = "1a73b9c183fa51922697853e32fb8de0e50854640b7b4806eb4aa896efded19d";
 
     private readonly object buildLock = new();
     private volatile McpCommandManifest? cachedManifest;
@@ -127,7 +128,10 @@ public sealed class McpCommandCatalog(CommandService commandService)
                 !parameter.IsOptional,
                 parameter.IsRemainder,
                 parameter.IsMultiple,
-                parameter.DefaultValue?.ToString()))];
+                parameter.IsOptional,
+                parameter.IsOptional
+                    ? parameter.DefaultValue?.ToString() ?? "null"
+                    : string.Empty))];
 
         return new McpCommandCapability(
             $"{module}/{primaryAlias}",

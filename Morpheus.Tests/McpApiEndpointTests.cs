@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Discord.Commands;
+using Discord.WebSocket;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -11,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Morpheus.Database;
 using Morpheus.Database.Models;
+using Morpheus.Handlers;
 using Morpheus.MCP;
 
 namespace Morpheus.Tests;
@@ -113,6 +117,41 @@ public class McpApiEndpointTests
             result.TryGetProperty("structuredContent", out JsonElement structured),
             result.GetRawText());
         Assert.Equal(0, structured.GetProperty("totalMessages").GetInt64());
+    }
+
+    [Fact]
+    public async Task ListCommands_OutputMatchesAdvertisedParameterSchema()
+    {
+        await using McpTestServer server = await McpTestServer.CreateAsync();
+        await server.RegisterCommandsAsync();
+
+        using HttpRequestMessage call = CreateJsonRpcRequest(
+            4,
+            "tools/call",
+            """{"name":"list_commands","arguments":{}}""",
+            ApiKey);
+        using HttpResponseMessage response = await server.Client.SendAsync(call);
+        JsonDocument json = await ReadJsonAsync(response);
+
+        JsonElement result = json.RootElement.GetProperty("result");
+        if (result.TryGetProperty("isError", out JsonElement isError))
+            Assert.False(isError.GetBoolean(), result.GetRawText());
+
+        JsonElement commands = result
+            .GetProperty("structuredContent")
+            .GetProperty("commands");
+        JsonElement[] parameters = [.. commands.EnumerateArray()
+            .SelectMany(command => command.GetProperty("parameters").EnumerateArray())];
+
+        Assert.NotEmpty(parameters);
+        Assert.All(parameters, parameter =>
+        {
+            Assert.True(parameter.TryGetProperty("hasDefaultValue", out _), parameter.GetRawText());
+            Assert.Equal(JsonValueKind.String, parameter.GetProperty("defaultValue").ValueKind);
+        });
+        Assert.Contains(parameters, parameter =>
+            !parameter.GetProperty("hasDefaultValue").GetBoolean() &&
+            parameter.GetProperty("defaultValue").GetString() == string.Empty);
     }
 
     [Fact]
@@ -292,6 +331,14 @@ public class McpApiEndpointTests
     {
         public HttpClient Client { get; } = client;
 
+        public async Task RegisterCommandsAsync()
+        {
+            CommandService commands = app.Services.GetRequiredService<CommandService>();
+            await commands.AddModulesAsync(
+                typeof(McpTools).Assembly,
+                new CatalogServiceProvider(commands));
+        }
+
         public async Task<int> SeedApprovedAndPendingQuotesAsync()
         {
             await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
@@ -358,6 +405,38 @@ public class McpApiEndpointTests
             Client.Dispose();
             await app.DisposeAsync();
             await connection.DisposeAsync();
+        }
+    }
+
+    private sealed class CatalogServiceProvider : IServiceProvider
+    {
+        private readonly Dictionary<Type, object> instances;
+
+        public CatalogServiceProvider(CommandService commands)
+        {
+            DiscordSocketClient client = new();
+            instances = new Dictionary<Type, object>
+            {
+                [typeof(CommandService)] = commands,
+                [typeof(DiscordSocketClient)] = client,
+                [typeof(InteractionsHandler)] = new InteractionsHandler(client)
+            };
+        }
+
+        public object? GetService(Type serviceType)
+        {
+            if (serviceType == typeof(IServiceProvider))
+                return this;
+            if (instances.TryGetValue(serviceType, out object? instance))
+                return instance;
+            if (serviceType.IsClass)
+            {
+                instance = RuntimeHelpers.GetUninitializedObject(serviceType);
+                instances[serviceType] = instance;
+                return instance;
+            }
+
+            return null;
         }
     }
 }
