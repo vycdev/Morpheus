@@ -102,7 +102,7 @@ The endpoint uses MCP Streamable HTTP and supports standard methods including
 `initialize`, `tools/list`, and `tools/call`.
 
 See [MCP command integration](./docs/MCP_COMMANDS.md) before enabling command
-execution or connecting an AI agent such as Claudify.
+execution or connecting an MCP client.
 
 ## Contributing
 

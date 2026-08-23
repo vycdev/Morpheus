@@ -76,10 +76,10 @@ without creating an identity-spoofing, SSRF, or oversized-download path.
 
 To execute after a successful validation, set `mode` to `execute` and add a
 unique 16–128 character `idempotencyKey`. `responseMode` defaults to `capture`,
-which prevents Morpheus from posting a duplicate reply while Claudify interprets
-the result. Use `responseMode: "discord"` when output must exist in Discord—for
-example reaction-role, slots, emoji-import, help, or subscription browser
-components:
+which prevents Morpheus from posting a duplicate reply while the MCP client
+interprets the result. Use `responseMode: "discord"` when output must exist in
+Discord—for example reaction-role, slots, emoji-import, help, or subscription
+browser components:
 
 ```json
 {
@@ -90,7 +90,7 @@ components:
     "channelId": "345678901234567890",
     "sourceMessageId": "456789012345678901",
     "mode": "execute",
-    "idempotencyKey": "claudify:456789012345678901:showquote:42",
+    "idempotencyKey": "mcp-client:456789012345678901:showquote:42",
     "responseMode": "capture"
   }
 }
@@ -108,7 +108,7 @@ data; oversized files are reported as truncated rather than copied into the MCP
 response. Interactive components are only descriptive in capture mode; they
 become usable Discord-side sessions in Discord response mode.
 
-## Claudify flow
+## Recommended client flow
 
 1. Read the triggering Discord message and retain its user, guild, channel, and
    message ids.
