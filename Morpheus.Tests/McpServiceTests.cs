@@ -133,41 +133,6 @@ public class McpServiceTests
         Assert.Equal(500, result.Xp);
     }
 
-    [Fact]
-    public async Task GetLeaderboardAsync_IsGuildScopedAndValidatesBounds()
-    {
-        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
-        (Guild guild, User user) = await SeedBaseAsync(testDb.Db);
-        Guild otherGuild = new() { DiscordId = 999, Name = "Other" };
-        testDb.Db.Guilds.Add(otherGuild);
-        await testDb.Db.SaveChangesAsync();
-
-        testDb.Db.UserActivity.AddRange(
-            CreateActivity(guild.Id, user.Id, 10),
-            CreateActivity(otherGuild.Id, user.Id, 1000));
-        await testDb.Db.SaveChangesAsync();
-
-        McpService service = new(testDb.Db);
-        IReadOnlyList<McpLeaderboardEntry> result = await service.GetLeaderboardAsync(
-            "xp", guild.Id, 30, 10);
-
-        McpLeaderboardEntry entry = Assert.Single(result);
-        Assert.Equal(10, entry.Value);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
-            () => service.GetLeaderboardAsync("xp", guild.Id, 366, 10));
-    }
-
-    private static UserActivity CreateActivity(int guildId, int userId, int xp) => new()
-    {
-        GuildId = guildId,
-        UserId = userId,
-        DiscordChannelId = 1,
-        DiscordMessageId = (ulong)Random.Shared.Next(1, int.MaxValue),
-        XpGained = xp,
-        MessageLength = 25,
-        InsertDate = DateTime.UtcNow.AddHours(-1)
-    };
-
     private sealed class SqliteTestDb(SqliteConnection connection, DB db) : IAsyncDisposable
     {
         public DB Db { get; } = db;

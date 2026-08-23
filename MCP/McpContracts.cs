@@ -41,12 +41,6 @@ public sealed record McpQuoteDetail(
     long TotalScore,
     string Author);
 
-public sealed record McpLeaderboardEntry(
-    int Rank,
-    string Username,
-    long Value,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? Level);
-
 public sealed record McpCommandAttachment(
     string Filename,
     string Url,

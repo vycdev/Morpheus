@@ -80,8 +80,9 @@ bearer token.
 Browser origins are restricted by `MCP_ALLOWED_ORIGINS` (a comma-separated
 list of exact `http` or `https` origins), and requests are rate limited by
 `MCP_RATE_LIMIT_PER_MINUTE` (default: 60). Read-only tools expose aggregate
-guild/activity data, guild-scoped leaderboards, approved quotes, and a live
-registry-derived command manifest.
+guild/activity data, approved quotes, and a live registry-derived command
+manifest. Leaderboards use the canonical Morpheus text commands through
+`run_command` rather than a separate MCP query implementation.
 
 The `run_command` tool supports every non-hidden Morpheus text command and
 alias. Its default `validate` mode runs the normal Discord.Net command lookup,
@@ -110,4 +111,3 @@ execution or connecting an MCP client.
 Contributions welcome! If you'd like to contribute bug fixes, new features, or improvements, please read the contributing guide for setup, workflow, and expectations: [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Any help is appreciated — small PRs and clear descriptions make reviews faster.
-
