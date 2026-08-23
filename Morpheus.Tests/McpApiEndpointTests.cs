@@ -83,6 +83,9 @@ public class McpApiEndpointTests
         Assert.Contains("get_activity_overview", names);
         Assert.Contains("get_approved_quotes", names);
         Assert.Contains("get_guild_leaderboard", names);
+        Assert.Contains("list_commands", names);
+        Assert.Contains("describe_command", names);
+        Assert.Contains("run_command", names);
         Assert.DoesNotContain("get_recent_logs", names);
         Assert.DoesNotContain("get_users", names);
         Assert.All(tools.EnumerateArray(), tool =>
@@ -220,6 +223,12 @@ public class McpApiEndpointTests
             new McpApiOptions(["https://client.example/path"], ApiKey, 60).Validate());
         Assert.Throws<InvalidOperationException>(() =>
             new McpApiOptions([AllowedOrigin], ApiKey, 0).Validate());
+        Assert.Throws<InvalidOperationException>(() =>
+            new McpApiOptions([AllowedOrigin], ApiKey, 60) { CommandTimeoutSeconds = 0 }.Validate());
+        Assert.Throws<InvalidOperationException>(() =>
+            new McpApiOptions([AllowedOrigin], ApiKey, 60) { MaxConcurrentCommands = 0 }.Validate());
+        Assert.Throws<InvalidOperationException>(() =>
+            new McpApiOptions([AllowedOrigin], ApiKey, 60) { MaxCapturedOutputs = 0 }.Validate());
     }
 
     [Fact]

@@ -9,7 +9,7 @@ namespace Morpheus.Modules;
 
 [Name("Economy")]
 [Summary("Commands related to the server economy.")]
-public class EconomyModule(EconomyService economyService, UsersService usersService) : ModuleBase<SocketCommandContextExtended>
+public class EconomyModule(EconomyService economyService, UsersService usersService) : MorpheusModuleBase
 {
     [Name("UBI Status")]
     [Summary("Check the current Universal Basic Income pool and time until next distribution.")]

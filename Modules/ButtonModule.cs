@@ -15,7 +15,7 @@ internal sealed class ButtonGuildScore
     public long Score { get; init; }
 }
 
-public class ButtonModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class ButtonModule(DB dbContext) : MorpheusModuleBase
 {
     [Name("Press the Button")]
     [Summary("Press the button to gain points!")]

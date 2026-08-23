@@ -13,7 +13,7 @@ using System.Reflection;
 
 namespace Morpheus.Modules;
 
-public class HelpModule : ModuleBase<SocketCommandContextExtended>
+public class HelpModule : MorpheusModuleBase
 {
     private readonly CommandService commands;
     private readonly IServiceProvider serviceProvider;

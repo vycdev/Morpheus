@@ -14,7 +14,7 @@ using System.Text;
 
 namespace Morpheus.Modules;
 
-public class EmojisModule : ModuleBase<SocketCommandContextExtended>
+public class EmojisModule : MorpheusModuleBase
 {
     private static readonly HttpClient httpClient = new();
 
@@ -62,11 +62,11 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         }
 
         // Send the emoji in the channel
-        await Context.Channel.SendMessageAsync(emoji.ToString());
+        await ReplyAsync(emoji.ToString());
 
         try
         {
-            await Context.Message.DeleteAsync();
+            await DeleteInvocationAsync();
         }
         catch (Exception ex)
         {
@@ -104,7 +104,7 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
 
         try
         {
-            await Context.Message.DeleteAsync();
+            await DeleteInvocationAsync();
         }
         catch (Exception ex)
         {
@@ -274,7 +274,8 @@ public class EmojisModule : ModuleBase<SocketCommandContextExtended>
         ZipFile.CreateFromDirectory(directory, zipPath);
 
         await progressMessage.ModifyAsync(m => m.Content = "Uploading ZIP file...");
-        await Context.Channel.SendFileAsync(zipPath, "Here are all the server emojis!");
+        await using (FileStream archive = File.OpenRead(zipPath))
+            await SendFileResponseAsync(archive, Path.GetFileName(zipPath), "Here are all the server emojis!");
 
         // Clean up files
         Directory.Delete(directory, true);

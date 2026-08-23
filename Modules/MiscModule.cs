@@ -16,7 +16,7 @@ using System.Text;
 
 namespace Morpheus.Modules;
 
-public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : MorpheusModuleBase
 {
     private const int DiscordMessageMaxLength = 2000;
     private const string ChoiceReplyPrefix = "Hmmm I choose: ";

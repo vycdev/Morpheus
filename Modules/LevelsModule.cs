@@ -14,7 +14,7 @@ namespace Morpheus.Modules;
 public class LevelsModule(
     DB dbContext,
     ActivityLeaderboardService activityLeaderboardService,
-    ActivityGraphService activityGraphService) : ModuleBase<SocketCommandContextExtended>
+    ActivityGraphService activityGraphService) : MorpheusModuleBase
 {
     [Name("Current Level")]
     [Summary("Displays the current level and experience points of the user.")]
@@ -669,7 +669,7 @@ public class LevelsModule(
         }
 
         using var ms = new MemoryStream(png);
-        await Context.Channel.SendFileAsync(ms, filename, message);
+        await SendFileResponseAsync(ms, filename, message);
     }
 
 }
