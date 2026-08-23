@@ -17,18 +17,21 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
 {
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!twitch.IsConfigured)
             return;
 
         List<TwitchSubscription> subscriptions = await db.TwitchSubscriptions
             .Include(s => s.Webhook)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (subscriptions.Count == 0)
             return;
 
         List<string> userIds = subscriptions.Select(s => s.TwitchUserId).Distinct().ToList();
-        TwitchService.LiveStreamsResult result = await twitch.GetLiveStreamsResultAsync(userIds, context.CancellationToken);
+        TwitchService.LiveStreamsResult result = await twitch.GetLiveStreamsResultAsync(userIds, cancellationToken);
         if (!result.Succeeded)
         {
             logsService.Log("TwitchLiveJob: live-status request failed; preserving existing subscription state.", LogSeverity.Warning);
@@ -41,19 +44,26 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
 
         foreach (TwitchSubscription sub in subscriptions)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             live.TryGetValue(sub.TwitchUserId, out TwitchService.TwitchStream? stream);
-            changed |= await UpdateSubscriptionAsync(sub, stream, AnnounceAsync);
+            changed |= await UpdateSubscriptionAsync(
+                sub,
+                stream,
+                (subscription, liveStream) => AnnounceAsync(subscription, liveStream, cancellationToken),
+                cancellationToken);
         }
 
         if (changed)
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
     }
 
     internal static async Task<bool> UpdateSubscriptionAsync(
         TwitchSubscription sub,
         TwitchService.TwitchStream? stream,
-        Func<TwitchSubscription, TwitchService.TwitchStream, Task<bool>> announceAsync)
+        Func<TwitchSubscription, TwitchService.TwitchStream, Task<bool>> announceAsync,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         bool changed = false;
 
         if (stream != null)
@@ -81,7 +91,10 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
         return changed;
     }
 
-    private async Task<bool> AnnounceAsync(TwitchSubscription sub, TwitchService.TwitchStream stream)
+    private async Task<bool> AnnounceAsync(
+        TwitchSubscription sub,
+        TwitchService.TwitchStream stream,
+        CancellationToken cancellationToken)
     {
         if (sub.Webhook == null)
             return false;
@@ -89,7 +102,13 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
         string title = string.IsNullOrWhiteSpace(stream.Title) ? string.Empty : $"\n{stream.Title}";
         string content = $"🔴 **{sub.TwitchDisplayName}** is now live!{title}\nhttps://www.twitch.tv/{sub.TwitchLogin}";
 
-        bool ok = await discordWebhook.SendAsync(sub.Webhook.WebhookId, sub.Webhook.Token, content, sub.TwitchDisplayName, sub.AvatarUrl);
+        bool ok = await discordWebhook.SendAsync(
+            sub.Webhook.WebhookId,
+            sub.Webhook.Token,
+            content,
+            sub.TwitchDisplayName,
+            sub.AvatarUrl,
+            cancellationToken);
         if (!ok)
             logsService.Log($"TwitchLiveJob: failed to post go-live for {sub.TwitchLogin} to channel {sub.ChannelDiscordId}", LogSeverity.Warning);
 
