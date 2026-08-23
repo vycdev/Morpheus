@@ -78,6 +78,27 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_WhenGuidIsBlank_UsesLinkAsEntryId()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>   </guid>
+                  <title>Entry with blank guid</title>
+                  <link>https://example.com/posts/1</link>
+                  <pubDate>Wed, 30 Jul 2025 10:00:00 GMT</pubDate>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+
+        Assert.Equal("https://example.com/posts/1", entry.EntryId);
+    }
+
+    [Fact]
     public async Task FetchAsync_WhenCallerCancels_PropagatesCancellation()
     {
         RssFeedService service = new(new LogsService(new LogQueue()));

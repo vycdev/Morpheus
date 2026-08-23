@@ -312,7 +312,11 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
             return;
         }
 
-        imageBytes = ImageResizer.DownscaleIfTooLarge(imageBytes);
+        if (!TryDownscaleImage(imageBytes, out imageBytes))
+        {
+            await ReplyAsync("Failed to process the image. Please try again with a valid image file.");
+            return;
+        }
         byte[] deepfriedImage;
         try
         {
@@ -402,7 +406,11 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
             return;
         }
 
-        imageBytes = ImageResizer.DownscaleIfTooLarge(imageBytes);
+        if (!TryDownscaleImage(imageBytes, out imageBytes))
+        {
+            await ReplyAsync("Failed to process the image. Please try again with a valid image file.");
+            return;
+        }
         byte[] result;
         try
         {
@@ -556,7 +564,11 @@ public class ImageModule(CommandService commands, IServiceProvider serviceProvid
             return;
         }
 
-        imageBytes = ImageResizer.DownscaleIfTooLarge(imageBytes);
+        if (!TryDownscaleImage(imageBytes, out imageBytes))
+        {
+            await ReplyAsync("Failed to process the image. Please try again with a valid image file.");
+            return;
+        }
         byte[] outBytes;
         try
         {

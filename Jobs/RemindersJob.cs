@@ -8,6 +8,7 @@ using Quartz;
 
 namespace Morpheus.Jobs;
 
+[DisallowConcurrentExecution]
 public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient discordClient) : IJob
 {
     internal static readonly TimeSpan MaximumRetryAge = TimeSpan.FromDays(7);
