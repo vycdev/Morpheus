@@ -86,7 +86,7 @@ public class McpApiEndpointTests
 
         Assert.Contains("get_activity_overview", names);
         Assert.Contains("get_approved_quotes", names);
-        Assert.Contains("get_guild_leaderboard", names);
+        Assert.DoesNotContain("get_guild_leaderboard", names);
         Assert.Contains("list_commands", names);
         Assert.Contains("describe_command", names);
         Assert.Contains("run_command", names);

@@ -106,18 +106,4 @@ public sealed class McpTools(
         CancellationToken cancellationToken = default) =>
         service.GetApprovedQuoteAsync(quoteId, cancellationToken);
 
-    [McpServerTool(
-        Name = "get_guild_leaderboard",
-        ReadOnly = true,
-        Destructive = false,
-        OpenWorld = false,
-        UseStructuredContent = true)]
-    [Description("Get an XP or message leaderboard for one guild and a bounded lookback period.")]
-    public Task<IReadOnlyList<McpLeaderboardEntry>> GetGuildLeaderboardAsync(
-        [Description("Metric: xp or messages.")] string metric,
-        [Description("Positive internal Morpheus guild id.")] int guildId,
-        [Description("Lookback period from 1 through 365 days.")] int days = 30,
-        [Description("Number of entries from 1 through 50.")] int limit = 10,
-        CancellationToken cancellationToken = default) =>
-        service.GetLeaderboardAsync(metric, guildId, days, limit, cancellationToken);
 }
