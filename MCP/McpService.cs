@@ -110,7 +110,7 @@ public sealed class McpService(DB dbContext)
         {
             "newest" => query.OrderByDescending(quote => quote.InsertDate).ThenByDescending(quote => quote.Id),
             "oldest" => query.OrderBy(quote => quote.InsertDate).ThenBy(quote => quote.Id),
-            "score" => query.OrderByDescending(quote => quote.Scores.Sum(score => (int)score.Score))
+            "score" => query.OrderByDescending(quote => quote.Scores.Sum(score => (long)score.Score))
                 .ThenByDescending(quote => quote.Id),
             _ => throw new ArgumentException("Sort must be newest, oldest, or score.", nameof(sort))
         };
@@ -124,11 +124,11 @@ public sealed class McpService(DB dbContext)
             return new McpQuotePage(effectivePage, totalPages, total, []);
 
         List<int> quoteIds = [.. quotes.Select(quote => quote.Id)];
-        Dictionary<int, int> scoreMap = await dbContext.QuoteScores
+        Dictionary<int, long> scoreMap = await dbContext.QuoteScores
             .AsNoTracking()
             .Where(score => quoteIds.Contains(score.QuoteId))
             .GroupBy(score => score.QuoteId)
-            .Select(group => new { QuoteId = group.Key, Score = group.Sum(score => score.Score) })
+            .Select(group => new { QuoteId = group.Key, Score = group.Sum(score => (long)score.Score) })
             .ToDictionaryAsync(group => group.QuoteId, group => group.Score, ct);
 
         List<int> userIds = [.. quotes.Select(quote => quote.UserId).Distinct()];
@@ -164,10 +164,10 @@ public sealed class McpService(DB dbContext)
         if (quote is null)
             return null;
 
-        int totalScore = await dbContext.QuoteScores
+        long totalScore = await dbContext.QuoteScores
             .AsNoTracking()
             .Where(score => score.QuoteId == quote.Id)
-            .SumAsync(score => (int?)score.Score, ct) ?? 0;
+            .SumAsync(score => (long?)score.Score, ct) ?? 0;
 
         string author = await dbContext.Users
             .AsNoTracking()

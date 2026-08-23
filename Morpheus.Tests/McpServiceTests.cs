@@ -77,6 +77,37 @@ public class McpServiceTests
     }
 
     [Fact]
+    public async Task ApprovedQuoteScores_SupportTotalsLargerThanIntMaxValue()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (Guild guild, User user) = await SeedBaseAsync(testDb.Db);
+        User secondUser = new() { DiscordId = 789, Username = "SecondUser" };
+        testDb.Db.Users.Add(secondUser);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote quote = new()
+        {
+            GuildId = guild.Id,
+            UserId = user.Id,
+            Content = "high score",
+            Approved = true
+        };
+        testDb.Db.Quotes.Add(quote);
+        await testDb.Db.SaveChangesAsync();
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = quote.Id, UserId = user.Id, Score = int.MaxValue },
+            new QuoteScore { QuoteId = quote.Id, UserId = secondUser.Id, Score = 1 });
+        await testDb.Db.SaveChangesAsync();
+
+        McpService service = new(testDb.Db);
+        McpQuotePage page = await service.GetApprovedQuotesAsync(sort: "score");
+        McpQuoteDetail? detail = await service.GetApprovedQuoteAsync(quote.Id);
+
+        Assert.Equal((long)int.MaxValue + 1, Assert.Single(page.Items).Score);
+        Assert.Equal((long)int.MaxValue + 1, detail?.TotalScore);
+    }
+
+    [Fact]
     public async Task GetGuildInfoAsync_ReturnsOnlyAggregateGuildData()
     {
         await using SqliteTestDb testDb = await CreateSqliteDbAsync();

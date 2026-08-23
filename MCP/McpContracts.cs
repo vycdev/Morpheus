@@ -29,14 +29,14 @@ public sealed record McpQuoteItem(
     string Author,
     string Content,
     DateTime InsertedAtUtc,
-    int Score);
+    long Score);
 
 public sealed record McpQuoteDetail(
     int Id,
     int GuildId,
     string Content,
     DateTime InsertedAtUtc,
-    int TotalScore,
+    long TotalScore,
     string Author);
 
 public sealed record McpLeaderboardEntry(
