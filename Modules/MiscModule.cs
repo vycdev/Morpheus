@@ -837,7 +837,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             Description = $"ID: {user.Id}\nJoined At: {user.JoinedAt?.UtcDateTime}\nCreated At: {user.CreatedAt.UtcDateTime}",
             Fields =
             {
-                new EmbedFieldBuilder().WithName("Roles").WithValue(string.Join(", ", user.Roles.Select(r => r.Name))),
+                new EmbedFieldBuilder().WithName("Roles").WithValue(FormatUserRoles(user.Roles.Select(r => r.Name))),
                 new EmbedFieldBuilder().WithName("Status").WithValue(user.Status.ToString()),
                 new EmbedFieldBuilder().WithName("Is Bot").WithValue(user.IsBot ? "Yes" : "No"),
             },
@@ -848,6 +848,30 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             }
         };
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static string FormatUserRoles(IEnumerable<string> roleNames)
+    {
+        string[] roles = roleNames.Where(roleName => !string.IsNullOrWhiteSpace(roleName)).ToArray();
+        if (roles.Length == 0)
+            return "None";
+
+        StringBuilder result = new();
+        for (int i = 0; i < roles.Length; i++)
+        {
+            string separator = result.Length == 0 ? string.Empty : ", ";
+            int omittedCount = roles.Length - i - 1;
+            string omissionSuffix = omittedCount > 0 ? $", … (+{omittedCount} more)" : string.Empty;
+            if (result.Length + separator.Length + roles[i].Length + omissionSuffix.Length > EmbedFieldBuilder.MaxFieldValueLength)
+            {
+                omissionSuffix = $", … (+{roles.Length - i} more)";
+                return result.Append(omissionSuffix).ToString();
+            }
+
+            result.Append(separator).Append(roles[i]);
+        }
+
+        return result.ToString();
     }
 
     [Name("Random Advice")]
