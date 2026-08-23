@@ -18,6 +18,9 @@ namespace Morpheus.Modules;
 
 public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
 {
+    private const int DiscordMessageMaxLength = 2000;
+    private const string ChoiceReplyPrefix = "Hmmm I choose: ";
+    private static readonly int MaxChoiceLength = DiscordMessageMaxLength - ChoiceReplyPrefix.Length;
     private static readonly HttpClient httpClient = new();
 
     private readonly CommandService commands = commands;
@@ -124,7 +127,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         return eventDate < now ? eventDate.AddYears(1) : eventDate;
     }
 
-    internal static string NormalizeTimeUntilEventName(string eventName) => eventName.ToLowerInvariant();
+    internal static string NormalizeTimeUntilEventName(string eventName) => eventName.Trim().ToLowerInvariant();
 
     [Name("Coin Flip")]
     [Summary("Flips a coin, or multiple coins.")]
@@ -248,14 +251,28 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
 
         Random random = new();
         string choice = parts[random.Next(parts.Length)];
-        await ReplyAsync($"Hmmm I choose: {choice}");
+        await ReplyAsync(ChoiceReplyPrefix + choice);
     }
 
     internal static string[] ParseChoices(string options)
     {
         return options.Split(
             '\n',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(TruncateChoice)
+            .ToArray();
+    }
+
+    private static string TruncateChoice(string choice)
+    {
+        if (choice.Length <= MaxChoiceLength)
+            return choice;
+
+        int prefixLength = MaxChoiceLength - 1;
+        if (char.IsHighSurrogate(choice[prefixLength - 1]) && char.IsLowSurrogate(choice[prefixLength]))
+            prefixLength--;
+
+        return string.Concat(choice.AsSpan(0, prefixLength), "…");
     }
 
     [Name("Random Number")]
@@ -349,7 +366,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         }
     }
 
-    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.ToLowerInvariant();
+    internal static string NormalizeRockPaperScissorsChoice(string choice) => choice.Trim().ToLowerInvariant();
 
     [Name("Info")]
     [Summary("Displays information about the bot.")]
@@ -535,7 +552,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
     [Command("udic")]
     [Alias("urbandictionary", "urbandic", "udictionary")]
     [RateLimit(5, 30)]
-    public async Task UrbanDictionary(string? word = null)
+    public async Task UrbanDictionary([Remainder] string? word = null)
     {
         string url = BuildUrbanDictionaryUrl(word);
 
@@ -649,10 +666,9 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             .WithCurrentTimestamp();
 
         // Include image if the favicon exists
-        if (!string.IsNullOrEmpty(serverImageBase64))
+        if (TryDecodeMinecraftFavicon(serverImageBase64, out byte[] imageBytes))
         {
             embed.WithThumbnailUrl($"attachment://favicon.png"); // Point to an inline attachment URL
-            byte[] imageBytes = Convert.FromBase64String(serverImageBase64.Split(',')[1]); // Remove the data:image/png;base64, part
             MemoryStream stream = new(imageBytes);
             FileAttachment attachment = new(stream, "favicon.png");
 
@@ -674,6 +690,32 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
                 msg.Content = string.Empty;
                 msg.Embed = finalEmbed;
             });
+        }
+    }
+
+    internal static bool TryDecodeMinecraftFavicon(string? favicon, out byte[] imageBytes)
+    {
+        imageBytes = [];
+        if (string.IsNullOrWhiteSpace(favicon))
+            return false;
+
+        const string base64Marker = ";base64,";
+        int markerIndex = favicon.IndexOf(base64Marker, StringComparison.OrdinalIgnoreCase);
+        if (favicon.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && markerIndex < 0)
+            return false;
+
+        string encodedImage = markerIndex >= 0
+            ? favicon[(markerIndex + base64Marker.Length)..]
+            : favicon;
+
+        try
+        {
+            imageBytes = Convert.FromBase64String(encodedImage);
+            return imageBytes.Length > 0;
+        }
+        catch (FormatException)
+        {
+            return false;
         }
     }
 
@@ -812,7 +854,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             Description = $"ID: {user.Id}\nJoined At: {user.JoinedAt?.UtcDateTime}\nCreated At: {user.CreatedAt.UtcDateTime}",
             Fields =
             {
-                new EmbedFieldBuilder().WithName("Roles").WithValue(string.Join(", ", user.Roles.Select(r => r.Name))),
+                new EmbedFieldBuilder().WithName("Roles").WithValue(FormatUserRoles(user.Roles.Select(r => r.Name))),
                 new EmbedFieldBuilder().WithName("Status").WithValue(user.Status.ToString()),
                 new EmbedFieldBuilder().WithName("Is Bot").WithValue(user.IsBot ? "Yes" : "No"),
             },
@@ -823,6 +865,30 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             }
         };
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static string FormatUserRoles(IEnumerable<string> roleNames)
+    {
+        string[] roles = roleNames.Where(roleName => !string.IsNullOrWhiteSpace(roleName)).ToArray();
+        if (roles.Length == 0)
+            return "None";
+
+        StringBuilder result = new();
+        for (int i = 0; i < roles.Length; i++)
+        {
+            string separator = result.Length == 0 ? string.Empty : ", ";
+            int omittedCount = roles.Length - i - 1;
+            string omissionSuffix = omittedCount > 0 ? $", … (+{omittedCount} more)" : string.Empty;
+            if (result.Length + separator.Length + roles[i].Length + omissionSuffix.Length > EmbedFieldBuilder.MaxFieldValueLength)
+            {
+                omissionSuffix = $", … (+{roles.Length - i} more)";
+                return result.Append(omissionSuffix).ToString();
+            }
+
+            result.Append(separator).Append(roles[i]);
+        }
+
+        return result.ToString();
     }
 
     [Name("Random Advice")]

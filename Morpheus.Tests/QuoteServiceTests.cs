@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Services;
@@ -77,6 +77,27 @@ public class QuoteServiceTests
         Assert.Equal(300, firstLine.Length);
         Assert.EndsWith("...", firstLine);
         Assert.Contains("Inserted: 2026-05-30 12:00:00Z", fieldValue);
+    }
+
+    [Fact]
+    public void FormatQuoteListFieldValue_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        QuoteListItem item = new(
+            Id: 1,
+            GuildId: 1,
+            UserId: 1,
+            Content: new string('x', 296) + "😀" + new string('x', 10),
+            InsertDate: new DateTime(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc),
+            Approved: true,
+            Removed: false,
+            Score: 0,
+            Author: "author");
+
+        string fieldValue = QuoteService.FormatQuoteListFieldValue(item);
+
+        string firstLine = fieldValue.Split('\n')[0];
+        Assert.Equal(new string('x', 296) + "...", firstLine);
+        Assert.False(char.IsSurrogate(firstLine[^4]));
     }
 
     [Fact]
@@ -177,6 +198,58 @@ public class QuoteServiceTests
 
         Assert.Equal(quotes.Take(QuoteService.PageSize).Select(quote => quote.Id), firstPage.Items.Select(item => item.Id));
         Assert.Equal([quotes[^1].Id], secondPage.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public async Task QuoteScoreAggregates_WidenBeforeSummingAndClampPublicTotals()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        User secondUser = new() { DiscordId = 789, Username = "second" };
+        await testDb.Db.Users.AddAsync(secondUser);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "high score");
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = quote.Id, UserId = user.Id, Score = int.MaxValue },
+            new QuoteScore { QuoteId = quote.Id, UserId = secondUser.Id, Score = 1 });
+        await testDb.Db.SaveChangesAsync();
+
+        QuoteService service = new(testDb.Db);
+
+        QuoteDetails details = await service.GetQuoteDetailsAsync(quote.Id)
+            ?? throw new InvalidOperationException("Quote details were not found.");
+        QuotePage page = await service.GetQuotePageAsync(1, "top", approvedOnly: true, guild.Id);
+
+        Assert.Equal(int.MaxValue, details.TotalScore);
+        Assert.Equal(int.MaxValue, Assert.Single(page.Items).Score);
+    }
+
+    [Fact]
+    public async Task GetTopQuoteSinceAsync_WidensScoreSumAndClampsTotal()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        User secondUser = new() { DiscordId = 789, Username = "second" };
+        await testDb.Db.Users.AddAsync(secondUser);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote quote = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "period winner");
+        DateTime scoredAt = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
+        testDb.Db.QuoteScores.AddRange(
+            new QuoteScore { QuoteId = quote.Id, UserId = user.Id, Score = int.MaxValue, InsertDate = scoredAt },
+            new QuoteScore { QuoteId = quote.Id, UserId = secondUser.Id, Score = 1, InsertDate = scoredAt });
+        await testDb.Db.SaveChangesAsync();
+        QuoteService service = new(testDb.Db);
+
+        QuotePeriodResult result = await service.GetTopQuoteSinceAsync(
+            scoredAt.AddMinutes(-1),
+            scoredAt.AddMinutes(1),
+            guild.Id);
+
+        Assert.Equal(quote.Id, result.QuoteId);
+        Assert.Equal("period winner", result.Content);
+        Assert.Equal(int.MaxValue, result.TotalScore);
     }
 
     [Fact]

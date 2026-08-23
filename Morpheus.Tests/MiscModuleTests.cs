@@ -1,11 +1,28 @@
 using System.Globalization;
+using System.Reflection;
 using Discord.Commands;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Morpheus.Database;
 using Morpheus.Modules;
+using Morpheus.Utilities.Extensions;
 
 namespace Morpheus.Tests;
+
+public sealed class SupportedCultureTheoryAttribute : TheoryAttribute
+{
+    public SupportedCultureTheoryAttribute(string cultureName)
+    {
+        try
+        {
+            CultureInfo.GetCultureInfo(cultureName);
+        }
+        catch (CultureNotFoundException)
+        {
+            Skip = $"The {cultureName} culture is unavailable in globalization-invariant mode.";
+        }
+    }
+}
 
 public class MiscModuleTests
 {
@@ -31,7 +48,7 @@ public class MiscModuleTests
         Assert.Equal(new DateTime(expectedYear, eventMonth, eventDay, 0, 0, 0, DateTimeKind.Utc), result);
     }
 
-    [Theory]
+    [SupportedCultureTheory("tr-TR")]
     [InlineData("CHRISTMAS", "christmas")]
     [InlineData("CC BIRTHDAY", "cc birthday")]
     public void NormalizeTimeUntilEventName_NormalizesCase(string eventName, string expected)
@@ -51,9 +68,17 @@ public class MiscModuleTests
     }
 
     [Theory]
+    [InlineData("  christmas  ", "christmas")]
+    [InlineData("\tcc birthday\r\n", "cc birthday")]
+    public void NormalizeTimeUntilEventName_TrimsSurroundingWhitespace(string eventName, string expected)
+    {
+        Assert.Equal(expected, MiscModule.NormalizeTimeUntilEventName(eventName));
+    }
+
+    [Theory]
     [InlineData("ROCK", "rock")]
     [InlineData("PaPeR", "paper")]
-    [InlineData("ScIsSoRs", "scissors")]
+    [InlineData(" ScIsSoRs ", "scissors")]
     public void NormalizeRockPaperScissorsChoice_NormalizesMixedCase(string choice, string expected)
     {
         Assert.Equal(expected, MiscModule.NormalizeRockPaperScissorsChoice(choice));
@@ -85,6 +110,24 @@ public class MiscModuleTests
     }
 
     [Fact]
+    public void ParseChoices_TruncatesOptionsToKeepReplyWithinDiscordLimit()
+    {
+        string[] result = MiscModule.ParseChoices($"{new string('x', 1986)}\nshort");
+
+        Assert.Equal(2000 - "Hmmm I choose: ".Length, result[0].Length);
+        Assert.EndsWith("…", result[0]);
+        Assert.Equal("short", result[1]);
+    }
+
+    [Fact]
+    public void ParseChoices_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        string[] result = MiscModule.ParseChoices(new string('x', 1983) + "😀tail\nshort");
+
+        Assert.Equal(new string('x', 1983) + "…", result[0]);
+    }
+
+    [Fact]
     public void GenerateRandomNumber_SupportsIntMaxValueAsInclusiveUpperBound()
     {
         int result = MiscModule.GenerateRandomNumber(int.MaxValue, int.MaxValue);
@@ -107,6 +150,45 @@ public class MiscModuleTests
         string result = MiscModule.BuildUrbanDictionaryUrl("C# & tea");
 
         Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
+    }
+
+    [Theory]
+    [InlineData("data:image/png;base64,AQID")]
+    [InlineData("AQID")]
+    public void TryDecodeMinecraftFavicon_DecodesSupportedBase64Formats(string favicon)
+    {
+        bool decoded = MiscModule.TryDecodeMinecraftFavicon(favicon, out byte[] imageBytes);
+
+        Assert.True(decoded);
+        Assert.Equal([1, 2, 3], imageBytes);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("data:image/png,not-base64")]
+    [InlineData("data:image/png;base64,")]
+    [InlineData("not-base64")]
+    public void TryDecodeMinecraftFavicon_RejectsMissingOrMalformedImages(string? favicon)
+    {
+        bool decoded = MiscModule.TryDecodeMinecraftFavicon(favicon, out byte[] imageBytes);
+
+        Assert.False(decoded);
+        Assert.Empty(imageBytes);
+    }
+
+    [Fact]
+    public void UrbanDictionaryCommand_AcceptsMultiWordTerms()
+    {
+        MethodInfo method = Assert.Single(
+            typeof(MiscModule).GetMethods(),
+            method => method.GetCustomAttributes<CommandAttribute>()
+                .Any(attribute => attribute.Text == "udic"));
+        System.Reflection.ParameterInfo parameter = Assert.Single(method.GetParameters());
+
+        Assert.NotNull(parameter.GetCustomAttribute<RemainderAttribute>());
+        Assert.True(parameter.HasDefaultValue);
+        Assert.Null(parameter.DefaultValue);
     }
 
     [Fact]
@@ -152,5 +234,42 @@ public class MiscModuleTests
     public void TryParseDiceInput_RejectsMalformedOrOutOfRangeInput(string input)
     {
         Assert.False(MiscModule.TryParseDiceInput(input, out _, out _));
+    }
+
+    [Theory]
+    [InlineData(-1, "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░")]
+    [InlineData(101, "██████████████████████████████")]
+    public void GetPercentageBar_ClampsOutOfRangeValues(int value, string expected)
+    {
+        Assert.Equal(expected, value.GetPercentageBar());
+    }
+
+    [Fact]
+    public void FormatUserRoles_PreservesRoleNamesWithinEmbedFieldLimit()
+    {
+        string result = MiscModule.FormatUserRoles(["Admin", "Member"]);
+
+        Assert.Equal("Admin, Member", result);
+    }
+
+    [Fact]
+    public void FormatUserRoles_SummarizesRolesBeyondEmbedFieldLimit()
+    {
+        string[] roles = Enumerable.Range(1, 250)
+            .Select(index => $"role-{index:D3}-{new string('a', 90)}")
+            .ToArray();
+
+        string result = MiscModule.FormatUserRoles(roles);
+
+        Assert.InRange(result.Length, 1, Discord.EmbedFieldBuilder.MaxFieldValueLength);
+        Assert.StartsWith(roles[0], result);
+        Assert.Contains(" more)", result);
+        Assert.DoesNotContain(roles[^1], result);
+    }
+
+    [Fact]
+    public void FormatUserRoles_UsesPlaceholderWhenNoRolesAreAvailable()
+    {
+        Assert.Equal("None", MiscModule.FormatUserRoles([]));
     }
 }

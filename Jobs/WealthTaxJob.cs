@@ -8,6 +8,6 @@ public class WealthTaxJob(EconomyService economyService) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
-        await economyService.CollectWealthTax();
+        await economyService.CollectWealthTax(context.CancellationToken);
     }
 }

@@ -8,6 +8,7 @@ namespace Morpheus.Services;
 public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory scopeFactory) : BackgroundService
 {
     private const int BatchSize = 50;
+    private const int MaxFinalFlushAttempts = 3;
     private static readonly TimeSpan BatchDelay = TimeSpan.FromMilliseconds(250);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -16,10 +17,8 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
 
         try
         {
-            while (await logQueue.Reader.WaitToReadAsync(stoppingToken))
+            while (await WaitForBatchAsync(batch, stoppingToken))
             {
-                DrainAvailable(batch);
-
                 if (batch.Count < BatchSize)
                 {
                     try
@@ -33,7 +32,20 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
                     DrainAvailable(batch);
                 }
 
-                await FlushAsync(batch, stoppingToken);
+                while (batch.Count > 0)
+                {
+                    if (await FlushAsync(batch, stoppingToken))
+                        break;
+
+                    try
+                    {
+                        await Task.Delay(BatchDelay, stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -41,15 +53,38 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
         }
         finally
         {
+            int failedFlushAttempts = 0;
             while (true)
             {
                 DrainAvailable(batch);
                 if (batch.Count == 0)
                     break;
 
-                await FlushAsync(batch, CancellationToken.None);
+                if (await FlushAsync(batch, CancellationToken.None))
+                {
+                    failedFlushAttempts = 0;
+                    continue;
+                }
+
+                failedFlushAttempts++;
+                if (failedFlushAttempts >= MaxFinalFlushAttempts)
+                    break;
+
+                await Task.Delay(BatchDelay);
             }
         }
+    }
+
+    private async Task<bool> WaitForBatchAsync(List<QueuedLog> batch, CancellationToken cancellationToken)
+    {
+        if (batch.Count > 0)
+            return true;
+
+        if (!await logQueue.Reader.WaitToReadAsync(cancellationToken))
+            return false;
+
+        DrainAvailable(batch);
+        return batch.Count > 0;
     }
 
     private void DrainAvailable(List<QueuedLog> batch)
@@ -58,10 +93,10 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
             batch.Add(log);
     }
 
-    private async Task FlushAsync(List<QueuedLog> batch, CancellationToken cancellationToken)
+    private async Task<bool> FlushAsync(List<QueuedLog> batch, CancellationToken cancellationToken)
     {
         if (batch.Count == 0)
-            return;
+            return true;
 
         try
         {
@@ -72,6 +107,7 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
 
             await dbContext.SaveChangesAsync(cancellationToken);
             batch.Clear();
+            return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -83,7 +119,7 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
                 $"Failed to persist {batch.Count} queued log entries: {ex.Message}",
                 Discord.LogSeverity.Error));
 
-            batch.Clear();
+            return false;
         }
     }
 

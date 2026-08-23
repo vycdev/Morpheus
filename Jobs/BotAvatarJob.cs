@@ -27,10 +27,11 @@ public class BotAvatarJob : IJob
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         try
         {
 
-            var setting = await _db.BotSettings.FirstOrDefaultAsync(s => s.Key == "BotAvatar");
+            var setting = await _db.BotSettings.FirstOrDefaultAsync(s => s.Key == "BotAvatar", cancellationToken);
             string current = setting?.Value ?? "unknown";
 
             bool isDecember = DateTime.UtcNow.Month == 12;
@@ -46,7 +47,9 @@ public class BotAvatarJob : IJob
                 return;
 
             await using var fs = File.OpenRead(filePath);
-            await _client.CurrentUser.ModifyAsync(x => x.Avatar = new Image(fs));
+            await _client.CurrentUser.ModifyAsync(
+                x => x.Avatar = new Image(fs),
+                new RequestOptions { CancelToken = cancellationToken });
 
             if (setting == null)
             {
@@ -60,8 +63,12 @@ public class BotAvatarJob : IJob
                 _db.BotSettings.Update(setting);
             }
 
-            await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync(cancellationToken);
             _logsService.Log($"Quartz Job - Bot avatar updated to {targetKey}");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

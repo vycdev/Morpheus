@@ -8,6 +8,7 @@ using Quartz;
 
 namespace Morpheus.Jobs;
 
+[DisallowConcurrentExecution]
 public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient discordClient) : IJob
 {
     internal static readonly TimeSpan MaximumRetryAge = TimeSpan.FromDays(7);
@@ -53,12 +54,6 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
         Action<string> log,
         DateTime now)
     {
-        if (sendAsync == null)
-        {
-            log($"Channel {reminder.ChannelId} not found, deleting reminder {reminder.Id}.");
-            return true;
-        }
-
         if (reminder.FirstDeliveryFailureAt.HasValue &&
             now >= reminder.FirstDeliveryFailureAt.Value.Add(MaximumRetryAge))
         {
@@ -66,6 +61,16 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
                 $"Reminder {reminder.Id} to channel {reminder.ChannelId} permanently failed " +
                 $"after {reminder.DeliveryFailureCount} delivery attempts over one week. Deleting reminder.");
             return true;
+        }
+
+        if (sendAsync == null)
+        {
+            ScheduleRetry(
+                reminder,
+                now,
+                log,
+                $"Channel {reminder.ChannelId} is unavailable for reminder {reminder.Id}");
+            return false;
         }
 
         string content = string.IsNullOrWhiteSpace(reminder.Text) ? "Reminder!" : reminder.Text;
@@ -78,18 +83,25 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
         }
         catch (Exception ex)
         {
-            reminder.FirstDeliveryFailureAt ??= now;
-            reminder.DeliveryFailureCount++;
-
-            DateTime retryDeadline = reminder.FirstDeliveryFailureAt.Value.Add(MaximumRetryAge);
-            DateTime nextAttempt = now.Add(CalculateRetryDelay(reminder.DeliveryFailureCount));
-            reminder.NextDeliveryAttemptAt = nextAttempt < retryDeadline ? nextAttempt : retryDeadline;
-
-            log(
-                $"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}. " +
-                $"Retry {reminder.DeliveryFailureCount} scheduled for {reminder.NextDeliveryAttemptAt:u}.");
+            ScheduleRetry(
+                reminder,
+                now,
+                log,
+                $"Error sending reminder {reminder.Id} to channel {reminder.ChannelId}: {ex.Message}");
             return false;
         }
+    }
+
+    private static void ScheduleRetry(Reminder reminder, DateTime now, Action<string> log, string failure)
+    {
+        reminder.FirstDeliveryFailureAt ??= now;
+        reminder.DeliveryFailureCount++;
+
+        DateTime retryDeadline = reminder.FirstDeliveryFailureAt.Value.Add(MaximumRetryAge);
+        DateTime nextAttempt = now.Add(CalculateRetryDelay(reminder.DeliveryFailureCount));
+        reminder.NextDeliveryAttemptAt = nextAttempt < retryDeadline ? nextAttempt : retryDeadline;
+
+        log($"{failure}. Retry {reminder.DeliveryFailureCount} scheduled for {reminder.NextDeliveryAttemptAt:u}.");
     }
 
     internal static TimeSpan CalculateRetryDelay(int failureCount)

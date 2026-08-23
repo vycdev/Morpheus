@@ -1,4 +1,6 @@
+using System.Net;
 using Discord;
+using Discord.Net;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
@@ -14,19 +16,22 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         DateTime now = DateTime.UtcNow;
 
         // Get pending temp bans that have expired and not yet unbanned
         var dueBans = await db.TemporaryBans
             .Where(tb => tb.UnbannedAt == null && tb.ExpiresAt <= now)
             .OrderBy(tb => tb.ExpiresAt)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (!dueBans.Any())
             return;
 
         foreach (var ban in dueBans)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 var guild = discordClient.GetGuild(ban.GuildId);
@@ -36,9 +41,18 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
                     continue;
                 }
 
-                await guild.RemoveBanAsync(ban.UserId);
-                ban.UnbannedAt = DateTime.UtcNow;
-                Log($"Unbanned user {ban.UserId} from guild {ban.GuildId} (temp ban {ban.Id}).");
+                bool wasAlreadyUnbanned = await CompleteUnbanAsync(
+                    ban,
+                    () => guild.RemoveBanAsync(
+                        ban.UserId,
+                        new RequestOptions { CancelToken = cancellationToken }));
+                Log(wasAlreadyUnbanned
+                    ? $"User {ban.UserId} was already unbanned from guild {ban.GuildId} (temp ban {ban.Id})."
+                    : $"Unbanned user {ban.UserId} from guild {ban.GuildId} (temp ban {ban.Id}).");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -47,7 +61,29 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
             }
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    internal static async Task<bool> CompleteUnbanAsync(
+        TemporaryBan ban,
+        Func<Task> removeBanAsync)
+    {
+        bool wasAlreadyUnbanned = false;
+        try
+        {
+            await removeBanAsync();
+        }
+        catch (HttpException ex) when (
+            ex.HttpCode == HttpStatusCode.NotFound &&
+            ex.DiscordCode == DiscordErrorCode.UnknownBan)
+        {
+            // A moderator may have removed the ban before this job ran. Discord's
+            // Unknown Ban response means the desired state is already reached.
+            wasAlreadyUnbanned = true;
+        }
+
+        ban.UnbannedAt = DateTime.UtcNow;
+        return wasAlreadyUnbanned;
     }
 }
 

@@ -1,9 +1,9 @@
+using Discord;
+using Morpheus.Utilities;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Discord;
-using Morpheus.Utilities;
 
 namespace Morpheus.Services;
 
@@ -46,6 +46,7 @@ public class TwitchService
 
     public record TwitchUser(string Id, string Login, string DisplayName, string? ProfileImageUrl);
     public record TwitchStream(string Id, string Title);
+    public record LiveStreamsResult(IReadOnlyDictionary<string, TwitchStream> Streams, bool Succeeded);
 
     /// <summary>Resolves a Twitch login (handle) to its user, or null if not found / not configured.</summary>
     public async Task<TwitchUser?> GetUserAsync(string login, CancellationToken ct = default)
@@ -68,18 +69,32 @@ public class TwitchService
     /// </summary>
     public async Task<IReadOnlyDictionary<string, TwitchStream>> GetLiveStreamsAsync(IReadOnlyCollection<string> userIds, CancellationToken ct = default)
     {
+        LiveStreamsResult result = await GetLiveStreamsResultAsync(userIds, ct);
+        return result.Streams;
+    }
+
+    /// <summary>
+    /// Returns currently-live streams together with whether every Twitch request completed.
+    /// An unsuccessful result must not be interpreted as "everyone is offline" by polling jobs.
+    /// </summary>
+    public async Task<LiveStreamsResult> GetLiveStreamsResultAsync(IReadOnlyCollection<string> userIds, CancellationToken ct = default)
+    {
         Dictionary<string, TwitchStream> live = new();
         if (!IsConfigured || userIds.Count == 0)
-            return live;
+            return new LiveStreamsResult(live, true);
 
         // Helix allows up to 100 user_id params per request.
-        foreach (string[] batch in userIds.Distinct().Chunk(100))
+        foreach (string[] batch in userIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Chunk(100))
         {
             string query = string.Join("&", batch.Select(id => $"user_id={Uri.EscapeDataString(id)}"));
             string url = $"https://api.twitch.tv/helix/streams?{query}";
             HelixStreamsResponse? resp = await SendHelixAsync<HelixStreamsResponse>(url, ct);
             if (resp?.Data == null)
-                continue;
+                return new LiveStreamsResult(live, false);
 
             foreach (StreamPayload s in resp.Data)
             {
@@ -88,7 +103,7 @@ public class TwitchService
             }
         }
 
-        return live;
+        return new LiveStreamsResult(live, true);
     }
 
     private async Task<T?> SendHelixAsync<T>(string url, CancellationToken ct) where T : class

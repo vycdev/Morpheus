@@ -36,7 +36,7 @@ public class RssFeedService(LogsService logsService)
 
             List<FeedEntry> entries = [];
 
-            // Atom (<entry>) first, then RSS 2.0 (<item>).
+            // Atom (<entry>) first, then RSS (<item>), including namespaced RSS 1.0 feeds.
             List<XElement> atomEntries = doc.Descendants(Atom + "entry").ToList();
             if (atomEntries.Count > 0)
             {
@@ -56,19 +56,7 @@ public class RssFeedService(LogsService logsService)
             }
             else
             {
-                foreach (XElement it in doc.Descendants().Where(x => x.Name.LocalName == "item"))
-                {
-                    string link = it.Element("link")?.Value
-                                  ?? it.Elements("link").FirstOrDefault()?.Attribute("href")?.Value
-                                  ?? string.Empty;
-                    string id = it.Element("guid")?.Value ?? it.Element("id")?.Value ?? link;
-                    string title = it.Element("title")?.Value ?? string.Empty;
-                    string pubRaw = it.Element("pubDate")?.Value ?? it.Element("published")?.Value ?? string.Empty;
-                    DateTime published = ParsePublished(pubRaw);
-
-                    if (!string.IsNullOrWhiteSpace(id))
-                        entries.Add(new FeedEntry(id, title, link, published));
-                }
+                entries.AddRange(ParseRssEntries(doc));
             }
 
             XElement? channel = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "channel");
@@ -96,6 +84,41 @@ public class RssFeedService(LogsService logsService)
             return (null, null, []);
         }
     }
+
+    internal static IReadOnlyList<FeedEntry> ParseRssEntries(XDocument doc)
+    {
+        List<FeedEntry> entries = [];
+
+        foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
+        {
+            XElement? linkElement = ChildByLocalName(item, "link");
+            string? linkText = linkElement?.Value;
+            string link = !string.IsNullOrWhiteSpace(linkText)
+                ? linkText
+                : linkElement?.Attribute("href")?.Value ?? string.Empty;
+            string id = FirstNonBlank(
+                ChildByLocalName(item, "guid")?.Value,
+                ChildByLocalName(item, "id")?.Value,
+                link);
+            string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
+            string pubRaw = ChildByLocalName(item, "pubDate")?.Value
+                            ?? ChildByLocalName(item, "published")?.Value
+                            ?? ChildByLocalName(item, "date")?.Value
+                            ?? string.Empty;
+            DateTime published = ParsePublished(pubRaw);
+
+            if (!string.IsNullOrWhiteSpace(id))
+                entries.Add(new FeedEntry(id, title, link, published));
+        }
+
+        return entries;
+    }
+
+    private static XElement? ChildByLocalName(XElement parent, string localName) =>
+        parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName);
+
+    private static string FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
     internal static DateTime ParsePublished(string value) =>
         DateTime.TryParse(
