@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Morpheus.MCP;
 
 public sealed record McpGuildInfo(
@@ -43,7 +45,7 @@ public sealed record McpLeaderboardEntry(
     int Rank,
     string Username,
     long Value,
-    int? Level);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? Level);
 
 public sealed record McpCommandAttachment(
     string Filename,
@@ -70,34 +72,34 @@ public sealed record McpCommandInvocation(
 public sealed record McpCapturedEmbedField(string Name, string Value, bool Inline);
 
 public sealed record McpCapturedEmbed(
-    string? Title,
-    string? Description,
-    string? Url,
-    string? Author,
-    string? AuthorIconUrl,
-    string? Footer,
-    string? FooterIconUrl,
-    string? ImageUrl,
-    string? ThumbnailUrl,
-    uint? Color,
-    DateTimeOffset? Timestamp,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Title,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Description,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Url,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Author,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? AuthorIconUrl,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Footer,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? FooterIconUrl,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ImageUrl,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ThumbnailUrl,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] uint? Color,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] DateTimeOffset? Timestamp,
     IReadOnlyList<McpCapturedEmbedField> Fields);
 
 public sealed record McpCapturedFile(
     string Filename,
     long Size,
-    string? Sha256,
-    string? ContentType,
-    string? Base64Data,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Sha256,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ContentType,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Base64Data,
     bool Truncated);
 
 public sealed record McpCapturedOutput(
     int Sequence,
     string Kind,
-    string? Content,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Content,
     IReadOnlyList<McpCapturedEmbed> Embeds,
-    McpCapturedFile? File,
-    string? Detail);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] McpCapturedFile? File,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Detail);
 
 public sealed record McpCommandExecutionResult(
     string RequestId,
@@ -107,8 +109,8 @@ public sealed record McpCommandExecutionResult(
     bool Executed,
     bool SideEffectsMayHaveOccurred,
     bool IdempotentReplay,
-    McpCommandCapability? Command,
-    string? Error,
-    string? ErrorReason,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] McpCommandCapability? Command,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Error,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ErrorReason,
     IReadOnlyList<McpCapturedOutput> Outputs,
     long ElapsedMilliseconds);

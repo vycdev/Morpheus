@@ -155,6 +155,30 @@ public class McpApiEndpointTests
     }
 
     [Fact]
+    public async Task RunCommand_OutputIncludesNullableFieldsRequiredBySchema()
+    {
+        await using McpTestServer server = await McpTestServer.CreateAsync();
+        await server.RegisterCommandsAsync();
+
+        using HttpRequestMessage call = CreateJsonRpcRequest(
+            5,
+            "tools/call",
+            """{"name":"run_command","arguments":{"invocation":{"command":"a","userId":"123","channelId":"456","mode":"validate"}}}""",
+            ApiKey);
+        using HttpResponseMessage response = await server.Client.SendAsync(call);
+        JsonDocument json = await ReadJsonAsync(response);
+
+        JsonElement result = json.RootElement.GetProperty("result");
+        if (result.TryGetProperty("isError", out JsonElement isError))
+            Assert.False(isError.GetBoolean(), result.GetRawText());
+
+        JsonElement structured = result.GetProperty("structuredContent");
+        Assert.Equal(JsonValueKind.Null, structured.GetProperty("command").ValueKind);
+        Assert.True(structured.TryGetProperty("error", out _), structured.GetRawText());
+        Assert.True(structured.TryGetProperty("errorReason", out _), structured.GetRawText());
+    }
+
+    [Fact]
     public async Task ApprovedQuotesTool_NeverReturnsPendingQuotes()
     {
         await using McpTestServer server = await McpTestServer.CreateAsync();
