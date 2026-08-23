@@ -42,6 +42,9 @@ public class HoneypotRenameJob(LogsService logsService, DB dB, DiscordSocketClie
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (discordClient.CurrentUser == null)
         {
             Log("Discord client not ready; skipping honeypot rename run.", LogSeverity.Warning);
@@ -52,7 +55,7 @@ public class HoneypotRenameJob(LogsService logsService, DB dB, DiscordSocketClie
         // Get all guilds that have honeypot enabled
         List<Guild> guilds = await dB.Guilds
             .Where(g => g.HoneypotChannelId != 0 && g.SendHoneypotMessages)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (!guilds.Any())
         {
@@ -64,6 +67,8 @@ public class HoneypotRenameJob(LogsService logsService, DB dB, DiscordSocketClie
 
         foreach (var guild in guilds)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 SocketGuild? discordGuild = discordClient.GetGuild(guild.DiscordId);
@@ -95,8 +100,14 @@ public class HoneypotRenameJob(LogsService logsService, DB dB, DiscordSocketClie
                     continue;
                 }
 
-                await channel.ModifyAsync(props => props.Name = newName);
+                await channel.ModifyAsync(
+                    props => props.Name = newName,
+                    new RequestOptions { CancelToken = cancellationToken });
                 Log($"Renamed honeypot channel {guild.HoneypotChannelId} in guild {guild.Name} to '{newName}'.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -104,7 +115,7 @@ public class HoneypotRenameJob(LogsService logsService, DB dB, DiscordSocketClie
             }
 
             // Small delay to avoid hitting global rate limits if running at scale
-            await Task.Delay(700);
+            await Task.Delay(700, cancellationToken);
         }
     }
 }
