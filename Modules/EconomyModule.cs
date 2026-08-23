@@ -1,6 +1,5 @@
 using Discord;
 using Discord.Commands;
-using Discord.WebSocket;
 using Morpheus.Attributes;
 using Morpheus.Extensions;
 using Morpheus.Services;
@@ -123,7 +122,7 @@ public class EconomyModule(EconomyService economyService, UsersService usersServ
         }
 
         var dbRobber = await usersService.TryGetCreateUser(Context.User);
-        var dbVictim = await usersService.TryGetCreateUser((SocketUser)target);
+        var dbVictim = await usersService.TryGetCreateUser(target);
 
         var (success, message) = await economyService.RobUser(dbRobber.Id, dbVictim.Id);
 
