@@ -16,19 +16,22 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         DateTime now = DateTime.UtcNow;
 
         // Get pending temp bans that have expired and not yet unbanned
         var dueBans = await db.TemporaryBans
             .Where(tb => tb.UnbannedAt == null && tb.ExpiresAt <= now)
             .OrderBy(tb => tb.ExpiresAt)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (!dueBans.Any())
             return;
 
         foreach (var ban in dueBans)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 var guild = discordClient.GetGuild(ban.GuildId);
@@ -40,10 +43,16 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
 
                 bool wasAlreadyUnbanned = await CompleteUnbanAsync(
                     ban,
-                    () => guild.RemoveBanAsync(ban.UserId));
+                    () => guild.RemoveBanAsync(
+                        ban.UserId,
+                        new RequestOptions { CancelToken = cancellationToken }));
                 Log(wasAlreadyUnbanned
                     ? $"User {ban.UserId} was already unbanned from guild {ban.GuildId} (temp ban {ban.Id})."
                     : $"Unbanned user {ban.UserId} from guild {ban.GuildId} (temp ban {ban.Id}).");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -52,7 +61,7 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
             }
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     internal static async Task<bool> CompleteUnbanAsync(
