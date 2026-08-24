@@ -8,6 +8,7 @@ namespace Morpheus.Services;
 public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory scopeFactory) : BackgroundService
 {
     private const int BatchSize = 50;
+    private const int MaxFinalFlushAttempts = 3;
     private static readonly TimeSpan BatchDelay = TimeSpan.FromMilliseconds(250);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -52,11 +53,24 @@ public sealed class LogsWriterService(LogQueue logQueue, IServiceScopeFactory sc
         }
         finally
         {
+            int failedFlushAttempts = 0;
             while (true)
             {
                 DrainAvailable(batch);
-                if (batch.Count == 0 || !await FlushAsync(batch, CancellationToken.None))
+                if (batch.Count == 0)
                     break;
+
+                if (await FlushAsync(batch, CancellationToken.None))
+                {
+                    failedFlushAttempts = 0;
+                    continue;
+                }
+
+                failedFlushAttempts++;
+                if (failedFlushAttempts >= MaxFinalFlushAttempts)
+                    break;
+
+                await Task.Delay(BatchDelay);
             }
         }
     }

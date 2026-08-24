@@ -110,6 +110,24 @@ public class MiscModuleTests
     }
 
     [Fact]
+    public void ParseChoices_TruncatesOptionsToKeepReplyWithinDiscordLimit()
+    {
+        string[] result = MiscModule.ParseChoices($"{new string('x', 1986)}\nshort");
+
+        Assert.Equal(2000 - "Hmmm I choose: ".Length, result[0].Length);
+        Assert.EndsWith("…", result[0]);
+        Assert.Equal("short", result[1]);
+    }
+
+    [Fact]
+    public void ParseChoices_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        string[] result = MiscModule.ParseChoices(new string('x', 1983) + "😀tail\nshort");
+
+        Assert.Equal(new string('x', 1983) + "…", result[0]);
+    }
+
+    [Fact]
     public void GenerateRandomNumber_SupportsIntMaxValueAsInclusiveUpperBound()
     {
         int result = MiscModule.GenerateRandomNumber(int.MaxValue, int.MaxValue);
@@ -224,5 +242,34 @@ public class MiscModuleTests
     public void GetPercentageBar_ClampsOutOfRangeValues(int value, string expected)
     {
         Assert.Equal(expected, value.GetPercentageBar());
+    }
+
+    [Fact]
+    public void FormatUserRoles_PreservesRoleNamesWithinEmbedFieldLimit()
+    {
+        string result = MiscModule.FormatUserRoles(["Admin", "Member"]);
+
+        Assert.Equal("Admin, Member", result);
+    }
+
+    [Fact]
+    public void FormatUserRoles_SummarizesRolesBeyondEmbedFieldLimit()
+    {
+        string[] roles = Enumerable.Range(1, 250)
+            .Select(index => $"role-{index:D3}-{new string('a', 90)}")
+            .ToArray();
+
+        string result = MiscModule.FormatUserRoles(roles);
+
+        Assert.InRange(result.Length, 1, Discord.EmbedFieldBuilder.MaxFieldValueLength);
+        Assert.StartsWith(roles[0], result);
+        Assert.Contains(" more)", result);
+        Assert.DoesNotContain(roles[^1], result);
+    }
+
+    [Fact]
+    public void FormatUserRoles_UsesPlaceholderWhenNoRolesAreAvailable()
+    {
+        Assert.Equal("None", MiscModule.FormatUserRoles([]));
     }
 }

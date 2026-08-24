@@ -26,9 +26,7 @@ public class GuildPrefixService(IServiceScopeFactory scopeFactory)
             .FirstOrDefaultAsync()
             ?? DefaultPrefix;
 
-        prefixesByGuildId[guildDiscordId] = prefix;
-
-        return prefix;
+        return prefixesByGuildId.GetOrAdd(guildDiscordId, prefix);
     }
 
     public void SetPrefix(ulong guildDiscordId, string prefix)

@@ -69,10 +69,45 @@ Morpheus features a fully integrated economic system where value is directly tie
     - **Slots:** Gamble against the server's "Slots Vault" — a central bank that grows with losses and pays out from its own reserves.
 - **Wealth Transfers:** Securely send money to other users, with a 5% fee (contributed to the UBI pool) to discourage circular loops and encourage a healthy velocity of money.
 
+## MCP server
+
+Morpheus can expose a standard Model Context Protocol server at
+`/api/mcp`. Its standalone `MCP_API_URLS` listener defaults to
+`http://127.0.0.1:5268`, and the endpoint is disabled unless `MCP_API_KEY` is
+set. Clients authenticate through the `Authorization` header using the configured
+bearer token.
+
+Browser origins are restricted by `MCP_ALLOWED_ORIGINS` (a comma-separated
+list of exact `http` or `https` origins), and requests are rate limited by
+`MCP_RATE_LIMIT_PER_MINUTE` (default: 60). Read-only tools expose aggregate
+guild/activity data, approved quotes, and a live registry-derived command
+manifest. Leaderboards use the canonical Morpheus text commands through
+`run_command` rather than a separate MCP query implementation.
+
+The `run_command` tool supports every non-hidden Morpheus text command and
+alias. Its default `validate` mode runs the normal Discord.Net command lookup,
+permission/cooldown preconditions, and argument parser without invoking the
+command body. Live `execute` mode is disabled unless
+`MCP_COMMAND_EXECUTION_ENABLED=true`; it requires an idempotency key, captures
+the invoking channel's replies for the MCP client, and can perform the same
+database, Discord, file, and network side effects as the corresponding text
+command. Caller permissions are always resolved from Morpheus's current Discord
+session rather than accepted from the MCP request.
+
+The API key authorizes the complete MCP tool surface and should be shared only
+with trusted clients. Rate limiting uses the direct client IP address; reverse
+proxies should preserve distinct trusted client connections or configure
+forwarded headers at the deployment boundary.
+
+The endpoint uses MCP Streamable HTTP and supports standard methods including
+`initialize`, `tools/list`, and `tools/call`.
+
+See [MCP command integration](./docs/MCP_COMMANDS.md) before enabling command
+execution or connecting an MCP client.
+
 ## Contributing
 
 
 Contributions welcome! If you'd like to contribute bug fixes, new features, or improvements, please read the contributing guide for setup, workflow, and expectations: [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Any help is appreciated — small PRs and clear descriptions make reviews faster.
-

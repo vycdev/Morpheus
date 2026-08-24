@@ -16,8 +16,11 @@ using System.Text;
 
 namespace Morpheus.Modules;
 
-public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class MiscModule(CommandService commands, IServiceProvider serviceProvider, DB dbContext) : MorpheusModuleBase
 {
+    private const int DiscordMessageMaxLength = 2000;
+    private const string ChoiceReplyPrefix = "Hmmm I choose: ";
+    private static readonly int MaxChoiceLength = DiscordMessageMaxLength - ChoiceReplyPrefix.Length;
     private static readonly HttpClient httpClient = new();
 
     private readonly CommandService commands = commands;
@@ -248,14 +251,28 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
 
         Random random = new();
         string choice = parts[random.Next(parts.Length)];
-        await ReplyAsync($"Hmmm I choose: {choice}");
+        await ReplyAsync(ChoiceReplyPrefix + choice);
     }
 
     internal static string[] ParseChoices(string options)
     {
         return options.Split(
             '\n',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(TruncateChoice)
+            .ToArray();
+    }
+
+    private static string TruncateChoice(string choice)
+    {
+        if (choice.Length <= MaxChoiceLength)
+            return choice;
+
+        int prefixLength = MaxChoiceLength - 1;
+        if (char.IsHighSurrogate(choice[prefixLength - 1]) && char.IsLowSurrogate(choice[prefixLength]))
+            prefixLength--;
+
+        return string.Concat(choice.AsSpan(0, prefixLength), "…");
     }
 
     [Name("Random Number")]
@@ -837,7 +854,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             Description = $"ID: {user.Id}\nJoined At: {user.JoinedAt?.UtcDateTime}\nCreated At: {user.CreatedAt.UtcDateTime}",
             Fields =
             {
-                new EmbedFieldBuilder().WithName("Roles").WithValue(string.Join(", ", user.Roles.Select(r => r.Name))),
+                new EmbedFieldBuilder().WithName("Roles").WithValue(FormatUserRoles(user.Roles.Select(r => r.Name))),
                 new EmbedFieldBuilder().WithName("Status").WithValue(user.Status.ToString()),
                 new EmbedFieldBuilder().WithName("Is Bot").WithValue(user.IsBot ? "Yes" : "No"),
             },
@@ -848,6 +865,30 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             }
         };
         await ReplyAsync(embed: embed.Build());
+    }
+
+    internal static string FormatUserRoles(IEnumerable<string> roleNames)
+    {
+        string[] roles = roleNames.Where(roleName => !string.IsNullOrWhiteSpace(roleName)).ToArray();
+        if (roles.Length == 0)
+            return "None";
+
+        StringBuilder result = new();
+        for (int i = 0; i < roles.Length; i++)
+        {
+            string separator = result.Length == 0 ? string.Empty : ", ";
+            int omittedCount = roles.Length - i - 1;
+            string omissionSuffix = omittedCount > 0 ? $", … (+{omittedCount} more)" : string.Empty;
+            if (result.Length + separator.Length + roles[i].Length + omissionSuffix.Length > EmbedFieldBuilder.MaxFieldValueLength)
+            {
+                omissionSuffix = $", … (+{roles.Length - i} more)";
+                return result.Append(omissionSuffix).ToString();
+            }
+
+            result.Append(separator).Append(roles[i]);
+        }
+
+        return result.ToString();
     }
 
     [Name("Random Advice")]

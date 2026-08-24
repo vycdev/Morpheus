@@ -398,7 +398,7 @@ public class QuoteService(DB dbContext)
 
         var grouped = await joined
             .GroupBy(item => item.Quote.Id)
-            .Select(group => new { QuoteId = group.Key, Score = group.Sum(item => item.Score.Score) })
+            .Select(group => new { QuoteId = group.Key, Score = group.Sum(item => (long)item.Score.Score) })
             .OrderByDescending(item => item.Score)
             .FirstOrDefaultAsync();
 
@@ -411,7 +411,7 @@ public class QuoteService(DB dbContext)
 
         return quote == null
             ? QuotePeriodResult.Empty
-            : new QuotePeriodResult(quote.Id, quote.Content ?? string.Empty, grouped.Score);
+            : new QuotePeriodResult(quote.Id, quote.Content ?? string.Empty, ClampScore(grouped.Score));
     }
 
     public static (DateTime Since, DateTime Until) GetPreviousPeriodBounds(string period, DateTime? utcNow = null)

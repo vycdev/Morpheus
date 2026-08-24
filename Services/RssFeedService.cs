@@ -92,12 +92,14 @@ public class RssFeedService(LogsService logsService)
         foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
         {
             XElement? linkElement = ChildByLocalName(item, "link");
-            string link = linkElement?.Value
-                          ?? linkElement?.Attribute("href")?.Value
-                          ?? string.Empty;
-            string id = ChildByLocalName(item, "guid")?.Value
-                        ?? ChildByLocalName(item, "id")?.Value
-                        ?? link;
+            string? linkText = linkElement?.Value;
+            string link = !string.IsNullOrWhiteSpace(linkText)
+                ? linkText
+                : linkElement?.Attribute("href")?.Value ?? string.Empty;
+            string id = FirstNonBlank(
+                ChildByLocalName(item, "guid")?.Value,
+                ChildByLocalName(item, "id")?.Value,
+                link);
             string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
             string pubRaw = ChildByLocalName(item, "pubDate")?.Value
                             ?? ChildByLocalName(item, "published")?.Value
@@ -114,6 +116,9 @@ public class RssFeedService(LogsService logsService)
 
     private static XElement? ChildByLocalName(XElement parent, string localName) =>
         parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName);
+
+    private static string FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
     internal static DateTime ParsePublished(string value) =>
         DateTime.TryParse(

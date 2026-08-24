@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 
 namespace Morpheus.Modules;
 
-public class UtilityModule(DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class UtilityModule(DB dbContext) : MorpheusModuleBase
 {
     private static readonly HttpClient httpClient = new();
     private const string ReminderDurationTokenPatternText =

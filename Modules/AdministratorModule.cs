@@ -9,7 +9,7 @@ using System.Text;
 
 namespace Morpheus.Modules;
 
-public class AdministratorModule(DiscordSocketClient client, DB dbContext) : ModuleBase<SocketCommandContextExtended>
+public class AdministratorModule(DiscordSocketClient client, DB dbContext) : MorpheusModuleBase
 {
     [Name("Dump Logs")]
     [Summary("Dumps logs from the database (25 logs per page). (bot owner only).")]

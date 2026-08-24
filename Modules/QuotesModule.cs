@@ -11,7 +11,7 @@ using System.Globalization;
 
 namespace Morpheus.Modules;
 
-public class QuotesModule : ModuleBase<SocketCommandContextExtended>
+public class QuotesModule : MorpheusModuleBase
 {
     private readonly UsersService usersService;
     private readonly LogsService logsService;
@@ -274,7 +274,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("addquote")]
     [Alias("quoteadd", "qadd")]
     [RequireContext(ContextType.Guild)]
-    [RequireBotPermission(GuildPermission.AddReactions)]
     [RateLimit(3, 10)]
     public async Task AddQuote([Remainder] string text)
     {
@@ -355,7 +354,6 @@ public class QuotesModule : ModuleBase<SocketCommandContextExtended>
     [Command("removequote")]
     [Alias("quoteremove", "qremove", "remove")]
     [RequireContext(ContextType.Guild)]
-    [RequireBotPermission(GuildPermission.AddReactions)]
     [RateLimit(3, 10)]
     public async Task RemoveQuote([Remainder] string input)
     {

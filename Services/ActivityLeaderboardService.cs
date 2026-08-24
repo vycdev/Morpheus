@@ -306,7 +306,7 @@ public class ActivityLeaderboardService(DB dbContext)
             {
                 UserId = g.Key,
                 SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
-                SumCount = g.Sum(ul => ul.UserMessageCount)
+                SumCount = g.Sum(ul => (long)ul.UserMessageCount)
             })
             .Where(x => x.SumCount > 0)
             .Select(x => new { x.UserId, AverageLength = x.SumLen / x.SumCount })
@@ -586,7 +586,7 @@ public class ActivityLeaderboardService(DB dbContext)
             .Select(g => new
             {
                 SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
-                SumCount = g.Sum(ul => ul.UserMessageCount)
+                SumCount = g.Sum(ul => (long)ul.UserMessageCount)
             })
             .FirstOrDefaultAsync();
 
@@ -601,7 +601,7 @@ public class ActivityLeaderboardService(DB dbContext)
             {
                 UserId = g.Key,
                 SumLen = g.Sum(ul => ul.UserAverageMessageLength * ul.UserMessageCount),
-                SumCount = g.Sum(ul => ul.UserMessageCount)
+                SumCount = g.Sum(ul => (long)ul.UserMessageCount)
             })
             .Where(x => x.SumCount > 0)
             .CountAsync(x =>

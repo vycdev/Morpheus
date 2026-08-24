@@ -16,7 +16,7 @@ namespace Morpheus.Modules;
 
 [Name("Stocks")]
 [Summary("Pseudo stock market — invest in users, guilds, and channels.")]
-public class StocksModule(DB dbContext, StocksService stocksService, ChannelService channelService, UsersService usersService) : ModuleBase<SocketCommandContextExtended>
+public class StocksModule(DB dbContext, StocksService stocksService, ChannelService channelService, UsersService usersService) : MorpheusModuleBase
 {
     internal static bool TryParseShareAmount(string value, out decimal amount)
     {

@@ -12,7 +12,7 @@ using Morpheus.Utilities.Extensions;
 
 namespace Morpheus.Modules;
 
-public class ActivityRolesModule(DB dbContext, ActivityService activityService) : ModuleBase<SocketCommandContextExtended>
+public class ActivityRolesModule(DB dbContext, ActivityService activityService) : MorpheusModuleBase
 {
     [Name("Toggle Activity Roles")]
     [Command("toggleactivityroles")]

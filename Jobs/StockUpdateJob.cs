@@ -14,6 +14,7 @@ public class StockUpdateJob(LogsService logsService, DB db, StocksService stocks
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         DateTime utcNow = DateTime.UtcNow;
         DateOnly today = DateOnly.FromDateTime(utcNow);
         DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
@@ -24,7 +25,7 @@ public class StockUpdateJob(LogsService logsService, DB db, StocksService stocks
         // - Their scheduled time has passed (UpdateTimeMinutes <= current minute of day)
         List<Stock> stocksToUpdate = await db.Stocks
             .Where(s => s.LastUpdatedDate < todayStart && s.UpdateTimeMinutes <= currentMinutes)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (stocksToUpdate.Count == 0)
             return;
@@ -40,15 +41,16 @@ public class StockUpdateJob(LogsService logsService, DB db, StocksService stocks
 
             foreach (Stock stock in batch)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await stocksService.UpdateStockPrice(stock, utcNow);
                 updated++;
             }
 
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(cancellationToken);
 
             // Small delay between batches to avoid blocking
             if (i + batchSize < stocksToUpdate.Count)
-                await Task.Delay(50);
+                await Task.Delay(50, cancellationToken);
         }
 
         Log($"Updated {updated} stock prices.");

@@ -161,6 +161,60 @@ public class ActivityLeaderboardServiceTests
     }
 
     [Fact]
+    public async Task GetGlobalAverageLengthLeaderboardAsync_SupportsMessageTotalsLargerThanIntMaxValue()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        User viewer = new() { DiscordId = 1, Username = "viewer" };
+        User runnerUp = new() { DiscordId = 2, Username = "runner-up" };
+        Guild firstGuild = new() { DiscordId = 1, Name = "First guild" };
+        Guild secondGuild = new() { DiscordId = 2, Name = "Second guild" };
+        db.AddRange(viewer, runnerUp, firstGuild, secondGuild);
+        await db.SaveChangesAsync();
+
+        db.UserLevels.AddRange(
+            new UserLevels
+            {
+                UserId = viewer.Id,
+                GuildId = firstGuild.Id,
+                UserMessageCount = int.MaxValue,
+                UserAverageMessageLength = 10
+            },
+            new UserLevels
+            {
+                UserId = viewer.Id,
+                GuildId = secondGuild.Id,
+                UserMessageCount = 1,
+                UserAverageMessageLength = 10
+            },
+            new UserLevels
+            {
+                UserId = runnerUp.Id,
+                GuildId = firstGuild.Id,
+                UserMessageCount = int.MaxValue,
+                UserAverageMessageLength = 9
+            });
+        await db.SaveChangesAsync();
+
+        ActivityLeaderboardService service = new(db);
+        ActivityLeaderboardQueryResult result = await service.GetGlobalAverageLengthLeaderboardAsync(
+            viewerUserId: viewer.Id,
+            page: 1);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Page);
+        Assert.Equal("[1] | viewer: Avg length 10.0 chars", result.Page.Lines[0]);
+        Assert.Equal("Your rank: #1", result.Page.RankLine);
+    }
+
+    [Fact]
     public async Task GetGlobalPastXpLeaderboardAsync_HandlesViewerTotalAboveIntMaxValue()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
