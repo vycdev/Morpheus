@@ -18,13 +18,14 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
 
     public async Task Execute(IJobExecutionContext context)
     {
+        CancellationToken cancellationToken = context.CancellationToken;
         DateTime now = DateTime.UtcNow;
 
         // Find reminders that are due (due date <= now)
         var dueReminders = await dB.Reminders
             .Where(r => (r.NextDeliveryAttemptAt ?? r.DueDate) <= now)
             .OrderBy(r => r.NextDeliveryAttemptAt ?? r.DueDate)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (!dueReminders.Any())
         {
@@ -33,6 +34,8 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
 
         foreach (var reminder in dueReminders)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Find the channel in connected guilds
             var channel = discordClient.GetChannel(reminder.ChannelId) as IMessageChannel;
             Func<string, Task>? sendAsync = channel == null
@@ -45,7 +48,7 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
         }
 
         // Persist deletions
-        await dB.SaveChangesAsync();
+        await dB.SaveChangesAsync(cancellationToken);
     }
 
     internal static async Task<bool> DeliverAsync(
