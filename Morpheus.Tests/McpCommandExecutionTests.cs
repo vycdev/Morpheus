@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Discord;
@@ -101,14 +102,26 @@ public class McpCommandExecutionTests
     {
         await using TestHarness harness = await TestHarness.CreateAsync(executionEnabled: false);
 
-        McpCommandExecutionResult valid = await harness.Service.InvokeAsync(new(
+        McpCommandExecutionResult validTimeZone = await harness.Service.InvokeAsync(new(
             "echo localized",
             harness.UserId.ToString(),
             harness.ChannelId.ToString(),
-            Locale: "en-US",
             TimeZoneId: TimeZoneInfo.Utc.Id));
 
-        Assert.True(valid.Success, $"{valid.Error}: {valid.ErrorReason}");
+        Assert.True(validTimeZone.Success, $"{validTimeZone.Error}: {validTimeZone.ErrorReason}");
+
+        if (CultureInfo.GetCultures(CultureTypes.AllCultures)
+            .Any(culture => culture.Name.Equals("en-US", StringComparison.OrdinalIgnoreCase)))
+        {
+            McpCommandExecutionResult validLocale = await harness.Service.InvokeAsync(new(
+                "echo localized",
+                harness.UserId.ToString(),
+                harness.ChannelId.ToString(),
+                Locale: "en-US"));
+
+            Assert.True(validLocale.Success, $"{validLocale.Error}: {validLocale.ErrorReason}");
+        }
+
         await Assert.ThrowsAsync<ArgumentException>(() => harness.Service.InvokeAsync(new(
             "echo localized",
             harness.UserId.ToString(),

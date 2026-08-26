@@ -1,11 +1,72 @@
+using Discord.WebSocket;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Jobs;
+using Morpheus.Services;
 using Quartz;
+using System.Reflection;
 
 namespace Morpheus.Tests;
 
 public class RemindersJobTests
 {
+    [Fact]
+    public async Task Execute_WhenCanceledBeforeLoadingDueReminders_PropagatesCancellation()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        using DiscordSocketClient discordClient = new();
+        RemindersJob job = new(new LogsService(new LogQueue()), db, discordClient);
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        IJobExecutionContext context = CreateContext(cancellation.Token);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => job.Execute(context));
+    }
+
+    [Fact]
+    public async Task ProcessDueRemindersAsync_WhenCanceledAfterDelivery_PersistsBeforeStopping()
+    {
+        Reminder first = new() { Id = 1, ChannelId = 42, Text = "First" };
+        Reminder second = new() { Id = 2, ChannelId = 42, Text = "Second" };
+        List<int> delivered = [];
+        List<int> removed = [];
+        List<int[]> persistedRemovals = [];
+        using CancellationTokenSource cancellation = new();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            RemindersJob.ProcessDueRemindersAsync(
+                [first, second],
+                reminder =>
+                {
+                    delivered.Add(reminder.Id);
+                    if (reminder.Id == first.Id)
+                        cancellation.Cancel();
+                    return Task.FromResult(true);
+                },
+                reminder => removed.Add(reminder.Id),
+                () =>
+                {
+                    persistedRemovals.Add([.. removed]);
+                    return Task.CompletedTask;
+                },
+                cancellation.Token));
+
+        Assert.Equal([first.Id], delivered);
+        Assert.Equal([first.Id], removed);
+        Assert.Single(persistedRemovals);
+        Assert.Equal([first.Id], persistedRemovals[0]);
+    }
+
     [Fact]
     public void Job_DisallowsConcurrentDeliveryRuns()
     {
@@ -113,5 +174,27 @@ public class RemindersJobTests
         Assert.True(shouldDelete);
         Assert.False(sendAttempted);
         Assert.Contains(logs, message => message.Contains("permanently failed"));
+    }
+
+    private static IJobExecutionContext CreateContext(CancellationToken cancellationToken)
+    {
+        JobExecutionContextProxy.CurrentCancellationToken = cancellationToken;
+        return DispatchProxy.Create<IJobExecutionContext, JobExecutionContextProxy>();
+    }
+
+    private class JobExecutionContextProxy : DispatchProxy
+    {
+        public static CancellationToken CurrentCancellationToken { get; set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.ReturnType == typeof(CancellationToken))
+                return CurrentCancellationToken;
+
+            Type returnType = targetMethod?.ReturnType ?? typeof(void);
+            return returnType == typeof(void) || !returnType.IsValueType
+                ? null
+                : Activator.CreateInstance(returnType);
+        }
     }
 }
