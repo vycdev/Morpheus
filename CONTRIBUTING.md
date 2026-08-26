@@ -84,7 +84,7 @@ dotnet test
 
 ## Submitting a PR
 
-- Rebase or merge from `main` before opening the PR.
+- Rebase or merge from `develop` before opening the PR.
 - Make sure `dotnet build` succeeds and `COMMANDS.md` is up to date.
 - In your PR description include what you changed, why, and any migration steps or deploy notes.
 
