@@ -25,6 +25,9 @@ public class Env
                     continue; // Skip lines that are not key-value pairs
 
                 string key = parts[0].Trim();
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+
                 string value = parts[1].Trim();
                 Environment.SetEnvironmentVariable(key, value);
                 Variables[key] = value;
