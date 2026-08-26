@@ -32,23 +32,57 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
             return;
         }
 
-        foreach (var reminder in dueReminders)
+        await ProcessDueRemindersAsync(
+            dueReminders,
+            async reminder =>
+            {
+                // Find the channel in connected guilds
+                var channel = discordClient.GetChannel(reminder.ChannelId) as IMessageChannel;
+                Func<string, Task>? sendAsync = channel == null
+                    ? null
+                    : async content => await channel.SendMessageAsync(content);
+
+                return await DeliverAsync(reminder, sendAsync, Log, now);
+            },
+            reminder => dB.Reminders.Remove(reminder),
+            () => dB.SaveChangesAsync(CancellationToken.None),
+            cancellationToken);
+    }
+
+    internal static async Task ProcessDueRemindersAsync(
+        IReadOnlyList<Reminder> dueReminders,
+        Func<Reminder, Task<bool>> deliverAsync,
+        Action<Reminder> remove,
+        Func<Task> saveChangesAsync,
+        CancellationToken cancellationToken)
+    {
+        bool hasProcessedReminders = false;
+
+        foreach (Reminder reminder in dueReminders)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // Discord delivery is an external side effect. Persist the
+                // results of completed deliveries before honoring cancellation
+                // so the next run does not send those reminders again.
+                if (hasProcessedReminders)
+                    await saveChangesAsync();
 
-            // Find the channel in connected guilds
-            var channel = discordClient.GetChannel(reminder.ChannelId) as IMessageChannel;
-            Func<string, Task>? sendAsync = channel == null
-                ? null
-                : async content => await channel.SendMessageAsync(content);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
 
-            bool shouldDelete = await DeliverAsync(reminder, sendAsync, Log, now);
+            bool shouldDelete = await deliverAsync(reminder);
             if (shouldDelete)
-                dB.Reminders.Remove(reminder);
+                remove(reminder);
+            hasProcessedReminders = true;
         }
 
-        // Persist deletions
-        await dB.SaveChangesAsync(cancellationToken);
+        if (hasProcessedReminders)
+            await saveChangesAsync();
+
+        // Cancellation may have arrived while the final reminder was being
+        // delivered. Its state is durable now, so propagation is safe.
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     internal static async Task<bool> DeliverAsync(

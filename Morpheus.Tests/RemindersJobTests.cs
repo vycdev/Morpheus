@@ -1,4 +1,3 @@
-using System.Reflection;
 using Discord.WebSocket;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +6,7 @@ using Morpheus.Database.Models;
 using Morpheus.Jobs;
 using Morpheus.Services;
 using Quartz;
+using System.Reflection;
 
 namespace Morpheus.Tests;
 
@@ -31,6 +31,40 @@ public class RemindersJobTests
         IJobExecutionContext context = CreateContext(cancellation.Token);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => job.Execute(context));
+    }
+
+    [Fact]
+    public async Task ProcessDueRemindersAsync_WhenCanceledAfterDelivery_PersistsBeforeStopping()
+    {
+        Reminder first = new() { Id = 1, ChannelId = 42, Text = "First" };
+        Reminder second = new() { Id = 2, ChannelId = 42, Text = "Second" };
+        List<int> delivered = [];
+        List<int> removed = [];
+        List<int[]> persistedRemovals = [];
+        using CancellationTokenSource cancellation = new();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            RemindersJob.ProcessDueRemindersAsync(
+                [first, second],
+                reminder =>
+                {
+                    delivered.Add(reminder.Id);
+                    if (reminder.Id == first.Id)
+                        cancellation.Cancel();
+                    return Task.FromResult(true);
+                },
+                reminder => removed.Add(reminder.Id),
+                () =>
+                {
+                    persistedRemovals.Add([.. removed]);
+                    return Task.CompletedTask;
+                },
+                cancellation.Token));
+
+        Assert.Equal([first.Id], delivered);
+        Assert.Equal([first.Id], removed);
+        Assert.Single(persistedRemovals);
+        Assert.Equal([first.Id], persistedRemovals[0]);
     }
 
     [Fact]
