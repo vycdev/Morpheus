@@ -18,7 +18,7 @@ public static partial class YoutubeUtils
     [GeneratedRegex("\"(?:channelId|externalId)\"\\s*:\\s*\"(UC[0-9A-Za-z_-]{22})\"")]
     private static partial Regex ChannelIdInHtmlRegex();
 
-    [GeneratedRegex("/channel/(UC[0-9A-Za-z_-]{22})(?![0-9A-Za-z_-])")]
+    [GeneratedRegex("/channel/(UC[0-9A-Za-z_-]{22})(?=[/?#\"'\\s<>]|$)")]
     private static partial Regex ChannelIdInUrlRegex();
 
     [GeneratedRegex("^[0-9A-Za-z_-]{11}$")]

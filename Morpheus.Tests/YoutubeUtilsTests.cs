@@ -72,6 +72,7 @@ public class YoutubeUtilsTests
     [InlineData("https://music.youtube.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("youtube.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("/channel/UCabcdefghijklmnopqrstuv")]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv/videos")]
     public async Task ResolveChannelIdAsync_ReturnsIdsFromYoutubeChannelPathsWithoutRequesting(string input)
     {
         RecordingHandler handler = new(_ => throw new InvalidOperationException("Unexpected HTTP request."));
@@ -86,6 +87,9 @@ public class YoutubeUtilsTests
     [Theory]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuvx")]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv_")]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv!junk")]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv.extra")]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv%41")]
     public async Task ResolveChannelIdAsync_DoesNotTruncateOverlongChannelIds(string input)
     {
         RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -94,6 +98,21 @@ public class YoutubeUtilsTests
         string? result = await YoutubeUtils.ResolveChannelIdAsync(httpClient, input);
 
         Assert.Null(result);
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_ReturnsIdFromCanonicalChannelUrl()
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<link rel=\"canonical\" href=\"https://www.youtube.com/channel/{ChannelId}\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        string? result = await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel");
+
+        Assert.Equal(ChannelId, result);
         Assert.Single(handler.RequestedUris);
     }
 
