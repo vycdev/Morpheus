@@ -83,6 +83,20 @@ public class YoutubeUtilsTests
         Assert.Empty(handler.RequestedUris);
     }
 
+    [Theory]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuvx")]
+    [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv_")]
+    public async Task ResolveChannelIdAsync_DoesNotTruncateOverlongChannelIds(string input)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        using HttpClient httpClient = new(handler);
+
+        string? result = await YoutubeUtils.ResolveChannelIdAsync(httpClient, input);
+
+        Assert.Null(result);
+        Assert.Single(handler.RequestedUris);
+    }
+
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
         public List<Uri> RequestedUris { get; } = [];
