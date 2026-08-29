@@ -52,6 +52,19 @@ public class McpCommandCatalogTests
     }
 
     [Fact]
+    public void Fingerprint_IncludesParameterDefaultMetadata()
+    {
+        McpCommandCapability withoutDefault = CreateFingerprintCapability(
+            new McpCommandParameter("value", "String", true, false, false, false, string.Empty));
+        McpCommandCapability withDefault = CreateFingerprintCapability(
+            new McpCommandParameter("value", "String", false, false, false, true, "fallback"));
+
+        Assert.NotEqual(
+            McpCommandCatalog.ComputeFingerprint([withoutDefault]),
+            McpCommandCatalog.ComputeFingerprint([withDefault]));
+    }
+
+    [Fact]
     public async Task Manifest_ExcludesHiddenOwnerCommands()
     {
         CommandService commands = new();
@@ -100,6 +113,20 @@ public class McpCommandCatalogTests
         stopwatch.Stop();
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"10,000 cached alias lookups took {stopwatch.Elapsed}.");
     }
+
+    private static McpCommandCapability CreateFingerprintCapability(McpCommandParameter parameter) =>
+        new(
+            "Test/command",
+            "Test",
+            "command",
+            ["command"],
+            "Test command.",
+            [parameter],
+            [],
+            [],
+            false,
+            true,
+            true);
 
     private sealed class CatalogServiceProvider : IServiceProvider
     {

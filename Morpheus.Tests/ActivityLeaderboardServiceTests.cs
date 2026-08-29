@@ -63,8 +63,7 @@ public class ActivityLeaderboardServiceTests
 
         string message = ActivityLeaderboardService.FormatLeaderboardMessage(page);
 
-        Assert.Equal(
-            """
+        string expected = """
             **Leaderboard**
             ```js
             [1] | user: Level 2 with 2000 XP
@@ -73,8 +72,9 @@ public class ActivityLeaderboardServiceTests
             ```
             Your rank: #1
 
-            """,
-            message.ReplaceLineEndings("\n"));
+            """.ReplaceLineEndings("\n");
+
+        Assert.Equal(expected, message.ReplaceLineEndings("\n"));
     }
 
     [Fact]
