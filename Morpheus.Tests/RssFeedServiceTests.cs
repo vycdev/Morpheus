@@ -99,6 +99,28 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_TrimsWhitespaceAroundLinks()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>entry-1</guid>
+                  <title>Entry</title>
+                  <link>
+                    https://example.com/posts/1
+                  </link>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+
+        Assert.Equal("https://example.com/posts/1", entry.Link);
+    }
+
+    [Fact]
     public async Task FetchAsync_WhenCallerCancels_PropagatesCancellation()
     {
         RssFeedService service = new(new LogsService(new LogQueue()));

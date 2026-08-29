@@ -92,10 +92,9 @@ public class RssFeedService(LogsService logsService)
         foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
         {
             XElement? linkElement = ChildByLocalName(item, "link");
-            string? linkText = linkElement?.Value;
-            string link = !string.IsNullOrWhiteSpace(linkText)
-                ? linkText
-                : linkElement?.Attribute("href")?.Value ?? string.Empty;
+            string link = FirstNonBlank(
+                linkElement?.Value,
+                linkElement?.Attribute("href")?.Value);
             string id = FirstNonBlank(
                 ChildByLocalName(item, "guid")?.Value,
                 ChildByLocalName(item, "id")?.Value,
