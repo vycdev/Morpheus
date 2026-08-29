@@ -41,12 +41,12 @@ public class YoutubeUtilsTests
     }
 
     [Theory]
-    [InlineData("https://www.youtube.com/@channel", "/@channel", "")]
-    [InlineData("youtube.com/user/channel", "/user/channel", "")]
-    [InlineData("https://m.youtube.com/c/channel?feature=share", "/c/channel", "")]
-    [InlineData("https://music.youtube.com/@channel", "/@channel", "")]
+    [InlineData("https://www.youtube.com/@channel", "/@channel", "?cbrd=1&ucbcb=1")]
+    [InlineData("youtube.com/user/channel", "/user/channel", "?cbrd=1&ucbcb=1")]
+    [InlineData("https://m.youtube.com/c/channel?feature=share", "/c/channel", "?cbrd=1&ucbcb=1")]
+    [InlineData("https://music.youtube.com/@channel", "/@channel", "?cbrd=1&ucbcb=1")]
     [InlineData("https://youtu.be/dQw4w9WgXcQ?si=tracking", "/watch", "?v=dQw4w9WgXcQ")]
-    [InlineData("@channel", "/@channel", "")]
+    [InlineData("@channel", "/@channel", "?cbrd=1&ucbcb=1")]
     public async Task ResolveChannelIdAsync_RequestsCanonicalYoutubeUrls(
         string input,
         string expectedPath,

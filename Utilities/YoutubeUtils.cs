@@ -11,6 +11,7 @@ public static partial class YoutubeUtils
 {
     private const string BrowserUserAgent =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0 Safari/537.36";
+    private const string YouTubeConsentBypassQuery = "?cbrd=1&ucbcb=1";
 
     [GeneratedRegex("^UC[0-9A-Za-z_-]{22}$")]
     private static partial Regex ChannelIdRegex();
@@ -130,15 +131,15 @@ public static partial class YoutubeUtils
         if (!IsYoutubeHost(uri.Host) || !IsSupportedYoutubePath(uri.AbsolutePath))
             return null;
 
-        // Canonicalize the host and discard user-controlled query/fragment values. The
-        // resolver only needs the channel path to scrape the corresponding YouTube page.
-        return new Uri($"https://www.youtube.com{uri.AbsolutePath}");
+        // cbrd/ucbcb keeps unauthenticated server-side requests on the channel page
+        // instead of redirecting them to YouTube's consent page.
+        return new Uri($"https://www.youtube.com{uri.AbsolutePath}{YouTubeConsentBypassQuery}");
     }
 
     private static Uri? BuildHandleUri(string handle) =>
         string.IsNullOrWhiteSpace(handle) || handle.Contains('/')
             ? null
-            : new Uri($"https://www.youtube.com/@{Uri.EscapeDataString(handle)}");
+            : new Uri($"https://www.youtube.com/@{Uri.EscapeDataString(handle)}{YouTubeConsentBypassQuery}");
 
     private static bool IsYoutubeHost(string host) =>
         host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
