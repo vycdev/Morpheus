@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Jobs;
+using System.Net;
+using System.Text;
 
 namespace Morpheus.Tests;
 
@@ -38,6 +40,29 @@ public class XkcdJobTests
 
         Assert.False(succeeded);
         Assert.Equal([1UL, 2UL], attemptedChannels);
+    }
+
+    [Fact]
+    public async Task FetchItemsAsync_TrimsEntryLinks()
+    {
+        const string feed = """
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <title>Test comic</title>
+                  <link>
+                    https://xkcd.com/1234/
+                  </link>
+                </item>
+              </channel>
+            </rss>
+            """;
+        using HttpClient httpClient = new(new StaticResponseHandler(feed));
+
+        List<XkcdJob.XkcdItem> items = await XkcdJob.FetchItemsAsync(httpClient, CancellationToken.None);
+
+        XkcdJob.XkcdItem item = Assert.Single(items);
+        Assert.Equal("https://xkcd.com/1234/", item.Link);
     }
 
     [Fact]
@@ -89,5 +114,16 @@ public class XkcdJobTests
     public void ShouldRetryDelivery_StopsAfterOneWeek(int attemptCount, bool expected)
     {
         Assert.Equal(expected, XkcdJob.ShouldRetryDelivery(attemptCount));
+    }
+
+    private sealed class StaticResponseHandler(string content) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(content, Encoding.UTF8, "application/rss+xml")
+            });
     }
 }
