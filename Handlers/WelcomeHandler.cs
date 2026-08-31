@@ -52,8 +52,9 @@ public class WelcomeHandler
 
 
         Emote? joinEmoji = null;
+        ulong? customJoinEmojiId = GetCustomEmoteId("CUSTOM_JOIN_EMOTE_ID");
 
-        if (ulong.TryParse(Env.Variables?["CUSTOM_JOIN_EMOTE_ID"], out ulong emojiId))
+        if (customJoinEmojiId is ulong emojiId)
             joinEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
 
         await channel.SendMessageAsync((joinEmoji != null ? joinEmoji.ToString() + " " : "") + string.Format(welcomeMessagesBag.Random(), user.Mention));
@@ -78,11 +79,14 @@ public class WelcomeHandler
             return;
 
         Emote? leaveEmoji = null;
+        ulong? customLeaveEmojiId = GetCustomEmoteId("CUSTOM_LEAVE_EMOTE_ID");
 
-        if (ulong.TryParse(Env.Variables?["CUSTOM_LEAVE_EMOTE_ID"], out ulong emojiId))
+        if (customLeaveEmojiId is ulong emojiId)
             leaveEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
 
         await channel.SendMessageAsync((leaveEmoji != null ? leaveEmoji.ToString() + " " : "") + string.Format(goodbyeMessagesBag.Random(), user.Mention));
         await channel.SendMessageAsync($"Server now has {guild.MemberCount} members! {sadEmojisBag.Random()}");
     }
+
+    internal static ulong? GetCustomEmoteId(string key) => Env.Get<ulong?>(key);
 }
