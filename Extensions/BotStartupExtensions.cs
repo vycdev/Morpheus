@@ -31,6 +31,15 @@ public static class BotStartupExtensions
         services.AddSingleton<LogQueue>();
         services.AddSingleton<LogsService>();
         services.AddHostedService<LogsWriterService>();
+
+        DiscordGatewayWatchdogOptions gatewayWatchdogOptions =
+            DiscordGatewayWatchdogOptions.FromEnvironment();
+        gatewayWatchdogOptions.Validate();
+        services.AddSingleton(gatewayWatchdogOptions);
+        services.AddSingleton<IDiscordGatewayStateProvider, DiscordGatewayStateProvider>();
+        services.AddSingleton<IProcessTerminator, EnvironmentProcessTerminator>();
+        services.AddHostedService<DiscordGatewayWatchdogService>();
+
         services.AddScoped<ActivityService>();
         services.AddScoped<ActivityGraphService>();
         services.AddScoped<ActivityLeaderboardService>();
