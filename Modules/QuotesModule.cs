@@ -186,11 +186,7 @@ public class QuotesModule : MorpheusModuleBase
             if (q.Removed) status += " (Removed)";
 
             var fieldName = $"#{q.Id} — Score: {q.Score} — {status} — {q.Author}";
-            var content = q.Content ?? string.Empty;
-            const int maxContentLength = 300;
-            if (content.Length > maxContentLength)
-                content = content.Substring(0, maxContentLength - 1) + "…";
-            var fieldValue = $"{content}\nInserted: {q.InsertDate.ToString("u")}";
+            string fieldValue = QuoteService.FormatQuoteListFieldValue(q);
             embed.AddField(fieldName, fieldValue, false);
         }
 
@@ -226,11 +222,7 @@ public class QuotesModule : MorpheusModuleBase
             if (q.Removed) status += " (Removed)";
 
             var fieldName = $"#{q.Id} — Score: {q.Score} — {status} — {q.Author} — Guild: {q.GuildId}";
-            var content = q.Content ?? string.Empty;
-            const int maxContentLength = 300;
-            if (content.Length > maxContentLength)
-                content = content.Substring(0, maxContentLength - 1) + "…";
-            var fieldValue = $"{content}\nInserted: {q.InsertDate.ToString("u")}";
+            string fieldValue = QuoteService.FormatQuoteListFieldValue(q);
             embed.AddField(fieldName, fieldValue, false);
         }
 
