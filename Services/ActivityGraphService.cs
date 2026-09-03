@@ -134,7 +134,7 @@ public class ActivityGraphService(DB dbContext)
 
     private static ActivityGraphParseResult ParseDateRange(string input, bool isOwner, int maxDays)
     {
-        string[] parts = input.Split([".."], StringSplitOptions.RemoveEmptyEntries);
+        string[] parts = input.Split([".."], StringSplitOptions.None);
         if (parts.Length != 2 ||
             !DateOnly.TryParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly start) ||
             !DateOnly.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly end))

@@ -240,6 +240,20 @@ public class ActivityGraphServiceTests
         Assert.Equal("Date range exceeds maximum of 90 days.", result.ErrorMessage);
     }
 
+    [Theory]
+    [InlineData("2026-05-01....2026-05-07")]
+    [InlineData("..2026-05-01..2026-05-07")]
+    [InlineData("2026-05-01..2026-05-07..")]
+    public void ParseDaysString_RejectsExtraDateRangeSeparators(string input)
+    {
+        ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(
+            input,
+            isOwner: false,
+            maxDays: 90);
+
+        Assert.False(result.Success);
+    }
+
     [Fact]
     public void ResolveRange_UsesTrailingInclusiveWindowWhenNoExplicitStartExists()
     {
