@@ -149,7 +149,7 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
         return doc.Descendants("item")
             .Select(x => new XkcdItem(
                 x.Element("title")?.Value ?? string.Empty,
-                x.Element("link")?.Value ?? string.Empty))
+                x.Element("link")?.Value.Trim() ?? string.Empty))
             .Where(i => !string.IsNullOrEmpty(i.Link))
             .ToList();
     }
