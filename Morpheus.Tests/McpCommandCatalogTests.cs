@@ -65,6 +65,17 @@ public class McpCommandCatalogTests
     }
 
     [Fact]
+    public void Fingerprint_UsesPlatformIndependentLineEndings()
+    {
+        McpCommandCapability capability = CreateFingerprintCapability(
+            new McpCommandParameter("value", "String", true, false, false, false, string.Empty));
+
+        Assert.Equal(
+            "cf2bad16a36dd31a36bf9d6551ca456a5493b8b50163ccffac6b76c0e3559475",
+            McpCommandCatalog.ComputeFingerprint([capability]));
+    }
+
+    [Fact]
     public async Task Manifest_ExcludesHiddenOwnerCommands()
     {
         CommandService commands = new();
