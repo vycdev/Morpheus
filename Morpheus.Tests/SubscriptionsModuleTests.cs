@@ -41,4 +41,15 @@ public class SubscriptionsModuleTests
 
         Assert.Equal(@"https://example.com/feed?q=a\%20\_b\\c", escaped);
     }
+
+    [Fact]
+    public void EscapeBrowserText_DoesNotSplitSurrogatePairsWhenTruncated()
+    {
+        string value = new string('a', 78) + "😀tail";
+
+        string result = SubscriptionsModule.EscapeBrowserText(value, 80);
+
+        Assert.Equal(new string('a', 78) + "…", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
 }
