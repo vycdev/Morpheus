@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Ignore indented comments when loading `.env` configuration files.
 - Trim surrounding whitespace from xkcd RSS links before posting them.
 - Allow welcome and goodbye messages to work when custom emote settings are omitted.
 - Keep reviewed MCP command registry fingerprints stable across operating systems.
