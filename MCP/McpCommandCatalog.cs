@@ -41,7 +41,7 @@ public sealed record McpCommandManifest(
 public sealed class McpCommandCatalog(CommandService commandService)
 {
     // Update only after reviewing the MCP safety and context needs of every changed command.
-    internal const string ReviewedRegistryFingerprint = "1df83cd561a962d055acb5fbf436bc74f4db49d6d50e19692b5182ab8bf29795";
+    internal const string ReviewedRegistryFingerprint = "654e34fc826bae2c31284f1b34793b005aff2ac49ee206e2dd21e3cea70dbbf8";
 
     private readonly object buildLock = new();
     private volatile McpCommandManifest? cachedManifest;
@@ -197,7 +197,7 @@ public sealed class McpCommandCatalog(CommandService commandService)
                     $"{parameter.Name}:{parameter.Type}:{parameter.Required}:{parameter.Remainder}:{parameter.Multiple}:{parameter.HasDefaultValue}:{parameter.DefaultValue}"))
                 .Append('|').AppendJoin(',', command.Preconditions)
                 .Append('|').AppendJoin(',', command.Effects)
-                .AppendLine();
+                .Append('\n');
         }
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString())))

@@ -63,4 +63,31 @@ public class EnvTests
             File.Delete(filePath);
         }
     }
+
+    [Fact]
+    public void Load_IndentedCommentWithEquals_SkipsComment()
+    {
+        string commentKey = $"# MORPHEUS_ENV_COMMENT_{Guid.NewGuid():N}";
+        string? originalEnvironmentValue = Environment.GetEnvironmentVariable(commentKey);
+        Dictionary<string, string> originalVariables = new(Env.Variables);
+        string filePath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllLines(filePath, [$"   {commentKey}=ignored"]);
+
+            Env.Load(filePath);
+
+            Assert.False(Env.Variables.ContainsKey(commentKey));
+            Assert.Null(Environment.GetEnvironmentVariable(commentKey));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(commentKey, originalEnvironmentValue);
+            Env.Variables.Clear();
+            foreach ((string existingKey, string existingValue) in originalVariables)
+                Env.Variables[existingKey] = existingValue;
+            File.Delete(filePath);
+        }
+    }
 }
