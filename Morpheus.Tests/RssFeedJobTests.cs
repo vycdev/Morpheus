@@ -100,6 +100,50 @@ public class RssFeedJobTests
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenLinkExceedsDiscordLimit_FallsBackToTitle()
+    {
+        RssFeedService.FeedEntry entry = new(
+            "entry-1",
+            "Readable entry title",
+            "https://example.com/" + new string('a', 2000),
+            DateTime.UtcNow);
+        string? deliveredContent = null;
+
+        bool succeeded = await RssFeedJob.DispatchAsync(
+            entry,
+            [new RssSubscription()],
+            (_, content) =>
+            {
+                deliveredContent = content;
+                return Task.FromResult(true);
+            });
+
+        Assert.True(succeeded);
+        Assert.Equal("Readable entry title", deliveredContent);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenTitleExceedsDiscordLimit_TruncatesContent()
+    {
+        RssFeedService.FeedEntry entry = new("entry-1", new string('a', 2001), string.Empty, DateTime.UtcNow);
+        string? deliveredContent = null;
+
+        bool succeeded = await RssFeedJob.DispatchAsync(
+            entry,
+            [new RssSubscription()],
+            (_, content) =>
+            {
+                deliveredContent = content;
+                return Task.FromResult(true);
+            });
+
+        Assert.True(succeeded);
+        Assert.NotNull(deliveredContent);
+        Assert.Equal(2000, deliveredContent.Length);
+        Assert.EndsWith("…", deliveredContent);
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenCallerCancels_PropagatesCancellationBeforeDelivery()
     {
         RssFeedService.FeedEntry entry = new("entry-1", "Entry", "https://example.com/entry-1", DateTime.UtcNow);
