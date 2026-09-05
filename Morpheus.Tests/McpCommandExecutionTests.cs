@@ -238,6 +238,25 @@ public class McpCommandExecutionTests
     }
 
     [Fact]
+    public async Task Capture_DoesNotSplitSurrogatePairsWhenTruncatingText()
+    {
+        McpCommandResponseSink sink = new(new McpApiOptions([], "test-key", 60));
+        DiscordSocketClient client = new();
+        IUser user = TestHarness.CreateUser(900000000000003);
+        IMessageChannel channel = TestHarness.CreateChannel(900000000000004);
+        IUserMessage message = McpDiscordMessageFactory.CreateInvocation(user, channel, "echo", [], null, sink);
+        SocketCommandContextExtended context = new(client, message, null, null, sink);
+        string content = new string('x', 7999) + "😀tail";
+
+        await context.SendResponseAsync(content);
+
+        string captured = Assert.Single(sink.Snapshot()).Content!;
+        Assert.Equal(new string('x', 7999) + "…", captured);
+        Assert.DoesNotContain(captured, char.IsSurrogate);
+        client.Dispose();
+    }
+
+    [Fact]
     public async Task Capture_PreservesImageRichEmbedMetadata()
     {
         McpApiOptions options = new([], "test-key", 60);

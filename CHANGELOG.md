@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve emoji when truncating long MCP command output.
 - Preserve emoji when truncating Urban Dictionary definitions and examples.
 - Trim surrounding whitespace from YouTube feed links before posting them.
 - Preserve emoji when truncating feed names in the subscription browser.
