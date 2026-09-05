@@ -15,6 +15,8 @@ namespace Morpheus.Jobs;
 [DisallowConcurrentExecution]
 public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService discordWebhook, LogsService logsService) : IJob
 {
+    private const int DiscordMessageMaxLength = 2000;
+
     public async Task Execute(IJobExecutionContext context)
     {
         CancellationToken cancellationToken = context.CancellationToken;
@@ -89,7 +91,7 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
         Func<RssSubscription, string, Task<bool>> sendAsync,
         CancellationToken cancellationToken = default)
     {
-        string content = !string.IsNullOrWhiteSpace(entry.Link) ? entry.Link : entry.Title;
+        string content = FormatEntryContent(entry);
         if (string.IsNullOrWhiteSpace(content))
             return true;
 
@@ -102,6 +104,24 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
         }
 
         return allSucceeded;
+    }
+
+    internal static string FormatEntryContent(RssFeedService.FeedEntry entry)
+    {
+        string content = !string.IsNullOrWhiteSpace(entry.Link) && entry.Link.Length <= DiscordMessageMaxLength
+            ? entry.Link
+            : !string.IsNullOrWhiteSpace(entry.Title)
+                ? entry.Title
+                : entry.Link;
+
+        if (content.Length <= DiscordMessageMaxLength)
+            return content;
+
+        int prefixLength = DiscordMessageMaxLength - 1;
+        if (char.IsHighSurrogate(content[prefixLength - 1]) && char.IsLowSurrogate(content[prefixLength]))
+            prefixLength--;
+
+        return string.Concat(content.AsSpan(0, prefixLength), "…");
     }
 
     internal static Task<bool> HasFeedHistoryAsync(DB db, string feedUrl, CancellationToken cancellationToken = default) =>
