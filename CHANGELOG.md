@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Trim surrounding whitespace from YouTube feed links before posting them.
 - Preserve emoji when truncating feed names in the subscription browser.
 - Keep overlong RSS entry content within Discord's message limit.
 - Keep long feed identities within Discord's webhook username limit.

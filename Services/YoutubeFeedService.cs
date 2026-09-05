@@ -26,21 +26,7 @@ public class YoutubeFeedService(LogsService logsService)
 
             string? channelTitle = doc.Root?.Element(Atom + "title")?.Value;
 
-            List<VideoEntry> entries = [];
-            foreach (XElement e in doc.Descendants(Atom + "entry"))
-            {
-                string vid = e.Element(Yt + "videoId")?.Value ?? string.Empty;
-                if (string.IsNullOrEmpty(vid))
-                    continue;
-
-                string title = e.Element(Atom + "title")?.Value ?? string.Empty;
-                string link = e.Elements(Atom + "link").FirstOrDefault()?.Attribute("href")?.Value
-                              ?? $"https://www.youtube.com/watch?v={vid}";
-                string pubRaw = e.Element(Atom + "published")?.Value ?? string.Empty;
-                DateTime published = ParsePublished(pubRaw);
-
-                entries.Add(new VideoEntry(vid, title, link, published));
-            }
+            IReadOnlyList<VideoEntry> entries = ParseEntries(doc);
 
             return (channelTitle, entries);
         }
@@ -53,6 +39,27 @@ public class YoutubeFeedService(LogsService logsService)
             logsService.Log($"Failed to fetch YouTube feed for {channelId}: {ex.Message}", LogSeverity.Warning);
             return (null, []);
         }
+    }
+
+    internal static IReadOnlyList<VideoEntry> ParseEntries(XDocument doc)
+    {
+        List<VideoEntry> entries = [];
+        foreach (XElement e in doc.Descendants(Atom + "entry"))
+        {
+            string vid = e.Element(Yt + "videoId")?.Value ?? string.Empty;
+            if (string.IsNullOrEmpty(vid))
+                continue;
+
+            string title = e.Element(Atom + "title")?.Value ?? string.Empty;
+            string link = e.Elements(Atom + "link").FirstOrDefault()?.Attribute("href")?.Value?.Trim()
+                          ?? $"https://www.youtube.com/watch?v={vid}";
+            string pubRaw = e.Element(Atom + "published")?.Value ?? string.Empty;
+            DateTime published = ParsePublished(pubRaw);
+
+            entries.Add(new VideoEntry(vid, title, link, published));
+        }
+
+        return entries;
     }
 
     internal static DateTime ParsePublished(string value) =>
