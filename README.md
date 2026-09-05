@@ -105,6 +105,18 @@ The endpoint uses MCP Streamable HTTP and supports standard methods including
 See [MCP command integration](./docs/MCP_COMMANDS.md) before enabling command
 execution or connecting an MCP client.
 
+## Discord gateway watchdog
+
+Morpheus monitors the Discord gateway connection and exits when it remains in
+any non-connected state for five minutes. Container deployments should use a
+restart policy such as `unless-stopped` so a gateway connection that becomes
+stuck after a network outage is recovered automatically.
+
+The watchdog is enabled by default. Its settings can be overridden with
+`DISCORD_GATEWAY_WATCHDOG_ENABLED`,
+`DISCORD_GATEWAY_WATCHDOG_TIMEOUT_SECONDS` (default: `300`), and
+`DISCORD_GATEWAY_WATCHDOG_CHECK_INTERVAL_SECONDS` (default: `15`).
+
 ## Contributing
 
 
