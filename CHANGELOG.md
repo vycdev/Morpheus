@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep long feed identities within Discord's webhook username limit.
 - Avoid splitting emoji surrogate pairs when truncating quote lists.
 - Ignore indented comments when loading `.env` configuration files.
 - Trim surrounding whitespace from xkcd RSS links before posting them.
