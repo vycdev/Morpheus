@@ -152,6 +152,15 @@ public class MiscModuleTests
         Assert.Equal("https://api.urbandictionary.com/v0/define?term=C%23%20%26%20tea", result);
     }
 
+    [Fact]
+    public void TruncateUrbanDictionaryText_DoesNotSplitSurrogatePairs()
+    {
+        string result = MiscModule.TruncateUrbanDictionaryText(new string('x', 1020) + "😀tail");
+
+        Assert.Equal(new string('x', 1020) + "...", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
+
     [Theory]
     [InlineData("data:image/png;base64,AQID")]
     [InlineData("AQID")]

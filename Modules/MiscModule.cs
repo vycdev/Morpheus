@@ -588,8 +588,8 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         EmbedBuilder embed = new EmbedBuilder()
             .WithTitle($"Urban Dictionary: **{word ?? "Random"}**")
             .WithUrl(permalink)
-            .WithDescription(definition.Length > 1024 ? definition[..1021] + "..." : definition)
-            .AddField("Example", string.IsNullOrWhiteSpace(example) ? "N/A" : example.Length > 1024 ? example[..1021] + "..." : example, false)
+            .WithDescription(TruncateUrbanDictionaryText(definition))
+            .AddField("Example", string.IsNullOrWhiteSpace(example) ? "N/A" : TruncateUrbanDictionaryText(example), false)
             .WithColor(Color.Blue)
             .WithFooter("Powered by Urban Dictionary");
 
@@ -602,6 +602,18 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             return "https://api.urbandictionary.com/v0/random";
 
         return $"https://api.urbandictionary.com/v0/define?term={Uri.EscapeDataString(word)}";
+    }
+
+    internal static string TruncateUrbanDictionaryText(string value)
+    {
+        if (value.Length <= EmbedFieldBuilder.MaxFieldValueLength)
+            return value;
+
+        int contentLength = EmbedFieldBuilder.MaxFieldValueLength - 3;
+        if (char.IsHighSurrogate(value[contentLength - 1]) && char.IsLowSurrogate(value[contentLength]))
+            contentLength--;
+
+        return value[..contentLength] + "...";
     }
 
     [Name("Ping Minecraft Server")]
