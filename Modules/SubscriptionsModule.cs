@@ -640,7 +640,7 @@ public class SubscriptionsModule : MorpheusModuleBase
         return $"`{number}.` {icon} **{name}**\n   <#{item.ChannelId}>{source}";
     }
 
-    private static string EscapeBrowserText(string value, int maxLength)
+    internal static string EscapeBrowserText(string value, int maxLength)
     {
         string escaped = value
             .Replace("\\", "\\\\", StringComparison.Ordinal)
@@ -651,7 +651,18 @@ public class SubscriptionsModule : MorpheusModuleBase
             .Replace("\r", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal)
             .Trim();
-        return escaped.Length <= maxLength ? escaped : escaped[..(maxLength - 1)] + "…";
+        if (escaped.Length <= maxLength)
+            return escaped;
+
+        int prefixLength = maxLength - 1;
+        if (prefixLength > 0 &&
+            char.IsHighSurrogate(escaped[prefixLength - 1]) &&
+            char.IsLowSurrogate(escaped[prefixLength]))
+        {
+            prefixLength--;
+        }
+
+        return string.Concat(escaped.AsSpan(0, prefixLength), "…");
     }
 
     private static void CleanupExpiredBrowserSessions()
