@@ -23,8 +23,7 @@ public class TwitchService
     private readonly string? _clientId;
     private readonly string? _clientSecret;
 
-    private string? _accessToken;
-    private DateTime _tokenExpiresAt = DateTime.MinValue;
+    private AccessToken? _accessToken;
 
     public TwitchService(LogsService logsService) : this(
         logsService,
@@ -108,22 +107,28 @@ public class TwitchService
 
     private async Task<T?> SendHelixAsync<T>(string url, CancellationToken ct) where T : class
     {
+        long? rejectedTokenGeneration = null;
         for (int attempt = 0; attempt < 2; attempt++)
         {
-            string? token = await GetTokenAsync(forceRefresh: attempt > 0, ct);
+            AccessToken? token = await GetTokenAsync(rejectedTokenGeneration, ct);
             if (token == null)
                 return null;
 
             using HttpRequestMessage req = new(HttpMethod.Get, url);
             req.Headers.Add("Client-Id", _clientId);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Value);
 
             try
             {
                 using HttpResponseMessage resp = await httpClient.SendAsync(req, ct).ConfigureAwait(false);
 
                 if (resp.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
-                    continue; // token likely expired early — refresh and retry once
+                {
+                    // Token likely expired early. Record the rejected generation so concurrent
+                    // callers can share whichever replacement reaches the cache first.
+                    rejectedTokenGeneration = token.Generation;
+                    continue;
+                }
 
                 if (!resp.IsSuccessStatusCode)
                 {
@@ -148,19 +153,21 @@ public class TwitchService
         return null;
     }
 
-    private async Task<string?> GetTokenAsync(bool forceRefresh, CancellationToken ct)
+    private async Task<AccessToken?> GetTokenAsync(long? rejectedTokenGeneration, CancellationToken ct)
     {
         if (!IsConfigured)
             return null;
 
-        if (!forceRefresh && _accessToken != null && DateTime.UtcNow < _tokenExpiresAt)
-            return _accessToken;
+        AccessToken? cachedToken = Volatile.Read(ref _accessToken);
+        if (HasUsableToken(cachedToken, rejectedTokenGeneration))
+            return cachedToken;
 
         await _tokenLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (!forceRefresh && _accessToken != null && DateTime.UtcNow < _tokenExpiresAt)
-                return _accessToken;
+            cachedToken = Volatile.Read(ref _accessToken);
+            if (HasUsableToken(cachedToken, rejectedTokenGeneration))
+                return cachedToken;
 
             string url = "https://id.twitch.tv/oauth2/token";
             Dictionary<string, string> form = new()
@@ -183,10 +190,15 @@ public class TwitchService
             if (token == null || string.IsNullOrEmpty(token.AccessToken))
                 return null;
 
-            _accessToken = token.AccessToken;
             // Refresh a minute early to avoid using an about-to-expire token.
-            _tokenExpiresAt = DateTime.UtcNow.Add(CalculateTokenCacheDuration(token.ExpiresIn));
-            return _accessToken;
+            AccessToken refreshedToken = new(
+                token.AccessToken,
+                (cachedToken?.Generation ?? 0) + 1,
+                DateTime.UtcNow.Add(CalculateTokenCacheDuration(token.ExpiresIn)));
+            // Publish the value, generation, and expiry together so lock-free readers
+            // cannot associate one token's value with another token's generation.
+            Volatile.Write(ref _accessToken, refreshedToken);
+            return refreshedToken;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -203,10 +215,17 @@ public class TwitchService
         }
     }
 
+    private static bool HasUsableToken(AccessToken? token, long? rejectedTokenGeneration) =>
+        token != null &&
+        DateTime.UtcNow < token.ExpiresAt &&
+        token.Generation != rejectedTokenGeneration;
+
     internal static TimeSpan CalculateTokenCacheDuration(int expiresInSeconds)
     {
         return TimeSpan.FromSeconds(Math.Max(0, expiresInSeconds - 60));
     }
+
+    private sealed record AccessToken(string Value, long Generation, DateTime ExpiresAt);
 
     private sealed class TokenResponse
     {
