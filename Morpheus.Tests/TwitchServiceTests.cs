@@ -84,6 +84,21 @@ public class TwitchServiceTests
         Assert.Empty(result.Streams);
     }
 
+    [Fact]
+    public async Task GetLiveStreamsResultAsync_CoalescesConcurrentTokenRefreshes()
+    {
+        ConcurrentUnauthorizedHandler handler = new();
+        using HttpClient httpClient = new(handler);
+        TwitchService service = new(new LogsService(new LogQueue()), httpClient, "test-client", "test-secret");
+
+        TwitchService.LiveStreamsResult[] results = await Task.WhenAll(
+            service.GetLiveStreamsResultAsync(["first"]),
+            service.GetLiveStreamsResultAsync(["second"]));
+
+        Assert.All(results, result => Assert.True(result.Succeeded));
+        Assert.Equal(2, handler.TokenRequestCount);
+    }
+
     private sealed class CancellationHandler(bool blockTokenRequest) : HttpMessageHandler
     {
         private readonly TaskCompletionSource requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -122,6 +137,48 @@ public class TwitchServiceTests
             {
                 Content = new StringContent("temporarily unavailable")
             });
+        }
+    }
+
+    private sealed class ConcurrentUnauthorizedHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource bothInitialRequestsStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int initialStreamRequestCount;
+        private int tokenRequestCount;
+
+        public int TokenRequestCount => tokenRequestCount;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv")
+            {
+                int requestNumber = Interlocked.Increment(ref tokenRequestCount);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        $"{{\"access_token\":\"token-{requestNumber}\",\"expires_in\":3600}}",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            string? token = request.Headers.Authorization?.Parameter;
+            if (token == "token-1")
+            {
+                if (Interlocked.Increment(ref initialStreamRequestCount) == 2)
+                    bothInitialRequestsStarted.TrySetResult();
+
+                await bothInitialRequestsStarted.Task.WaitAsync(cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"data\":[]}", Encoding.UTF8, "application/json")
+            };
         }
     }
 }
