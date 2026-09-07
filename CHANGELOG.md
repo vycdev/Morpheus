@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reject activity graph day counts that would exceed the supported date range.
 - Coalesce concurrent Twitch access-token refreshes after authentication failures.
 - Preserve emoji when truncating long MCP command output.
 - Preserve emoji when truncating Urban Dictionary definitions and examples.

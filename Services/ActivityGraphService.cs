@@ -18,14 +18,14 @@ public class ActivityGraphService(DB dbContext)
         {
             string num = input[4..^4];
             if (int.TryParse(num, out int parsed))
-                return ActivityGraphParseResult.Valid(NormalizeDayCount(parsed, isOwner, maxDays), null);
+                return ValidateDayCount(parsed, isOwner, maxDays);
 
             return ActivityGraphParseResult.Error(
                 $"Please provide a number of days between 7 and {maxDays} or a valid preset (past7days, past30days, past60days, past{maxDays}days).\nOr provide a date range like 2025-01-01..2025-01-31.");
         }
 
         if (int.TryParse(input, out int asInt))
-            return ActivityGraphParseResult.Valid(NormalizeDayCount(asInt, isOwner, maxDays), null);
+            return ValidateDayCount(asInt, isOwner, maxDays);
 
         if (input.Contains(".."))
             return ParseDateRange(input, isOwner, maxDays);
@@ -166,6 +166,16 @@ public class ActivityGraphService(DB dbContext)
             days = maxDays;
 
         return days;
+    }
+
+    private static ActivityGraphParseResult ValidateDayCount(int days, bool isOwner, int maxDays)
+    {
+        int normalizedDays = NormalizeDayCount(days, isOwner, maxDays);
+        int maximumRelativeDays = (DateTime.UtcNow.Date - DateTime.MinValue).Days + 1;
+
+        return normalizedDays > maximumRelativeDays
+            ? ActivityGraphParseResult.Error("Requested day count exceeds the supported date range.")
+            : ActivityGraphParseResult.Valid(normalizedDays, null);
     }
 
     private static string BuildGraphMessage(string subject, ActivityGraphRange range)

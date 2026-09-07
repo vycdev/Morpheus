@@ -215,6 +215,20 @@ public class ActivityGraphServiceTests
         Assert.Equal(180, result.Days);
     }
 
+    [Theory]
+    [InlineData("2147483647")]
+    [InlineData("past2147483647days")]
+    public void ParseDaysString_RejectsRelativeRangesBeforeDateTimeMinimum(string input)
+    {
+        ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(
+            input,
+            isOwner: true,
+            maxDays: 90);
+
+        Assert.False(result.Success);
+        Assert.Equal("Requested day count exceeds the supported date range.", result.ErrorMessage);
+    }
+
     [Fact]
     public void ParseDaysString_ExpandsShortDateRangeToSevenDays()
     {
