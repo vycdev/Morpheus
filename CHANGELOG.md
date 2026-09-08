@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reject reminder durations whose numeric values exceed the supported range.
 - Coalesce concurrent Twitch access-token refreshes after authentication failures.
 - Preserve emoji when truncating long MCP command output.
 - Preserve emoji when truncating Urban Dictionary definitions and examples.
