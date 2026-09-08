@@ -1,4 +1,10 @@
+using Discord;
 using Discord.Commands;
+using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Morpheus.Database;
+using Morpheus.Handlers;
 using Morpheus.Modules;
 using System.Reflection;
 
@@ -6,6 +12,9 @@ namespace Morpheus.Tests;
 
 public class HelpCommandRegistrationTests
 {
+    private const string LongUnicodeSummary =
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀tail";
+
     [Theory]
     [InlineData("2_StocksModule", 2, "StocksModule")]
     [InlineData("10_Misc", 10, "Misc")]
@@ -64,5 +73,54 @@ public class HelpCommandRegistrationTests
         Assert.NotNull(parameter.GetCustomAttribute<RemainderAttribute>());
         Assert.True(parameter.HasDefaultValue);
         Assert.Null(parameter.DefaultValue);
+    }
+
+    [Fact]
+    public async Task ModuleHelp_DoesNotSplitSurrogatePairsWhenTruncatingSummaries()
+    {
+        CommandService commands = new();
+        using ServiceProvider services = new ServiceCollection().BuildServiceProvider();
+        await commands.AddModuleAsync<UnicodeSummaryModule>(services);
+
+        using DiscordSocketClient client = new();
+        await using DB db = new(
+            new DbContextOptionsBuilder<DB>()
+                .UseSqlite("Data Source=:memory:")
+                .Options);
+        HelpModule module = new(client, commands, new InteractionsHandler(client), services, db);
+        MethodInfo createEmbed = typeof(HelpModule).GetMethod(
+            "CreateModuleHelpEmbed",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Embed embed = (Embed)createEmbed.Invoke(module, ["1_UnicodeSummaryModule", "!"])!;
+        string fieldValue = Assert.Single(embed.Fields).Value;
+
+        Assert.False(HasUnpairedSurrogate(fieldValue));
+    }
+
+    private static bool HasUnpairedSurrogate(string value)
+    {
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (char.IsHighSurrogate(value[i]))
+            {
+                if (i + 1 >= value.Length || !char.IsLowSurrogate(value[++i]))
+                    return true;
+            }
+            else if (char.IsLowSurrogate(value[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [Name("UnicodeSummaryModule")]
+    public class UnicodeSummaryModule : ModuleBase<SocketCommandContext>
+    {
+        [Command("unicode")]
+        [Summary(LongUnicodeSummary)]
+        public Task Unicode() => Task.CompletedTask;
     }
 }

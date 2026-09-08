@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve emoji when truncating command summaries in help pages.
 - Coalesce concurrent Twitch access-token refreshes after authentication failures.
 - Preserve emoji when truncating long MCP command output.
 - Preserve emoji when truncating Urban Dictionary definitions and examples.
