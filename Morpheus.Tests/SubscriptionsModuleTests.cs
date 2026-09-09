@@ -52,4 +52,26 @@ public class SubscriptionsModuleTests
         Assert.Equal(new string('a', 78) + "…", result);
         Assert.DoesNotContain(result, char.IsSurrogate);
     }
+
+    [Fact]
+    public void EscapeBrowserText_ReplacesUnpairedSurrogatesInStoredNames()
+    {
+        string value = new string('a', 79) + "\ud83d";
+
+        string result = SubscriptionsModule.EscapeBrowserText(value, 80);
+
+        Assert.Equal(new string('a', 79) + "�", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
+
+    [Fact]
+    public void ClampRssDisplayName_DoesNotSplitSurrogatePairs()
+    {
+        string value = new string('a', 79) + "😀tail";
+
+        string result = SubscriptionsModule.ClampRssDisplayName(value);
+
+        Assert.Equal(new string('a', 79), result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
 }
