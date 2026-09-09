@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Handle quote approval expiry settings beyond the `DateTime` range without failing interactions.
 - Coalesce concurrent Twitch access-token refreshes after authentication failures.
 - Preserve emoji when truncating long MCP command output.
 - Preserve emoji when truncating Urban Dictionary definitions and examples.
