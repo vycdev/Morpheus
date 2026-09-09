@@ -483,8 +483,12 @@ public class QuoteService(DB dbContext)
     internal static string FormatSignedScore(int score) =>
         score >= 0 ? $"+{score}" : score.ToString();
 
-    internal static bool IsApprovalExpired(DateTime insertDate, int approvalExpiryDays, DateTime now) =>
-        insertDate.AddDays(approvalExpiryDays) < now;
+    internal static bool IsApprovalExpired(DateTime insertDate, int approvalExpiryDays, DateTime now)
+    {
+        long elapsedTicks = now.Ticks - insertDate.Ticks;
+        decimal expiryTicks = (decimal)approvalExpiryDays * TimeSpan.TicksPerDay;
+        return elapsedTicks > expiryTicks;
+    }
 
     internal static int GetRequiredApprovals(QuoteApprovalType approvalType, Guild guild) =>
         approvalType == QuoteApprovalType.AddRequest
