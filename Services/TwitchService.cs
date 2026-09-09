@@ -222,7 +222,9 @@ public class TwitchService
 
     internal static TimeSpan CalculateTokenCacheDuration(int expiresInSeconds)
     {
-        return TimeSpan.FromSeconds(Math.Max(0, expiresInSeconds - 60));
+        return expiresInSeconds <= 60
+            ? TimeSpan.Zero
+            : TimeSpan.FromSeconds(expiresInSeconds - 60);
     }
 
     private sealed record AccessToken(string Value, long Generation, DateTime ExpiresAt);
