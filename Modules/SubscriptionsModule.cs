@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
@@ -642,7 +643,7 @@ public class SubscriptionsModule : MorpheusModuleBase
 
     internal static string EscapeBrowserText(string value, int maxLength)
     {
-        string escaped = value
+        string escaped = NormalizeUnicode(value)
             .Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("*", "\\*", StringComparison.Ordinal)
             .Replace("_", "\\_", StringComparison.Ordinal)
@@ -664,6 +665,23 @@ public class SubscriptionsModule : MorpheusModuleBase
 
         return string.Concat(escaped.AsSpan(0, prefixLength), "…");
     }
+
+    internal static string ClampRssDisplayName(string value)
+    {
+        const int maxLength = 80;
+        string normalized = NormalizeUnicode(value);
+        if (normalized.Length <= maxLength)
+            return normalized;
+
+        int length = maxLength;
+        if (char.IsHighSurrogate(normalized[length - 1]) && char.IsLowSurrogate(normalized[length]))
+            length--;
+
+        return normalized[..length];
+    }
+
+    private static string NormalizeUnicode(string value) =>
+        string.Concat(value.EnumerateRunes().Select(rune => rune.ToString()));
 
     private static void CleanupExpiredBrowserSessions()
     {
@@ -757,8 +775,7 @@ public class SubscriptionsModule : MorpheusModuleBase
         string name = !string.IsNullOrWhiteSpace(source.DisplayName) ? source.DisplayName.Trim()
             : !string.IsNullOrWhiteSpace(feedTitle) ? feedTitle
             : uri.Host;
-        if (name.Length > 80)
-            name = name[..80];
+        name = ClampRssDisplayName(name);
 
         RssSubscription subscription = new()
         {
