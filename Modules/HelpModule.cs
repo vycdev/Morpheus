@@ -140,7 +140,14 @@ public class HelpModule : MorpheusModuleBase
             string commandDescription = cmd.Summary ?? "No description available.";
             if (commandDescription.Length > CommandDescriptionMaxLength)
             {
-                commandDescription = commandDescription.Substring(0, CommandDescriptionMaxLength).TrimEnd() + "…";
+                int contentLength = CommandDescriptionMaxLength;
+                if (char.IsHighSurrogate(commandDescription[contentLength - 1])
+                    && char.IsLowSurrogate(commandDescription[contentLength]))
+                {
+                    contentLength--;
+                }
+
+                commandDescription = commandDescription[..contentLength].TrimEnd() + "…";
             }
 
             string commandUsage = cmd.Parameters.Count > 0 && cmd.Parameters.Any(p => p.Name != "_")
