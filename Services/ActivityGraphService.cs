@@ -154,6 +154,11 @@ public class ActivityGraphService(DB dbContext)
             return ActivityGraphParseResult.Error($"Date range exceeds maximum of {maxDays} days.");
 
         DateTime explicitStart = start.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // Queries use an exclusive end, and short ranges are expanded to seven
+        // days. Both must remain representable even near DateTime.MaxValue.
+        if (span > (DateTime.MaxValue.Date - explicitStart).Days)
+            return ActivityGraphParseResult.Error("Requested date range exceeds the supported date range.");
+
         return ActivityGraphParseResult.Valid(span, explicitStart);
     }
 

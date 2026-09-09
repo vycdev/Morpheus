@@ -242,6 +242,29 @@ public class ActivityGraphServiceTests
         Assert.Equal(new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc), result.ExplicitStart);
     }
 
+    [Theory]
+    [InlineData("9999-12-31..9999-12-31")]
+    [InlineData("9999-12-25..9999-12-31")]
+    public void ParseDaysString_RejectsExplicitRangesWithUnrepresentableExclusiveEnd(string input)
+    {
+        foreach (bool isOwner in new[] { false, true })
+        {
+            ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(input, isOwner, 90);
+            Assert.False(result.Success);
+            Assert.Equal("Requested date range exceeds the supported date range.", result.ErrorMessage);
+        }
+    }
+
+    [Fact]
+    public void ParseDaysString_AcceptsLastRepresentableExclusiveEnd()
+    {
+        ActivityGraphParseResult result = ActivityGraphService.ParseDaysString(
+            "9999-12-24..9999-12-30", isOwner: true, maxDays: 90);
+        Assert.True(result.Success);
+        ActivityGraphRange range = ActivityGraphService.ResolveRange(result);
+        Assert.Equal(new DateTime(9999, 12, 31, 0, 0, 0, DateTimeKind.Utc), range.Start.AddDays(range.Days));
+    }
+
     [Fact]
     public void ParseDaysString_RejectsTooLargeDateRangeForNonOwner()
     {
