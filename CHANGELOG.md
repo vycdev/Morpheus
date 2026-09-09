@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Handle quote approval expiry settings beyond the `DateTime` range without failing interactions.
 - Preserve emoji when truncating command summaries in help pages.
 - Reject reminder durations whose numeric values exceed the supported range.
 - Reject activity graph day counts and explicit ranges whose query bounds would exceed the supported date range.
