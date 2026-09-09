@@ -36,6 +36,19 @@ public class TwitchServiceTests
     }
 
     [Fact]
+    public async Task GetUserAsync_DoesNotCacheTokenWhenExpiryUnderflows()
+    {
+        OverflowingExpiryHandler handler = new();
+        using HttpClient httpClient = new(handler);
+        TwitchService service = new(new LogsService(new LogQueue()), httpClient, "test-client", "test-secret");
+
+        await service.GetUserAsync("streamer");
+        await service.GetUserAsync("streamer");
+
+        Assert.Equal(2, handler.TokenRequestCount);
+    }
+
+    [Fact]
     public async Task GetLiveStreamsAsync_IgnoresBlankAndTrimsDuplicateUserIds()
     {
         RecordingHandler handler = new();
@@ -101,6 +114,34 @@ public class TwitchServiceTests
         Assert.All(results, result => Assert.True(result.Succeeded));
         Assert.Equal(2, handler.TokenRequestCount);
         Assert.Equal(4, handler.StreamRequestCount);
+    }
+
+    private sealed class OverflowingExpiryHandler : HttpMessageHandler
+    {
+        public int TokenRequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv")
+            {
+                TokenRequestCount++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        $"{{\"access_token\":\"token-{TokenRequestCount}\",\"expires_in\":{int.MinValue}}}",
+                        Encoding.UTF8,
+                        "application/json")
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"data\":[{\"id\":\"1\",\"login\":\"streamer\",\"display_name\":\"Streamer\"}]}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
     }
 
     private sealed class CancellationHandler(bool blockTokenRequest) : HttpMessageHandler
