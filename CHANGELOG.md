@@ -3,6 +3,9 @@
 ## Unreleased
 
 - Preserve emoji when truncating command summaries in help pages.
+- Reject reminder durations whose numeric values exceed the supported range.
+- Reject activity graph day counts and explicit ranges whose query bounds would exceed the supported date range.
+- Preserve emoji when limiting RSS subscription display names.
 - Coalesce concurrent Twitch access-token refreshes after authentication failures.
 - Preserve emoji when truncating long MCP command output.
 - Preserve emoji when truncating Urban Dictionary definitions and examples.
