@@ -52,11 +52,13 @@ public class UsersService(DB dbContext, LogsService logsService)
         if (user == null)
             return;
 
-        if (DateTime.UtcNow < user.LastUsernameCheck.AddDays(10))
+        DateTime now = DateTime.UtcNow;
+        long elapsedTicks = now.Ticks - user.LastUsernameCheck.Ticks;
+        if (elapsedTicks < TimeSpan.TicksPerDay * 10)
             return;
 
         user.Username = socketUser.Username;
-        user.LastUsernameCheck = DateTime.UtcNow;
+        user.LastUsernameCheck = now;
 
         dbContext.Users.Update(user);
         await dbContext.SaveChangesAsync();
