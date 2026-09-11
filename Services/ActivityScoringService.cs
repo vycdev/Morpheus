@@ -22,7 +22,13 @@ public class ActivityScoringService(DB dbContext)
         DateTime now)
     {
         int similarityWindowMinutes = Env.Get<int>("ACTIVITY_SIMILARITY_WINDOW_MINUTES", 10);
-        DateTime similarityWindowStart = now.AddMinutes(-similarityWindowMinutes);
+        DateTime similarityWindowStart = similarityWindowMinutes switch
+        {
+            <= 0 => now,
+            _ when similarityWindowMinutes >= (now - DateTime.MinValue).TotalMinutes =>
+                new DateTime(DateTime.MinValue.Ticks, now.Kind),
+            _ => now.AddMinutes(-similarityWindowMinutes)
+        };
 
         UserActivity? previousUserActivityInGuild = await dbContext.UserActivity
             .Where(ua => ua.UserId == userId && ua.GuildId == guildId)
