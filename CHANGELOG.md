@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Recognize uppercase guild stock targets regardless of the host culture.
 - Avoid caching Twitch access tokens when the reported lifetime is negative or below the safety margin.
 - Handle quote approval expiry settings beyond the `DateTime` range without failing interactions.
 - Preserve emoji when truncating command summaries in help pages.
