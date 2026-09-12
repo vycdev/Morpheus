@@ -30,12 +30,12 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
     /// Resolves a target string into a StockEntityType + entity DB ID.
     /// Supports: user mentions, #channel mentions, and "guild"/"server" keyword.
     /// </summary>
-    private async Task<(bool success, StockEntityType type, int entityId, string displayName)?> ResolveTarget(string target)
+    internal async Task<(bool success, StockEntityType type, int entityId, string displayName)?> ResolveTarget(string target)
     {
         if (string.IsNullOrWhiteSpace(target))
             return null;
 
-        string trimmed = target.Trim().ToLower();
+        string trimmed = target.Trim().ToLowerInvariant();
 
         // Guild / server
         if (trimmed is "guild" or "server")
