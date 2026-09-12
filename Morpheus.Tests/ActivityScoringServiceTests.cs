@@ -1,11 +1,52 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
 using Morpheus.Database.Models;
 using Morpheus.Services;
+using Morpheus.Utilities;
 
 namespace Morpheus.Tests;
 
+[Collection("Environment variable tests")]
 public class ActivityScoringServiceTests
 {
     private static readonly DateTime Now = new(2026, 5, 29, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task CreateActivityAsync_WithHugeSimilarityWindow_DoesNotOverflow()
+    {
+        const string key = "ACTIVITY_SIMILARITY_WINDOW_MINUTES";
+        bool hadOriginalValue = Env.Variables.TryGetValue(key, out string? originalValue);
+
+        try
+        {
+            Env.Variables[key] = int.MaxValue.ToString();
+            await using SqliteConnection connection = new("Data Source=:memory:");
+            await connection.OpenAsync();
+            DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+                .UseSqlite(connection)
+                .Options;
+            await using DB db = new(options);
+            await db.Database.EnsureCreatedAsync();
+
+            UserActivity activity = await new ActivityScoringService(db).CreateActivityAsync(
+                userId: 1,
+                guildId: 1,
+                discordChannelId: 1,
+                discordMessageId: 1,
+                messageContent: "hello",
+                now: Now);
+
+            Assert.Equal(Now, activity.InsertDate);
+        }
+        finally
+        {
+            if (hadOriginalValue)
+                Env.Variables[key] = originalValue!;
+            else
+                Env.Variables.Remove(key);
+        }
+    }
 
     [Fact]
     public void ScoreMessage_FirstMessage_GrantsBaseLengthXpAndInitializesGuildStats()

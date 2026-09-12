@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Bound oversized activity similarity windows to the supported `DateTime` range.
 - Handle username-check timestamps near the `DateTime` limit without failing message processing.
 - Recognize uppercase guild stock targets regardless of the host culture.
 - Avoid caching Twitch access tokens when the reported lifetime is negative or below the safety margin.
