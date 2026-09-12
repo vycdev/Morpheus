@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve emoji when truncating bulk subscription failure summaries.
 - Allow activity leaderboards to cover day ranges larger than the representable date history.
 - Bound oversized activity similarity windows to the supported `DateTime` range.
 - Handle username-check timestamps near the `DateTime` limit without failing message processing.

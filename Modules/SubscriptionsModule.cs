@@ -900,10 +900,21 @@ public class SubscriptionsModule : MorpheusModuleBase
         await ReplyAsync(response);
     }
 
-    private static string ClampSummaryText(string value, int maxLength)
+    internal static string ClampSummaryText(string value, int maxLength)
     {
-        string sanitized = value.Replace('`', '\'').Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return sanitized.Length <= maxLength ? sanitized : sanitized[..(maxLength - 1)] + "…";
+        string sanitized = NormalizeUnicode(value).Replace('`', '\'').Replace('\r', ' ').Replace('\n', ' ').Trim();
+        if (sanitized.Length <= maxLength)
+            return sanitized;
+
+        int prefixLength = maxLength - 1;
+        if (prefixLength > 0 &&
+            char.IsHighSurrogate(sanitized[prefixLength - 1]) &&
+            char.IsLowSurrogate(sanitized[prefixLength]))
+        {
+            prefixLength--;
+        }
+
+        return string.Concat(sanitized.AsSpan(0, prefixLength), "…");
     }
 
     private enum BulkSubscribeStatus

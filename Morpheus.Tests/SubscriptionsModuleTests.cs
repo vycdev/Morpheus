@@ -74,4 +74,15 @@ public class SubscriptionsModuleTests
         Assert.Equal(new string('a', 79), result);
         Assert.DoesNotContain(result, char.IsSurrogate);
     }
+
+    [Fact]
+    public void ClampSummaryText_DoesNotSplitSurrogatePairs()
+    {
+        string value = new string('a', 98) + "😀tail";
+
+        string result = SubscriptionsModule.ClampSummaryText(value, 100);
+
+        Assert.Equal(new string('a', 98) + "…", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
 }
