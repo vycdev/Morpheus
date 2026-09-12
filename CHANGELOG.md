@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve emoji when truncating bulk subscription failure summaries.
 - Bound oversized activity similarity windows to the supported `DateTime` range.
 - Handle username-check timestamps near the `DateTime` limit without failing message processing.
 - Recognize uppercase guild stock targets regardless of the host culture.
