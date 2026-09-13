@@ -134,6 +134,20 @@ public class McpCommandExecutionTests
             TimeZoneId: "Not/A_Real_Time_Zone")));
     }
 
+    [Theory]
+    [InlineData("+900000000000003")]
+    [InlineData(" 900000000000003")]
+    [InlineData("900000000000003 ")]
+    public async Task Invocation_RejectsSnowflakesWithNonDecimalCharacters(string userId)
+    {
+        await using TestHarness harness = await TestHarness.CreateAsync(executionEnabled: false);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => harness.Service.InvokeAsync(new(
+            "echo invalid id",
+            userId,
+            harness.ChannelId.ToString())));
+    }
+
     [Fact]
     public async Task Validate_PreservesGuildPreconditionsAndHidesOwnerCommands()
     {

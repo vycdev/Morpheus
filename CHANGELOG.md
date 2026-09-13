@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reject MCP Discord IDs containing signs or whitespace.
 - Preserve emoji when truncating bulk subscription failure summaries.
 - Allow activity leaderboards to cover day ranges larger than the representable date history.
 - Bound oversized activity similarity windows to the supported `DateTime` range.
