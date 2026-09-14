@@ -482,12 +482,10 @@ public sealed class McpCommandExecutionService : IDisposable
             stopwatch.ElapsedMilliseconds);
 
     private static ulong ParseSnowflake(string value, string name) =>
-        value is { Length: > 0 and <= 20 } && ulong.TryParse(value, out ulong parsed) && parsed > 0
-            ? parsed
-            : throw new ArgumentException($"{name} must be a positive decimal Discord id.", name);
+        McpDiscordId.Parse(value, name);
 
     private static ulong? ParseOptionalSnowflake(string? value, string name) =>
-        string.IsNullOrWhiteSpace(value) ? null : ParseSnowflake(value, name);
+        McpDiscordId.ParseOptional(value, name);
 
     private static string HashInvocation(McpCommandInvocation invocation)
     {
