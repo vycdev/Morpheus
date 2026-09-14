@@ -1,9 +1,28 @@
+using System.Globalization;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
 
 public class EmojisModuleTests
 {
+    [SupportedCultureTheory("tr-TR")]
+    [InlineData("FILE", "file")]
+    public void EmojiNamesMatch_UsesOrdinalCaseRules(string emojiName, string requestedName)
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+            Assert.True(EmojisModule.EmojiNamesMatch(emojiName, requestedName));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
     [Fact]
     public void TryGetReferencedMessageId_ReturnsFalseWhenReferenceIsMissing()
     {

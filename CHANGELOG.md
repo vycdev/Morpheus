@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Match application emoji names consistently across host cultures.
 - Preserve emoji when truncating bulk subscription failure summaries.
 - Allow activity leaderboards to cover day ranges larger than the representable date history.
 - Bound oversized activity similarity windows to the supported `DateTime` range.

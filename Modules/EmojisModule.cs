@@ -53,7 +53,7 @@ public class EmojisModule : MorpheusModuleBase
     [RateLimit(5, 10)]
     public async Task UseEmoji([Remainder] string emojiName)
     {
-        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
+        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => EmojiNamesMatch(e.Name, emojiName));
 
         if (emoji == null)
         {
@@ -83,7 +83,7 @@ public class EmojisModule : MorpheusModuleBase
     [RateLimit(5, 10)]
     public async Task React([Remainder] string emojiName)
     {
-        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
+        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => EmojiNamesMatch(e.Name, emojiName));
 
         if (emoji == null)
         {
@@ -117,6 +117,9 @@ public class EmojisModule : MorpheusModuleBase
         messageId = referencedMessageId.GetValueOrDefault();
         return referencedMessageId.HasValue;
     }
+
+    internal static bool EmojiNamesMatch(string emojiName, string requestedName) =>
+        emojiName.Equals(requestedName, StringComparison.OrdinalIgnoreCase);
 
     internal static bool TryParseEmojiPageDirection(string? customId, out bool isNext)
     {
