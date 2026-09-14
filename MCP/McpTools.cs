@@ -69,13 +69,7 @@ public sealed class McpTools(
         [Description("Positive Discord guild id, represented as a decimal string.")] string? discordId = null,
         CancellationToken cancellationToken = default)
     {
-        ulong? parsedDiscordId = null;
-        if (!string.IsNullOrWhiteSpace(discordId))
-        {
-            if (!ulong.TryParse(discordId, out ulong value) || value == 0)
-                throw new ArgumentException("discordId must be a positive decimal Discord id.", nameof(discordId));
-            parsedDiscordId = value;
-        }
+        ulong? parsedDiscordId = McpDiscordId.ParseOptional(discordId, nameof(discordId));
 
         return service.GetGuildInfoAsync(guildId, parsedDiscordId, cancellationToken);
     }
