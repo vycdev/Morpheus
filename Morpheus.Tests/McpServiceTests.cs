@@ -133,6 +133,19 @@ public class McpServiceTests
         Assert.Equal(500, result.Xp);
     }
 
+    [Theory]
+    [InlineData("+123")]
+    [InlineData(" 123")]
+    [InlineData("123 ")]
+    public async Task GetGuildInfoAsync_RejectsNonCanonicalDiscordIds(string discordId)
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        await SeedBaseAsync(testDb.Db);
+        McpTools tools = new(new McpService(testDb.Db), null!, null!);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => tools.GetGuildInfoAsync(discordId: discordId));
+    }
+
     private sealed class SqliteTestDb(SqliteConnection connection, DB db) : IAsyncDisposable
     {
         public DB Db { get; } = db;
