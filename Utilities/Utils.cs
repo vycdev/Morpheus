@@ -38,7 +38,7 @@ public static class Utils
             foreach (Match m in bareMatches)
             {
                 // Basic sanity: matched substring should contain a dot and a TLD-like suffix
-                if (m.Success && m.Value.IndexOf('.') >= 0)
+                if (m.Success && m.Value.IndexOf('.') >= 0 && HasValidPort(m.Value))
                 {
                     // Avoid matching single-letter TLD-like fragments (should be enforced by regex)
                     // Return true for the first plausible domain-looking match.
@@ -47,9 +47,16 @@ public static class Utils
             }
         }
 
-        // Check for IPv4-looking patterns
-        if (_ipRegex.IsMatch(text)) return true;
+        // Check for IPv4-looking patterns with usable port numbers.
+        foreach (Match match in _ipRegex.Matches(text))
+        {
+            if (HasValidPort(match.Value))
+                return true;
+        }
 
         return false;
     }
+
+    private static bool HasValidPort(string value) =>
+        Uri.TryCreate($"http://{value}", UriKind.Absolute, out _);
 }

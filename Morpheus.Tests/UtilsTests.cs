@@ -51,4 +51,20 @@ public class UtilsTests
     {
         Assert.False(Utils.ContainsUrl(text));
     }
+
+    [Theory]
+    [InlineData("example.com:65536")]
+    [InlineData("192.168.1.1:99999")]
+    public void ContainsUrl_RejectsOutOfRangePortsOnBareHosts(string text)
+    {
+        Assert.False(Utils.ContainsUrl(text));
+    }
+
+    [Theory]
+    [InlineData("example.com:65535")]
+    [InlineData("192.168.1.1:65535")]
+    public void ContainsUrl_AcceptsHighestPortOnBareHosts(string text)
+    {
+        Assert.True(Utils.ContainsUrl(text));
+    }
 }
