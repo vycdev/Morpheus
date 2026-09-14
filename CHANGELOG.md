@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Reject MCP Discord IDs containing signs or whitespace.
+- Require every supplied MCP Discord ID to contain 1–20 ASCII digits and represent a positive 64-bit value; reject signs, whitespace, and control characters. Omit optional IDs with `null`, not an empty string.
+- Match application emoji names consistently across host cultures.
 - Preserve emoji when truncating bulk subscription failure summaries.
 - Allow activity leaderboards to cover day ranges larger than the representable date history.
 - Bound oversized activity similarity windows to the supported `DateTime` range.

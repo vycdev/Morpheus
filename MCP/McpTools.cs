@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Globalization;
 using ModelContextProtocol.Server;
 
 namespace Morpheus.MCP;
@@ -70,13 +69,7 @@ public sealed class McpTools(
         [Description("Positive Discord guild id, represented as a decimal string.")] string? discordId = null,
         CancellationToken cancellationToken = default)
     {
-        ulong? parsedDiscordId = null;
-        if (!string.IsNullOrWhiteSpace(discordId))
-        {
-            if (!ulong.TryParse(discordId, NumberStyles.None, CultureInfo.InvariantCulture, out ulong value) || value == 0)
-                throw new ArgumentException("discordId must be a positive decimal Discord id.", nameof(discordId));
-            parsedDiscordId = value;
-        }
+        ulong? parsedDiscordId = McpDiscordId.ParseOptional(discordId, nameof(discordId));
 
         return service.GetGuildInfoAsync(guildId, parsedDiscordId, cancellationToken);
     }
