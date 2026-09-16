@@ -42,6 +42,31 @@ public class YoutubeFeedServiceTests
         Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("<link />")]
+    [InlineData("<link href=\"\" />")]
+    [InlineData("<link href=\"  \" />")]
+    [InlineData("<link href=\"&#x9;&#xA;&#xD;\" />")]
+    public void ParseEntries_WhenLinkIsMissingOrBlank_UsesCanonicalVideoUrl(string linkElement)
+    {
+        XDocument document = XDocument.Parse($"""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                <title>Video title</title>
+                {linkElement}
+                <published>2025-07-30T10:00:00Z</published>
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+
+        Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
+    }
+
     [Fact]
     public async Task FetchFeedAsync_WhenCallerCancels_PropagatesCancellation()
     {
