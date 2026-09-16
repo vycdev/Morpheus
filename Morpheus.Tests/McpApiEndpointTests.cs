@@ -59,6 +59,20 @@ public class McpApiEndpointTests
     }
 
     [Fact]
+    public async Task Endpoint_RejectsMultipleOriginValues()
+    {
+        await using McpTestServer server = await McpTestServer.CreateAsync();
+        using HttpRequestMessage request = CreateInitializeRequest(ApiKey);
+        request.Headers.TryAddWithoutValidation(
+            "Origin",
+            [AllowedOrigin, "https://evil.example"]);
+
+        using HttpResponseMessage response = await server.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Endpoint_ImplementsInitializeAndToolsList()
     {
         await using McpTestServer server = await McpTestServer.CreateAsync();
