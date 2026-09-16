@@ -158,4 +158,23 @@ public class ActivityScoringServiceTests
         Assert.Equal(10, score.GuildMessageCount);
         Assert.Equal(expectedAverage, score.GuildAverageMessageLength, precision: 12);
     }
+
+    [Fact]
+    public void ScoreMessage_WithMaximumGuildMessageCount_DoesNotWrapNegative()
+    {
+        UserActivity previousGuildActivity = new()
+        {
+            GuildAverageMessageLength = 100.0,
+            GuildMessageCount = int.MaxValue
+        };
+
+        ActivityScoringResult score = ActivityScoringService.ScoreMessage(
+            "another message",
+            Now,
+            previousUserActivityInGuild: null,
+            previousGuildActivity,
+            recentForSimilarity: Array.Empty<ActivitySimilaritySample>());
+
+        Assert.Equal(int.MaxValue, score.GuildMessageCount);
+    }
 }

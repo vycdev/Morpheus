@@ -158,7 +158,9 @@ public class AdministratorModule(DiscordSocketClient client, DB dbContext) : Mor
     internal static bool TryParseOwnerId(string? value, out ulong ownerId)
     {
         ownerId = 0;
-        return !string.IsNullOrWhiteSpace(value) && ulong.TryParse(value, out ownerId);
+        return !string.IsNullOrWhiteSpace(value) &&
+               ulong.TryParse(value, out ownerId) &&
+               ownerId > 0;
     }
 
     internal static IReadOnlyList<string> BuildLogMessages(IEnumerable<string> lines)

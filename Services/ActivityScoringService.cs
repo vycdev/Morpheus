@@ -216,7 +216,9 @@ public class ActivityScoringService(DB dbContext)
         if (previousActivityInGuild == null)
             return (messageLength, 1);
 
-        int messageCount = previousActivityInGuild.GuildMessageCount + 1;
+        int messageCount = previousActivityInGuild.GuildMessageCount == int.MaxValue
+            ? int.MaxValue
+            : previousActivityInGuild.GuildMessageCount + 1;
         double previousAverage = previousActivityInGuild.GuildAverageMessageLength;
         double averageMessageLength = previousAverage <= 0.0
             ? messageLength
