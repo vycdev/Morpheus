@@ -8,6 +8,7 @@ public class AdministratorModuleTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
+    [InlineData("0")]
     [InlineData("not-a-user-id")]
     public void TryParseOwnerId_RejectsMissingOrInvalidValues(string? value)
     {
