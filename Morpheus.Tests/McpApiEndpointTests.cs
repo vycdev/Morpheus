@@ -58,6 +58,26 @@ public class McpApiEndpointTests
         Assert.Equal(AllowedOrigin, allowedResponse.Headers.GetValues("Access-Control-Allow-Origin").Single());
     }
 
+    [Theory]
+    [InlineData(AllowedOrigin, "https://evil.example")]
+    [InlineData("https://evil.example", AllowedOrigin)]
+    [InlineData(AllowedOrigin, AllowedOrigin)]
+    [InlineData(AllowedOrigin + ", https://evil.example", null)]
+    [InlineData(AllowedOrigin + " https://evil.example", null)]
+    public async Task Endpoint_RejectsMultipleOriginValues(string firstOrigin, string? secondOrigin)
+    {
+        await using McpTestServer server = await McpTestServer.CreateAsync();
+        using HttpRequestMessage request = CreateInitializeRequest(ApiKey);
+        Assert.True(request.Headers.TryAddWithoutValidation(
+            "Origin",
+            secondOrigin is null ? [firstOrigin] : [firstOrigin, secondOrigin]));
+
+        using HttpResponseMessage response = await server.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
     [Fact]
     public async Task Endpoint_ImplementsInitializeAndToolsList()
     {
