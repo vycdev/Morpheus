@@ -232,8 +232,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
 
         decimal totalValue = 0m;
         decimal totalInvested = 0m;
-        StringBuilder sb = new();
-        sb.AppendLine($"💰 Balance: **${targetDbUser.Balance:F2}**\n");
+        List<string> holdingEntries = [];
 
         foreach (StockHolding holding in holdings)
         {
@@ -251,17 +250,39 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
             totalValue += currentValue;
             totalInvested += holding.TotalInvested;
 
-            sb.AppendLine($"{arrow} **{stockName}** ({holding.Stock.EntityType})");
-            sb.AppendLine($"  Shares: {holding.Shares:F4} @ ${holding.Stock.Price:F2} = **${currentValue:F2}**");
-            sb.AppendLine($"  P&L: {pnlSign}${pnl:F2} | Today: {changeStr}");
-            sb.AppendLine();
+            holdingEntries.Add(
+                $"{arrow} **{stockName}** ({holding.Stock.EntityType})\n" +
+                $"  Shares: {holding.Shares:F4} @ ${holding.Stock.Price:F2} = **${currentValue:F2}**\n" +
+                $"  P&L: {pnlSign}${pnl:F2} | Today: {changeStr}\n\n");
         }
 
         decimal totalPnl = totalValue - totalInvested;
         string totalPnlSign = totalPnl >= 0 ? "+" : "";
-        sb.AppendLine($"**Total Holdings Value: ${totalValue:F2}**");
-        sb.AppendLine($"**Total P&L: {totalPnlSign}${totalPnl:F2}**");
-        sb.AppendLine($"**Net Worth: ${targetDbUser.Balance + totalValue:F2}**");
+        string summary =
+            $"**Total Holdings Value: ${totalValue:F2}**\n" +
+            $"**Total P&L: {totalPnlSign}${totalPnl:F2}**\n" +
+            $"**Net Worth: ${targetDbUser.Balance + totalValue:F2}**\n";
+
+        StringBuilder sb = new();
+        sb.AppendLine($"💰 Balance: **${targetDbUser.Balance:F2}**\n");
+        for (int i = 0; i < holdingEntries.Count; i++)
+        {
+            int remaining = holdingEntries.Count - i - 1;
+            string suffix = remaining > 0
+                ? $"*{remaining} more holdings not shown.*\n\n{summary}"
+                : summary;
+
+            if (sb.Length + holdingEntries[i].Length + suffix.Length > EmbedBuilder.MaxDescriptionLength)
+            {
+                sb.AppendLine($"*{holdingEntries.Count - i} more holdings not shown.*");
+                sb.AppendLine();
+                break;
+            }
+
+            sb.Append(holdingEntries[i]);
+        }
+
+        sb.Append(summary);
 
         embed.WithDescription(sb.ToString());
         await ReplyAsync(embed: embed.Build());
