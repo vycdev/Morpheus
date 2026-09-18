@@ -1,9 +1,34 @@
 using Morpheus.Services;
+using Morpheus.Database.Models;
 
 namespace Morpheus.Tests;
 
 public class ActivityLevelServiceTests
 {
+    [Fact]
+    public void ApplyActivityToUserLevel_SaturatesProgressCounters()
+    {
+        UserLevels userLevel = new()
+        {
+            TotalXp = int.MaxValue - 1,
+            UserMessageCount = int.MaxValue,
+            UserAverageMessageLength = 100,
+            UserAverageMessageLengthEma = 100
+        };
+        UserActivity activity = new()
+        {
+            XpGained = 10,
+            MessageLength = 200
+        };
+
+        ActivityLevelService.ApplyActivityToUserLevel(userLevel, activity);
+
+        Assert.Equal(int.MaxValue, userLevel.TotalXp);
+        Assert.Equal(ActivityLevelService.CalculateLevel(int.MaxValue), userLevel.Level);
+        Assert.Equal(int.MaxValue, userLevel.UserMessageCount);
+        Assert.InRange(userLevel.UserAverageMessageLength, 100, 101);
+    }
+
     [Theory]
     [InlineData(0, 0)]
     [InlineData(998, 0)]
