@@ -5,6 +5,8 @@ namespace Morpheus.Tests;
 public class ActivityLevelServiceTests
 {
     [Theory]
+    [InlineData(long.MinValue, 0)]
+    [InlineData(-1, 0)]
     [InlineData(0, 0)]
     [InlineData(998, 0)]
     [InlineData(999, 1)]
