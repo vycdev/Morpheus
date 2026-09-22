@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Format time spans ending at the maximum supported date without overflowing.
 - Fall back to canonical YouTube video URLs when feed entry links are blank.
 - Prevent guild activity message counts from wrapping negative at the integer limit.
 - Reject malformed and out-of-range ports on bare URL hosts without matching only a valid-looking prefix.
