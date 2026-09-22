@@ -207,9 +207,20 @@ public class SubscriptionsModule : MorpheusModuleBase
         string? youtubeChannelId = await YoutubeUtils.ResolveChannelIdAsync(HttpClient, youtubeChannel);
 
         // Fall back to matching by stored title if the reference can't be resolved to an id.
-        YoutubeSubscription? existing = youtubeChannelId != null
-            ? await db.YoutubeSubscriptions.FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id && s.YoutubeChannelId == youtubeChannelId)
-            : await db.YoutubeSubscriptions.FirstOrDefaultAsync(s => s.ChannelDiscordId == target.Id && s.YoutubeChannelTitle.ToLower() == youtubeChannel.ToLower());
+        YoutubeSubscription? existing;
+        if (youtubeChannelId != null)
+        {
+            existing = await db.YoutubeSubscriptions.FirstOrDefaultAsync(
+                subscription => subscription.ChannelDiscordId == target.Id &&
+                    subscription.YoutubeChannelId == youtubeChannelId);
+        }
+        else
+        {
+            List<YoutubeSubscription> channelSubscriptions = await db.YoutubeSubscriptions
+                .Where(subscription => subscription.ChannelDiscordId == target.Id)
+                .ToListAsync();
+            existing = FindYoutubeSubscriptionByTitle(channelSubscriptions, youtubeChannel);
+        }
 
         if (existing == null)
         {
@@ -679,6 +690,12 @@ public class SubscriptionsModule : MorpheusModuleBase
 
         return normalized[..length];
     }
+
+    internal static YoutubeSubscription? FindYoutubeSubscriptionByTitle(
+        IEnumerable<YoutubeSubscription> subscriptions,
+        string title) =>
+        subscriptions.FirstOrDefault(subscription =>
+            string.Equals(subscription.YoutubeChannelTitle, title, StringComparison.OrdinalIgnoreCase));
 
     private static string NormalizeUnicode(string value) =>
         string.Concat(value.EnumerateRunes().Select(rune => rune.ToString()));
