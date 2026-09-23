@@ -225,6 +225,8 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
     {
         if (fromUserId == toUserId) return (false, "You can't transfer money to yourself.");
         if (amount <= 0) return (false, "Amount must be positive.");
+        if (!TryCalculateTransferCost(amount, out decimal fee, out decimal totalCost))
+            return (false, "Amount is too large.");
 
         await using var dbTransaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
 
@@ -236,9 +238,6 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
 
         if (sender == null) return (false, "Sender not found.");
         if (receiver == null) return (false, "Receiver not found.");
-
-        decimal fee = amount * TransferFeeRate;
-        decimal totalCost = amount + fee;
 
         if (sender.Balance < totalCost)
             return (false, $"Insufficient balance. You need **${totalCost:F2}** (${amount:F2} + ${fee:F2} fee) but have **${sender.Balance:F2}**.");
@@ -265,6 +264,22 @@ public class StocksService(DB dbContext, LogsService logsService, EconomyService
         await dbTransaction.CommitAsync();
 
         return (true, $"Transferred **${amount:F2}** to the recipient.\nFee: **${fee:F2}** | Total cost: **${totalCost:F2}**");
+    }
+
+    internal static bool TryCalculateTransferCost(decimal amount, out decimal fee, out decimal totalCost)
+    {
+        try
+        {
+            fee = amount * TransferFeeRate;
+            totalCost = amount + fee;
+            return true;
+        }
+        catch (OverflowException)
+        {
+            fee = 0m;
+            totalCost = 0m;
+            return false;
+        }
     }
 
     /// <summary>
