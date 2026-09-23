@@ -42,6 +42,28 @@ public class YoutubeFeedServiceTests
         Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
     }
 
+    [Fact]
+    public void ParseEntries_TrimsWhitespaceAroundVideoIds()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>
+                  video-id
+                </yt:videoId>
+                <title>Video title</title>
+                <published>2025-07-30T10:00:00Z</published>
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+
+        Assert.Equal("video-id", entry.VideoId);
+        Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("<link />")]
