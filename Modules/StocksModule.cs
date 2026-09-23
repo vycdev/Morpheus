@@ -193,7 +193,7 @@ public class StocksModule(DB dbContext, StocksService stocksService, ChannelServ
     }
 
     [Name("Stock Portfolio")]
-    [Summary("View your stock portfolio or another user's. Shows all holdings with current values.")]
+    [Summary("View a stock portfolio with current values and full totals. Large lists may omit holding rows.")]
     [Command("stock portfolio")]
     [Alias("stocks", "holdings", "portfolio")]
     [RequireContext(ContextType.Guild)]
