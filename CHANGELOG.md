@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fall back to Atom entry links when entry IDs are blank.
 - Keep large stock portfolios within Discord's embed description limit.
 - Fall back to canonical YouTube video URLs when feed entry links are blank.
 - Prevent guild activity message counts from wrapping negative at the integer limit.
