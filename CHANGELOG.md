@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep long quote approval requests and finalized status messages within Discord's message limit.
 - Reject transfer amounts whose fee would overflow the supported money range.
 - Prevent per-user activity XP and message counters from wrapping at the integer limit.
 - Fall back to Atom entry links when entry IDs are blank.
