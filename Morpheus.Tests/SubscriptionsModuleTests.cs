@@ -1,3 +1,4 @@
+using Morpheus.Database.Models;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
@@ -32,6 +33,20 @@ public class SubscriptionsModuleTests
     public void ExtractTwitchLogin_RejectsNonTwitchUrls(string input)
     {
         Assert.Empty(SubscriptionsModule.ExtractTwitchLogin(input));
+    }
+
+    [Theory]
+    [InlineData("INDIGO", "indigo")]
+    [InlineData("indigo", "INDIGO")]
+    public void FindYoutubeSubscriptionByTitle_IgnoresCaseInvariantly(string storedTitle, string input)
+    {
+        YoutubeSubscription expected = new() { YoutubeChannelTitle = storedTitle };
+
+        YoutubeSubscription? result = SubscriptionsModule.FindYoutubeSubscriptionByTitle(
+            [expected, new YoutubeSubscription { YoutubeChannelTitle = "Other" }],
+            input);
+
+        Assert.Same(expected, result);
     }
 
     [Fact]

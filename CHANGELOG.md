@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Match YouTube subscription titles consistently across host cultures when unsubscribing.
 - Trim surrounding whitespace from YouTube feed video IDs before tracking and posting entries.
 - Clamp non-positive XP totals to level zero instead of producing invalid levels.
 - Reject malformed and out-of-range ports in explicit and Markdown URLs.
