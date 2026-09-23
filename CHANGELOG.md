@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Trim surrounding whitespace from YouTube feed video IDs before tracking and posting entries.
 - Clamp non-positive XP totals to level zero instead of producing invalid levels.
 - Reject malformed and out-of-range ports in explicit and Markdown URLs.
 - Keep long quote approval requests and finalized status messages within Discord's message limit.
