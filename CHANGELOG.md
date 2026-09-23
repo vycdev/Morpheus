@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Prevent per-user activity XP and message counters from wrapping at the integer limit.
 - Fall back to Atom entry links when entry IDs are blank.
 - Keep large stock portfolios within Discord's embed description limit.
 - Fall back to canonical YouTube video URLs when feed entry links are blank.
