@@ -381,7 +381,7 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
             Title = "Morpheus",
             Description = $"""
             A multi-purpose Discord bot written in C# using Discord.Net.
-            **Warning:** Might contain traces of sentince and Codify!
+            **Warning:** Might contain traces of sentience and Codify!
 
             **Links:**
             [Website]({Env.Variables["WEBSITE"]})

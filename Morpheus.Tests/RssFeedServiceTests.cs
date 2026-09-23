@@ -152,6 +152,34 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public async Task FetchAsync_WhenAtomIdIsBlank_UsesLinkAsEntryId()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>Example feed</title>
+              <entry>
+                <id>   </id>
+                <title>Entry</title>
+                <link rel="alternate" href="https://example.com/posts/1" />
+                <updated>2025-07-30T10:00:00Z</updated>
+              </entry>
+            </feed>
+            """;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task server = ServeOnceAsync(listener, xml, timeout.Token);
+        RssFeedService service = new(new LogsService(new LogQueue()));
+
+        var result = await service.FetchAsync($"http://127.0.0.1:{port}/feed.xml", timeout.Token);
+        await server;
+
+        RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("https://example.com/posts/1", entry.EntryId);
+    }
+
+    [Fact]
     public async Task FetchAsync_WhenCallerCancels_PropagatesCancellation()
     {
         RssFeedService service = new(new LogsService(new LogQueue()));

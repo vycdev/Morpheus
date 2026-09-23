@@ -46,7 +46,7 @@ public class YoutubeFeedService(LogsService logsService)
         List<VideoEntry> entries = [];
         foreach (XElement e in doc.Descendants(Atom + "entry"))
         {
-            string vid = e.Element(Yt + "videoId")?.Value ?? string.Empty;
+            string vid = e.Element(Yt + "videoId")?.Value.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(vid))
                 continue;
 

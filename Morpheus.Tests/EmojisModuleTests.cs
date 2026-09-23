@@ -98,6 +98,25 @@ public class EmojisModuleTests
         Assert.Equal(Path.Combine(tempPath, "Morpheus_Emojis_123.zip"), archivePath);
     }
 
+    [Fact]
+    public void ClampSelectMenuLabel_DoesNotSplitSurrogatePairs()
+    {
+        string label = new string('a', 99) + "😀tail";
+
+        string result = EmojisModule.ClampSelectMenuLabel(label);
+
+        Assert.Equal(new string('a', 99), result);
+        Assert.InRange(result.Length, 1, 100);
+    }
+
+    [Fact]
+    public void ClampSelectMenuLabel_PreservesLabelsWithinLimit()
+    {
+        string label = "Server 😀";
+
+        Assert.Equal(label, EmojisModule.ClampSelectMenuLabel(label));
+    }
+
     [Theory]
     [InlineData(0, 0, false, 0, 0)]
     [InlineData(26, -1, true, 0, 2)]
