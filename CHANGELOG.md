@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Prevent per-user activity XP and message counters from wrapping at the integer limit.
+- Fall back to Atom entry links when entry IDs are blank.
+- Keep large stock portfolios within Discord's embed description limit.
 - Fall back to canonical YouTube video URLs when feed entry links are blank.
 - Prevent guild activity message counts from wrapping negative at the integer limit.
 - Reject malformed and out-of-range ports on bare URL hosts without matching only a valid-looking prefix.
