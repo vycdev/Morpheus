@@ -111,16 +111,20 @@ public class ActivityLevelService(DB dbContext)
         return lower;
     }
 
-    private static void ApplyActivityToUserLevel(UserLevels userLevel, UserActivity activity)
+    internal static void ApplyActivityToUserLevel(UserLevels userLevel, UserActivity activity)
     {
-        userLevel.TotalXp += activity.XpGained;
+        userLevel.TotalXp = (int)Math.Min(
+            int.MaxValue,
+            (long)userLevel.TotalXp + activity.XpGained);
         userLevel.Level = CalculateLevel(userLevel.TotalXp);
 
         int previousMessageCount = userLevel.UserMessageCount;
         double previousAverageLength = userLevel.UserAverageMessageLength;
         double previousEmaLength = userLevel.UserAverageMessageLengthEma;
 
-        int newMessageCount = previousMessageCount + 1;
+        int newMessageCount = previousMessageCount == int.MaxValue
+            ? int.MaxValue
+            : previousMessageCount + 1;
         double messageLength = activity.MessageLength;
 
         userLevel.UserMessageCount = newMessageCount;
