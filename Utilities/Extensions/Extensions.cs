@@ -22,14 +22,21 @@ public static partial class Extensions
             test_date = start.AddMonths(12 * years);
         }
 
-        // Add months until we go too far.
+        // Add months until we go too far. Do not attempt to advance beyond the
+        // final representable month when the requested end is DateTime.MaxValue.
         int months = 0;
-        while (test_date <= end)
+        int totalMonths = 12 * years;
+        int maximumMonthOffset = (DateTime.MaxValue.Year - start.Year) * 12
+            + DateTime.MaxValue.Month - start.Month;
+        while (totalMonths < maximumMonthOffset)
         {
+            DateTime nextMonth = start.AddMonths(totalMonths + 1);
+            if (nextMonth > end)
+                break;
+
             months++;
-            test_date = start.AddMonths(12 * years + months);
+            totalMonths++;
         }
-        months--;
 
         // Subtract to see how many more days,
         // hours, minutes, etc. we need.
