@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clamp non-positive XP totals to level zero instead of producing invalid levels.
 - Reject malformed and out-of-range ports in explicit and Markdown URLs.
 - Keep long quote approval requests and finalized status messages within Discord's message limit.
 - Reject transfer amounts whose fee would overflow the supported money range.
