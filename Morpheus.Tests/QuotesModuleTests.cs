@@ -16,6 +16,47 @@ namespace Morpheus.Tests;
 public class QuotesModuleTests
 {
     [Fact]
+    public void FormatApprovalMessage_KeepsLongRequestsWithinDiscordLimit()
+    {
+        string message = QuotesModule.FormatApprovalMessage(
+            "ADD REQUEST - Quote #1\nSubmitted by: <@123456789012345678>",
+            new string('x', 1988),
+            "\nApprovals required: 2");
+
+        Assert.Equal(2000, message.Length);
+        Assert.Contains("ADD REQUEST - Quote #1", message);
+        Assert.EndsWith("…```\nApprovals required: 2", message);
+    }
+
+    [Fact]
+    public void FormatApprovalMessage_DoesNotSplitSurrogatePairsWhenTruncating()
+    {
+        const string header = "APPROVED";
+        const string footer = "\nDone";
+        int availableContentLength = 2000 - $"{header}\n\n```".Length - $"```{footer}".Length;
+        string quote = new string('x', availableContentLength - 2) + "😀tail";
+
+        string message = QuotesModule.FormatApprovalMessage(header, quote, footer);
+
+        Assert.Equal(1999, message.Length);
+        Assert.EndsWith("x…```\nDone", message);
+        AssertContainsOnlyPairedSurrogates(message);
+    }
+
+    [Fact]
+    public void FormatApprovalMessage_PreservesShortRequests()
+    {
+        string message = QuotesModule.FormatApprovalMessage(
+            "ADD REQUEST - Quote #42\nSubmitted by: <@123>",
+            "A short quote",
+            "\nApprovals required: 2");
+
+        Assert.Equal(
+            "ADD REQUEST - Quote #42\nSubmitted by: <@123>\n\n```A short quote```\nApprovals required: 2",
+            message);
+    }
+
+    [Fact]
     public async Task ListQuotes_DoesNotSplitSurrogatePairsWhenTruncating()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");

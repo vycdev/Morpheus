@@ -79,4 +79,24 @@ public class StocksServiceTests
 
         Assert.Equal("stockholding:99:7", key);
     }
+
+    [Fact]
+    public void TryCalculateTransferCost_IncludesFee()
+    {
+        bool success = StocksService.TryCalculateTransferCost(100m, out decimal fee, out decimal totalCost);
+
+        Assert.True(success);
+        Assert.Equal(5m, fee);
+        Assert.Equal(105m, totalCost);
+    }
+
+    [Fact]
+    public void TryCalculateTransferCost_RejectsOverflowingAmount()
+    {
+        bool success = StocksService.TryCalculateTransferCost(decimal.MaxValue, out decimal fee, out decimal totalCost);
+
+        Assert.False(success);
+        Assert.Equal(0m, fee);
+        Assert.Equal(0m, totalCost);
+    }
 }
