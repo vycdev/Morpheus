@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve distinct case-sensitive YouTube channel IDs inside bulk subscription URLs.
+
 - Format time spans ending at the maximum supported date without overflowing.
 - Match YouTube subscription titles consistently across host cultures when unsubscribing.
 - Trim surrounding whitespace from YouTube feed video IDs before tracking and posting entries.
