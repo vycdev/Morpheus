@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Prefer YouTube video links over feed metadata links when posting new uploads.
 - Format time spans ending at the maximum supported date without overflowing.
 - Match YouTube subscription titles consistently across host cultures when unsubscribing.
 - Trim surrounding whitespace from YouTube feed video IDs before tracking and posting entries.
