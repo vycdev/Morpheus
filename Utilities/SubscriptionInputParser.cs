@@ -115,15 +115,38 @@ internal static partial class SubscriptionInputParser
 
         foreach (string value in values)
         {
-            HashSet<string> seen = YoutubeChannelIdRegex().IsMatch(value)
+            string? caseSensitiveKey = GetCaseSensitiveYoutubeChannelKey(value);
+            HashSet<string> seen = caseSensitiveKey is not null
                 ? seenCaseSensitive
                 : seenCaseInsensitive;
 
-            if (seen.Add(value))
+            if (seen.Add(caseSensitiveKey ?? value))
                 unique.Add(value);
         }
 
         return unique;
+    }
+
+    private static string? GetCaseSensitiveYoutubeChannelKey(string value)
+    {
+        if (YoutubeChannelIdRegex().IsMatch(value))
+            return value;
+
+        string url = value.Contains("://", StringComparison.Ordinal) ? value : $"https://{value}";
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
+            !uri.Host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) &&
+            !uri.Host.Equals("www.youtube.com", StringComparison.OrdinalIgnoreCase) &&
+            !uri.Host.Equals("m.youtube.com", StringComparison.OrdinalIgnoreCase) &&
+            !uri.Host.Equals("music.youtube.com", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        const string channelPrefix = "/channel/";
+        if (!uri.AbsolutePath.StartsWith(channelPrefix, StringComparison.Ordinal) ||
+            !YoutubeChannelIdRegex().IsMatch(uri.AbsolutePath[channelPrefix.Length..].TrimEnd('/')))
+            return null;
+
+        // URL hosts are case-insensitive, but the channel ID in the path is not.
+        return uri.GetLeftPart(UriPartial.Authority).ToLowerInvariant() + uri.PathAndQuery + uri.Fragment;
     }
 
     private static bool IsHttpUrl(string value) =>

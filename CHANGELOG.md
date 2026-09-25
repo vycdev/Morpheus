@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Prefer YouTube video links over feed metadata links when posting new uploads.
+- Preserve distinct case-sensitive YouTube channel IDs inside bulk subscription URLs.
+- Skip blank Atom link URLs so entries with a later usable link can still be posted.
 - Format time spans ending at the maximum supported date without overflowing.
 - Match YouTube subscription titles consistently across host cultures when unsubscribing.
 - Trim surrounding whitespace from YouTube feed video IDs before tracking and posting entries.
