@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Prefer RSS item links over preceding namespaced extension links when posting entries.
 - Prefer YouTube video links over feed metadata links when posting new uploads.
 - Preserve distinct case-sensitive YouTube channel IDs inside bulk subscription URLs.
 - Skip blank Atom link URLs so entries with a later usable link can still be posted.

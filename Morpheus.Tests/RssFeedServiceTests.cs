@@ -81,6 +81,26 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_PrefersRssItemLinkOverNamespacedExtensionLink()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+              <channel>
+                <item>
+                  <title>Entry</title>
+                  <atom:link rel="related" href="https://example.com/related" />
+                  <link>https://example.com/article</link>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/article", entry.Link);
+        Assert.Equal(entry.Link, entry.EntryId);
+    }
+
+    [Fact]
     public void ParseEntries_WhenGuidIsBlank_UsesLinkAsEntryId()
     {
         XDocument document = XDocument.Parse("""

@@ -96,7 +96,9 @@ public class RssFeedService(LogsService logsService)
 
         foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
         {
-            XElement? linkElement = ChildByLocalName(item, "link");
+            // RSS's own <link> identifies the entry; extension links (for example
+            // atom:link rel="related") must not take precedence based on XML order.
+            XElement? linkElement = item.Element("link") ?? ChildByLocalName(item, "link");
             string link = FirstNonBlank(
                 linkElement?.Value,
                 linkElement?.Attribute("href")?.Value);
