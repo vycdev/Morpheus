@@ -388,7 +388,16 @@ internal sealed class McpCommandResponseSink(
         }
 
         if (content?.Length > 8000)
-            content = content[..8000] + "…";
+        {
+            int prefixLength = 8000;
+            if (char.IsHighSurrogate(content[prefixLength - 1]) &&
+                char.IsLowSurrogate(content[prefixLength]))
+            {
+                prefixLength--;
+            }
+
+            content = string.Concat(content.AsSpan(0, prefixLength), "…");
+        }
         outputs.Enqueue(new McpCapturedOutput(
             current,
             kind,

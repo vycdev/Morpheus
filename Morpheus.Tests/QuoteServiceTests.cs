@@ -309,6 +309,14 @@ public class QuoteServiceTests
     }
 
     [Fact]
+    public void IsApprovalExpired_HandlesExpiryWindowsBeyondDateTimeRange()
+    {
+        DateTime insertDate = new(2026, 5, 25, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.False(QuoteService.IsApprovalExpired(insertDate, int.MaxValue, DateTime.MaxValue));
+    }
+
+    [Fact]
     public void GetRequiredApprovals_UsesApprovalType()
     {
         Guild guild = new()

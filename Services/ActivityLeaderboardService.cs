@@ -46,7 +46,7 @@ public class ActivityLeaderboardService(DB dbContext)
         int days,
         int page)
     {
-        DateTime cutoff = DateTime.UtcNow.AddDays(-days);
+        DateTime cutoff = GetCutoffDate(days);
         IQueryable<UserActivity> baseQuery = dbContext.UserActivity
             .AsNoTracking()
             .Where(ua => ua.GuildId == guildId && ua.InsertDate >= cutoff);
@@ -105,7 +105,7 @@ public class ActivityLeaderboardService(DB dbContext)
         int days,
         int page)
     {
-        DateTime cutoff = DateTime.UtcNow.AddDays(-days);
+        DateTime cutoff = GetCutoffDate(days);
         IQueryable<UserActivity> baseQuery = dbContext.UserActivity
             .AsNoTracking()
             .Where(ua => ua.InsertDate >= cutoff);
@@ -170,7 +170,7 @@ public class ActivityLeaderboardService(DB dbContext)
         int days,
         int page)
     {
-        DateTime cutoff = DateTime.UtcNow.AddDays(-days);
+        DateTime cutoff = GetCutoffDate(days);
         IQueryable<UserActivity> baseQuery = dbContext.UserActivity
             .AsNoTracking()
             .Where(ua => ua.GuildId == guildId && ua.InsertDate >= cutoff);
@@ -230,7 +230,7 @@ public class ActivityLeaderboardService(DB dbContext)
         int days,
         int page)
     {
-        DateTime cutoff = DateTime.UtcNow.AddDays(-days);
+        DateTime cutoff = GetCutoffDate(days);
         IQueryable<UserActivity> baseQuery = dbContext.UserActivity
             .AsNoTracking()
             .Where(ua => ua.InsertDate >= cutoff);
@@ -340,6 +340,14 @@ public class ActivityLeaderboardService(DB dbContext)
             return ActivityLeaderboardQueryResult.Error($"Invalid page number. Please choose a page between 1 and {totalPages}.");
 
         return null;
+    }
+
+    private static DateTime GetCutoffDate(int days)
+    {
+        DateTime now = DateTime.UtcNow;
+        return days > (now - DateTime.MinValue).TotalDays
+            ? DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)
+            : now.AddDays(-days);
     }
 
     internal static ActivityLeaderboardQueryResult CreatePage(

@@ -17,7 +17,7 @@ public class Env
             for (int i = 0; i < array.Length; i++)
             {
                 string line = array[i];
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith('#'))
                     continue; // Skip empty lines and comments
 
                 string[] parts = line.Split('=', 2);

@@ -1,3 +1,4 @@
+using Morpheus.Database.Models;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
@@ -34,11 +35,69 @@ public class SubscriptionsModuleTests
         Assert.Empty(SubscriptionsModule.ExtractTwitchLogin(input));
     }
 
+    [Theory]
+    [InlineData("INDIGO", "indigo")]
+    [InlineData("indigo", "INDIGO")]
+    public void FindYoutubeSubscriptionByTitle_IgnoresCaseInvariantly(string storedTitle, string input)
+    {
+        YoutubeSubscription expected = new() { YoutubeChannelTitle = storedTitle };
+
+        YoutubeSubscription? result = SubscriptionsModule.FindYoutubeSubscriptionByTitle(
+            [expected, new YoutubeSubscription { YoutubeChannelTitle = "Other" }],
+            input);
+
+        Assert.Same(expected, result);
+    }
+
     [Fact]
     public void EscapeLikePattern_EscapesWildcardsAndEscapeCharacters()
     {
         string escaped = SubscriptionsModule.EscapeLikePattern(@"https://example.com/feed?q=a%20_b\c");
 
         Assert.Equal(@"https://example.com/feed?q=a\%20\_b\\c", escaped);
+    }
+
+    [Fact]
+    public void EscapeBrowserText_DoesNotSplitSurrogatePairsWhenTruncated()
+    {
+        string value = new string('a', 78) + "😀tail";
+
+        string result = SubscriptionsModule.EscapeBrowserText(value, 80);
+
+        Assert.Equal(new string('a', 78) + "…", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
+
+    [Fact]
+    public void EscapeBrowserText_ReplacesUnpairedSurrogatesInStoredNames()
+    {
+        string value = new string('a', 79) + "\ud83d";
+
+        string result = SubscriptionsModule.EscapeBrowserText(value, 80);
+
+        Assert.Equal(new string('a', 79) + "�", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
+
+    [Fact]
+    public void ClampRssDisplayName_DoesNotSplitSurrogatePairs()
+    {
+        string value = new string('a', 79) + "😀tail";
+
+        string result = SubscriptionsModule.ClampRssDisplayName(value);
+
+        Assert.Equal(new string('a', 79), result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
+    }
+
+    [Fact]
+    public void ClampSummaryText_DoesNotSplitSurrogatePairs()
+    {
+        string value = new string('a', 98) + "😀tail";
+
+        string result = SubscriptionsModule.ClampSummaryText(value, 100);
+
+        Assert.Equal(new string('a', 98) + "…", result);
+        Assert.DoesNotContain(result, char.IsSurrogate);
     }
 }

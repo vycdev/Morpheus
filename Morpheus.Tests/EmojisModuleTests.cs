@@ -1,9 +1,28 @@
+using System.Globalization;
 using Morpheus.Modules;
 
 namespace Morpheus.Tests;
 
 public class EmojisModuleTests
 {
+    [SupportedCultureTheory("tr-TR")]
+    [InlineData("FILE", "file")]
+    public void EmojiNamesMatch_UsesOrdinalCaseRules(string emojiName, string requestedName)
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+            Assert.True(EmojisModule.EmojiNamesMatch(emojiName, requestedName));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
     [Fact]
     public void TryGetReferencedMessageId_ReturnsFalseWhenReferenceIsMissing()
     {
@@ -77,6 +96,25 @@ public class EmojisModuleTests
         string archivePath = EmojisModule.GetEmojiArchivePath(tempPath, 123UL);
 
         Assert.Equal(Path.Combine(tempPath, "Morpheus_Emojis_123.zip"), archivePath);
+    }
+
+    [Fact]
+    public void ClampSelectMenuLabel_DoesNotSplitSurrogatePairs()
+    {
+        string label = new string('a', 99) + "😀tail";
+
+        string result = EmojisModule.ClampSelectMenuLabel(label);
+
+        Assert.Equal(new string('a', 99), result);
+        Assert.InRange(result.Length, 1, 100);
+    }
+
+    [Fact]
+    public void ClampSelectMenuLabel_PreservesLabelsWithinLimit()
+    {
+        string label = "Server 😀";
+
+        Assert.Equal(label, EmojisModule.ClampSelectMenuLabel(label));
     }
 
     [Theory]

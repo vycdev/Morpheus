@@ -12,6 +12,8 @@ namespace Morpheus.Services;
 /// </summary>
 public class DiscordWebhookService(LogsService logsService)
 {
+    internal const int MaxUsernameLength = 80;
+
     // Discord.Net uses its own HttpClient internally; for raw webhook execution we keep a single
     // shared client, matching how other parts of this codebase create HttpClients.
     private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
@@ -29,7 +31,7 @@ public class DiscordWebhookService(LogsService logsService)
         var payload = new
         {
             content,
-            username,
+            username = ClampUsername(username),
             avatar_url = avatarUrl,
             // Never ping anyone from an automated feed post.
             allowed_mentions = new { parse = Array.Empty<string>() }
@@ -71,6 +73,18 @@ public class DiscordWebhookService(LogsService logsService)
         }
 
         return false;
+    }
+
+    internal static string ClampUsername(string username)
+    {
+        if (username.Length <= MaxUsernameLength)
+            return username;
+
+        int prefixLength = MaxUsernameLength - 1;
+        if (char.IsHighSurrogate(username[prefixLength - 1]) && char.IsLowSurrogate(username[prefixLength]))
+            prefixLength--;
+
+        return string.Concat(username.AsSpan(0, prefixLength), "…");
     }
 
     /// <summary>

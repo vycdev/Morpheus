@@ -42,10 +42,15 @@ public class RssFeedService(LogsService logsService)
             {
                 foreach (XElement e in atomEntries)
                 {
-                    string link = e.Elements(Atom + "link").FirstOrDefault(l => (string?)l.Attribute("rel") is null or "alternate")?.Attribute("href")?.Value
-                                  ?? e.Elements(Atom + "link").FirstOrDefault()?.Attribute("href")?.Value
-                                  ?? string.Empty;
-                    string id = e.Element(Atom + "id")?.Value ?? link;
+                    string link = FirstNonBlank(
+                        e.Elements(Atom + "link")
+                            .Where(l => (string?)l.Attribute("rel") is null or "alternate")
+                            .Select(l => l.Attribute("href")?.Value)
+                            .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                        e.Elements(Atom + "link")
+                            .Select(l => l.Attribute("href")?.Value)
+                            .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
+                    string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
                     string title = e.Element(Atom + "title")?.Value ?? string.Empty;
                     string pubRaw = e.Element(Atom + "published")?.Value ?? e.Element(Atom + "updated")?.Value ?? string.Empty;
                     DateTime published = ParsePublished(pubRaw);
@@ -91,11 +96,13 @@ public class RssFeedService(LogsService logsService)
 
         foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
         {
-            XElement? linkElement = ChildByLocalName(item, "link");
-            string? linkText = linkElement?.Value;
-            string link = !string.IsNullOrWhiteSpace(linkText)
-                ? linkText
-                : linkElement?.Attribute("href")?.Value ?? string.Empty;
+            // Prefer a usable link in the item's namespace (RSS 2.0 or RSS 1.0),
+            // then fall back to extension links when the RSS link is absent or blank.
+            string link = item.Elements()
+                .Where(element => element.Name.LocalName == "link")
+                .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
+                .Select(element => FirstNonBlank(element.Value, element.Attribute("href")?.Value))
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
             string id = FirstNonBlank(
                 ChildByLocalName(item, "guid")?.Value,
                 ChildByLocalName(item, "id")?.Value,

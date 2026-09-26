@@ -13,6 +13,7 @@ namespace Morpheus.Modules;
 
 public class QuotesModule : MorpheusModuleBase
 {
+    private const int DiscordMessageMaxLength = 2000;
     private readonly UsersService usersService;
     private readonly LogsService logsService;
     private readonly QuoteService quoteService;
@@ -138,7 +139,10 @@ public class QuotesModule : MorpheusModuleBase
             string statusText = result.Type == QuoteApprovalType.AddRequest
                 ? "**ADD REQUEST APPROVED**"
                 : "**REMOVE REQUEST APPROVED**";
-            string newContent = $"{statusText} - Quote #{result.QuoteId}\n\n```{result.QuoteContent}```";
+            string newContent = FormatApprovalMessage(
+                $"{statusText} - Quote #{result.QuoteId}",
+                result.QuoteContent,
+                string.Empty);
             ComponentBuilder builder = new();
             await message.ModifyAsync(props =>
             {
@@ -186,11 +190,7 @@ public class QuotesModule : MorpheusModuleBase
             if (q.Removed) status += " (Removed)";
 
             var fieldName = $"#{q.Id} — Score: {q.Score} — {status} — {q.Author}";
-            var content = q.Content ?? string.Empty;
-            const int maxContentLength = 300;
-            if (content.Length > maxContentLength)
-                content = content.Substring(0, maxContentLength - 1) + "…";
-            var fieldValue = $"{content}\nInserted: {q.InsertDate.ToString("u")}";
+            string fieldValue = QuoteService.FormatQuoteListFieldValue(q);
             embed.AddField(fieldName, fieldValue, false);
         }
 
@@ -226,11 +226,7 @@ public class QuotesModule : MorpheusModuleBase
             if (q.Removed) status += " (Removed)";
 
             var fieldName = $"#{q.Id} — Score: {q.Score} — {status} — {q.Author} — Guild: {q.GuildId}";
-            var content = q.Content ?? string.Empty;
-            const int maxContentLength = 300;
-            if (content.Length > maxContentLength)
-                content = content.Substring(0, maxContentLength - 1) + "…";
-            var fieldValue = $"{content}\nInserted: {q.InsertDate.ToString("u")}";
+            string fieldValue = QuoteService.FormatQuoteListFieldValue(q);
             embed.AddField(fieldName, fieldValue, false);
         }
 
@@ -446,7 +442,10 @@ public class QuotesModule : MorpheusModuleBase
                 .WithButton("Approve", customId: $"quote_approve:{request.ApprovalId}", ButtonStyle.Primary)
                 .Build();
 
-            string message = $"{request.Heading} - Quote #{request.QuoteId}\n{request.RequesterLabel}: {Context.User.Mention}\n\n```{request.QuoteContent}```\nApprovals required: {request.RequiredApprovals}";
+            string message = FormatApprovalMessage(
+                $"{request.Heading} - Quote #{request.QuoteId}\n{request.RequesterLabel}: {Context.User.Mention}",
+                request.QuoteContent,
+                $"\nApprovals required: {request.RequiredApprovals}");
             sent = await channel.SendMessageAsync(message, components: component);
         }
         catch (Discord.Net.HttpException httpEx)
@@ -483,6 +482,31 @@ public class QuotesModule : MorpheusModuleBase
         }
 
         return true;
+    }
+
+    internal static string FormatApprovalMessage(string header, string quoteContent, string footer)
+    {
+        string prefix = $"{header}\n\n```";
+        string suffix = $"```{footer}";
+        int availableContentLength = DiscordMessageMaxLength - prefix.Length - suffix.Length;
+        if (availableContentLength < 1)
+            throw new ArgumentException("Approval message metadata leaves no room for quote content.");
+
+        string content = quoteContent;
+        if (content.Length > availableContentLength)
+        {
+            int contentLength = availableContentLength - 1;
+            if (contentLength > 0 &&
+                char.IsHighSurrogate(content[contentLength - 1]) &&
+                char.IsLowSurrogate(content[contentLength]))
+            {
+                contentLength--;
+            }
+
+            content = string.Concat(content.AsSpan(0, contentLength), "…");
+        }
+
+        return prefix + content + suffix;
     }
 
     private sealed record QuoteApprovalPostRequest(

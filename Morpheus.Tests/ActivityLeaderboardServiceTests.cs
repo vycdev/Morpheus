@@ -63,8 +63,7 @@ public class ActivityLeaderboardServiceTests
 
         string message = ActivityLeaderboardService.FormatLeaderboardMessage(page);
 
-        Assert.Equal(
-            """
+        string expected = """
             **Leaderboard**
             ```js
             [1] | user: Level 2 with 2000 XP
@@ -73,8 +72,9 @@ public class ActivityLeaderboardServiceTests
             ```
             Your rank: #1
 
-            """,
-            message.ReplaceLineEndings("\n"));
+            """.ReplaceLineEndings("\n");
+
+        Assert.Equal(expected, message.ReplaceLineEndings("\n"));
     }
 
     [Fact]
@@ -271,6 +271,48 @@ public class ActivityLeaderboardServiceTests
         Assert.StartsWith("[1] | viewer:", result.Page.Lines[0]);
         Assert.EndsWith($"with {(long)int.MaxValue + 1} XP", result.Page.Lines[0]);
         Assert.Equal("Your rank: #1", result.Page.RankLine);
+    }
+
+    [Fact]
+    public async Task PastLeaderboards_AcceptLargestDayRange()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        User user = new() { DiscordId = 1, Username = "active" };
+        Guild guild = new() { DiscordId = 1, Name = "Test guild" };
+        db.AddRange(user, guild);
+        await db.SaveChangesAsync();
+
+        db.UserActivity.Add(new UserActivity
+        {
+            UserId = user.Id,
+            GuildId = guild.Id,
+            DiscordMessageId = 1,
+            XpGained = 10,
+            InsertDate = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        ActivityLeaderboardService service = new(db);
+
+        ActivityLeaderboardQueryResult[] results =
+        [
+            await service.GetGuildPastXpLeaderboardAsync(
+                guild.Id, guild.Name, user.Id, int.MaxValue, page: 1),
+            await service.GetGlobalPastXpLeaderboardAsync(user.Id, int.MaxValue, page: 1),
+            await service.GetGuildPastMessageLeaderboardAsync(
+                guild.Id, guild.Name, user.Id, int.MaxValue, page: 1),
+            await service.GetGlobalPastMessageLeaderboardAsync(user.Id, int.MaxValue, page: 1)
+        ];
+
+        Assert.All(results, result => Assert.True(result.Success));
     }
 
     [Fact]

@@ -53,7 +53,7 @@ public class EmojisModule : MorpheusModuleBase
     [RateLimit(5, 10)]
     public async Task UseEmoji([Remainder] string emojiName)
     {
-        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
+        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => EmojiNamesMatch(e.Name, emojiName));
 
         if (emoji == null)
         {
@@ -83,7 +83,7 @@ public class EmojisModule : MorpheusModuleBase
     [RateLimit(5, 10)]
     public async Task React([Remainder] string emojiName)
     {
-        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => e.Name.Equals(emojiName, StringComparison.CurrentCultureIgnoreCase));
+        Emote? emoji = (await Context.Client.Rest.GetApplicationEmotesAsync()).FirstOrDefault(e => EmojiNamesMatch(e.Name, emojiName));
 
         if (emoji == null)
         {
@@ -117,6 +117,9 @@ public class EmojisModule : MorpheusModuleBase
         messageId = referencedMessageId.GetValueOrDefault();
         return referencedMessageId.HasValue;
     }
+
+    internal static bool EmojiNamesMatch(string emojiName, string requestedName) =>
+        emojiName.Equals(requestedName, StringComparison.OrdinalIgnoreCase);
 
     internal static bool TryParseEmojiPageDirection(string? customId, out bool isNext)
     {
@@ -290,7 +293,20 @@ public class EmojisModule : MorpheusModuleBase
     // ─── Import Emoji Command ────────────────────────────────────────────
 
     private const int EmojiPageSize = 25; // Discord select menu max options
+    private const int SelectMenuLabelMaxLength = 100;
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromMinutes(5);
+
+    internal static string ClampSelectMenuLabel(string value)
+    {
+        if (value.Length <= SelectMenuLabelMaxLength)
+            return value;
+
+        int length = SelectMenuLabelMaxLength;
+        if (char.IsHighSurrogate(value[length - 1]) && char.IsLowSurrogate(value[length]))
+            length--;
+
+        return value[..length];
+    }
 
     [Name("Import Emoji")]
     [Summary("Import an emoji from another server the bot is in. Opens an interactive menu to pick the server and emoji.")]
@@ -325,7 +341,7 @@ public class EmojisModule : MorpheusModuleBase
         {
             int emojiCount = guild.Emotes.Count;
             serverMenu.AddOption(
-                label: guild.Name.Length > 100 ? guild.Name[..100] : guild.Name,
+                label: ClampSelectMenuLabel(guild.Name),
                 value: guild.Id.ToString(),
                 description: $"{emojiCount} emoji{(emojiCount != 1 ? "s" : "")}"
             );
@@ -666,7 +682,7 @@ public class EmojisModule : MorpheusModuleBase
 
         foreach (var emoji in pageEmojis)
         {
-            string label = emoji.Name.Length > 100 ? emoji.Name[..100] : emoji.Name;
+            string label = ClampSelectMenuLabel(emoji.Name);
             string desc = emoji.Animated ? "Animated" : "Static";
             emojiMenu.AddOption(label: label, value: emoji.Id.ToString(), description: desc, emote: emoji);
         }
@@ -743,7 +759,7 @@ public class EmojisModule : MorpheusModuleBase
         {
             int emojiCount = guild.Emotes.Count;
             serverMenu.AddOption(
-                label: guild.Name.Length > 100 ? guild.Name[..100] : guild.Name,
+                label: ClampSelectMenuLabel(guild.Name),
                 value: guild.Id.ToString(),
                 description: $"{emojiCount} emoji{(emojiCount != 1 ? "s" : "")}"
             );

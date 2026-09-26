@@ -51,4 +51,60 @@ public class UtilsTests
     {
         Assert.False(Utils.ContainsUrl(text));
     }
+
+    [Theory]
+    [InlineData("example.com:65536")]
+    [InlineData("192.168.1.1:99999")]
+    [InlineData("example.com:123456")]
+    [InlineData("example.com:655350")]
+    [InlineData("example.com:999999/path")]
+    [InlineData("sub.example.com:123456/path")]
+    [InlineData("example.com:abc")]
+    [InlineData("example.com:80suffix")]
+    [InlineData("example.com:+80")]
+    [InlineData("example.com:-80")]
+    [InlineData("example.com:１２３")]
+    [InlineData("example.com:80:90")]
+    [InlineData("example.com:65536/path")]
+    [InlineData("192.168.1.1:65536/path")]
+    public void ContainsUrl_RejectsInvalidPortsOnBareHosts(string text)
+    {
+        Assert.False(Utils.ContainsUrl(text));
+    }
+
+    [Theory]
+    [InlineData("example.com:65535")]
+    [InlineData("192.168.1.1:65535")]
+    [InlineData("(example.com:65535)")]
+    [InlineData("Visit example.com:65535.")]
+    [InlineData("example.com:65535/path")]
+    [InlineData("192.168.1.1:65535/path")]
+    [InlineData("example.com:0/path")]
+    [InlineData("192.168.1.1:0/path")]
+    [InlineData("example.com:65536 then valid.example:8080")]
+    [InlineData("192.168.1.1:99999 then 192.168.1.2:8080")]
+    public void ContainsUrl_AcceptsPortBoundariesAndOtherValidHosts(string text)
+    {
+        Assert.True(Utils.ContainsUrl(text));
+    }
+
+    [Theory]
+    [InlineData("http://example.com:65536")]
+    [InlineData("https://192.168.1.1:99999/path")]
+    [InlineData("ftp://example.com:80suffix")]
+    [InlineData("[invalid](https://example.com:123456)")]
+    public void ContainsUrl_RejectsInvalidPortsOnSchemeUrls(string text)
+    {
+        Assert.False(Utils.ContainsUrl(text));
+    }
+
+    [Theory]
+    [InlineData("http://example.com:65535/path")]
+    [InlineData("https://192.168.1.1:0/path")]
+    [InlineData("[valid](https://example.com:443/path)")]
+    [InlineData("http://example.com:65536 then https://valid.example:8443")]
+    public void ContainsUrl_AcceptsValidSchemeUrls(string text)
+    {
+        Assert.True(Utils.ContainsUrl(text));
+    }
 }

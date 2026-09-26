@@ -60,6 +60,17 @@ public class UtilityModuleTests
     }
 
     [Fact]
+    public void TryParseReminderDuration_RejectsNumericOverflow()
+    {
+        bool parsed = UtilityModule.TryParseReminderDuration(
+            "999999999999999999999 years check the calendar",
+            out double totalSeconds);
+
+        Assert.False(parsed);
+        Assert.Equal(0, totalSeconds);
+    }
+
+    [Fact]
     public void TryParseReminderDuration_RejectsTextBeforeDuration()
     {
         bool parsed = UtilityModule.TryParseReminderDuration("Remind me in 2 hours", out double totalSeconds);

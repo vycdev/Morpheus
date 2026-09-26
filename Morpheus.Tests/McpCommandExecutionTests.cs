@@ -134,6 +134,39 @@ public class McpCommandExecutionTests
             TimeZoneId: "Not/A_Real_Time_Zone")));
     }
 
+    [Theory]
+    [InlineData("+900000000000003")]
+    [InlineData(" 900000000000003")]
+    [InlineData("900000000000003 ")]
+    [InlineData("900000000000003\0")]
+    [InlineData("９０００００００００００００３")]
+    [InlineData("18446744073709551616")]
+    [InlineData("000000900000000000003")]
+    [InlineData("0")]
+    [InlineData("")]
+    [InlineData(" \t")]
+    public async Task Invocation_RejectsSnowflakesWithNonDecimalCharacters(string invalidId)
+    {
+        await using TestHarness harness = await TestHarness.CreateAsync(executionEnabled: false);
+        McpCommandInvocation valid = new(
+            "echo invalid id",
+            harness.UserId.ToString(),
+            harness.ChannelId.ToString());
+
+        foreach ((string name, McpCommandInvocation invocation) in new[]
+        {
+            ("UserId", valid with { UserId = invalidId }),
+            ("ChannelId", valid with { ChannelId = invalidId }),
+            ("GuildId", valid with { GuildId = invalidId }),
+            ("SourceMessageId", valid with { SourceMessageId = invalidId }),
+            ("ReplyToMessageId", valid with { ReplyToMessageId = invalidId })
+        })
+        {
+            ArgumentException error = await Assert.ThrowsAsync<ArgumentException>(() => harness.Service.InvokeAsync(invocation));
+            Assert.Equal(name, error.ParamName);
+        }
+    }
+
     [Fact]
     public async Task Validate_PreservesGuildPreconditionsAndHidesOwnerCommands()
     {
@@ -234,6 +267,25 @@ public class McpCommandExecutionTests
         Assert.True(outputs[0].File!.Truncated);
         Assert.Null(outputs[0].File!.Base64Data);
         Assert.Equal("output-limit", outputs[^1].Kind);
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task Capture_DoesNotSplitSurrogatePairsWhenTruncatingText()
+    {
+        McpCommandResponseSink sink = new(new McpApiOptions([], "test-key", 60));
+        DiscordSocketClient client = new();
+        IUser user = TestHarness.CreateUser(900000000000003);
+        IMessageChannel channel = TestHarness.CreateChannel(900000000000004);
+        IUserMessage message = McpDiscordMessageFactory.CreateInvocation(user, channel, "echo", [], null, sink);
+        SocketCommandContextExtended context = new(client, message, null, null, sink);
+        string content = new string('x', 7999) + "😀tail";
+
+        await context.SendResponseAsync(content);
+
+        string captured = Assert.Single(sink.Snapshot()).Content!;
+        Assert.Equal(new string('x', 7999) + "…", captured);
+        Assert.DoesNotContain(captured, char.IsSurrogate);
         client.Dispose();
     }
 

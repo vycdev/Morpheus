@@ -41,7 +41,7 @@ public sealed record McpCommandManifest(
 public sealed class McpCommandCatalog(CommandService commandService)
 {
     // Update only after reviewing the MCP safety and context needs of every changed command.
-    internal const string ReviewedRegistryFingerprint = "1a73b9c183fa51922697853e32fb8de0e50854640b7b4806eb4aa896efded19d";
+    internal const string ReviewedRegistryFingerprint = "654e34fc826bae2c31284f1b34793b005aff2ac49ee206e2dd21e3cea70dbbf8";
 
     private readonly object buildLock = new();
     private volatile McpCommandManifest? cachedManifest;
@@ -186,7 +186,7 @@ public sealed class McpCommandCatalog(CommandService commandService)
         return $"{name}<{string.Join(", ", type.GetGenericArguments().Select(GetFriendlyTypeName))}>";
     }
 
-    private static string ComputeFingerprint(IEnumerable<McpCommandCapability> capabilities)
+    internal static string ComputeFingerprint(IEnumerable<McpCommandCapability> capabilities)
     {
         StringBuilder canonical = new();
         foreach (McpCommandCapability command in capabilities)
@@ -194,10 +194,10 @@ public sealed class McpCommandCatalog(CommandService commandService)
             canonical.Append(command.Id).Append('|')
                 .AppendJoin(',', command.Aliases).Append('|')
                 .AppendJoin(',', command.Parameters.Select(parameter =>
-                    $"{parameter.Name}:{parameter.Type}:{parameter.Required}:{parameter.Remainder}:{parameter.Multiple}"))
+                    $"{parameter.Name}:{parameter.Type}:{parameter.Required}:{parameter.Remainder}:{parameter.Multiple}:{parameter.HasDefaultValue}:{parameter.DefaultValue}"))
                 .Append('|').AppendJoin(',', command.Preconditions)
                 .Append('|').AppendJoin(',', command.Effects)
-                .AppendLine();
+                .Append('\n');
         }
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString())))

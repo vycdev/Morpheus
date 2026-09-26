@@ -192,7 +192,10 @@ public class UtilityModule(DB dbContext) : MorpheusModuleBase
         foreach (Match match in ReminderDurationTokenPattern.Matches(durationSequence.Value))
         {
             if (!long.TryParse(match.Groups[1].Value, out long number))
-                continue;
+            {
+                totalSeconds = 0;
+                return false;
+            }
 
             string unit = match.Groups[2].Value.ToLowerInvariant();
 

@@ -33,6 +33,19 @@ public class UsersServiceTests
     }
 
     [Fact]
+    public async Task TryUpdateUsername_DoesNotOverflowWhenNextCheckIsOutsideDateTimeRange()
+    {
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+        await using DB db = new(options);
+        UsersService service = new(db, new LogsService(new LogQueue()));
+        User user = new() { LastUsernameCheck = DateTime.MaxValue };
+
+        await service.TryUpdateUsername(null!, user);
+    }
+
+    [Fact]
     public async Task TryGetCreateUserAsync_WhenAnotherHandlerCreatesUser_ReturnsPersistedUser()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
