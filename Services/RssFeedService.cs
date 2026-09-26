@@ -96,10 +96,13 @@ public class RssFeedService(LogsService logsService)
 
         foreach (XElement item in doc.Descendants().Where(x => x.Name.LocalName == "item"))
         {
-            XElement? linkElement = ChildByLocalName(item, "link");
-            string link = FirstNonBlank(
-                linkElement?.Value,
-                linkElement?.Attribute("href")?.Value);
+            // Prefer a usable link in the item's namespace (RSS 2.0 or RSS 1.0),
+            // then fall back to extension links when the RSS link is absent or blank.
+            string link = item.Elements()
+                .Where(element => element.Name.LocalName == "link")
+                .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
+                .Select(element => FirstNonBlank(element.Value, element.Attribute("href")?.Value))
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
             string id = FirstNonBlank(
                 ChildByLocalName(item, "guid")?.Value,
                 ChildByLocalName(item, "id")?.Value,
