@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Prefer RSS item links over preceding namespaced extension links when posting entries.
+- Prefer usable RSS 2.0 and RSS 1.0 item links over extension links, retaining fallback URLs when the standard link is blank.
 - Prefer YouTube video links over feed metadata links when posting new uploads.
 - Preserve distinct case-sensitive YouTube channel IDs inside bulk subscription URLs.
 - Skip blank Atom link URLs so entries with a later usable link can still be posted.
