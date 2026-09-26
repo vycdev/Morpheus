@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve distinct case-sensitive YouTube channel IDs when bulk subscription URLs include subpaths such as `/videos`.
 - Prefer YouTube video links over feed metadata links when posting new uploads.
 - Preserve distinct case-sensitive YouTube channel IDs inside bulk subscription URLs.
 - Skip blank Atom link URLs so entries with a later usable link can still be posted.
