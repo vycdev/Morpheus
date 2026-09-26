@@ -141,8 +141,13 @@ internal static partial class SubscriptionInputParser
             return null;
 
         const string channelPrefix = "/channel/";
-        if (!uri.AbsolutePath.StartsWith(channelPrefix, StringComparison.Ordinal) ||
-            !YoutubeChannelIdRegex().IsMatch(uri.AbsolutePath[channelPrefix.Length..].TrimEnd('/')))
+        if (!uri.AbsolutePath.StartsWith(channelPrefix, StringComparison.Ordinal))
+            return null;
+
+        string channelPath = uri.AbsolutePath[channelPrefix.Length..];
+        int slashIndex = channelPath.IndexOf('/');
+        string channelId = slashIndex >= 0 ? channelPath[..slashIndex] : channelPath;
+        if (!YoutubeChannelIdRegex().IsMatch(channelId))
             return null;
 
         // URL hosts are case-insensitive, but the channel ID in the path is not.

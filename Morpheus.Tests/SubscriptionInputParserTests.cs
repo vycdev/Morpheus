@@ -44,6 +44,17 @@ public class SubscriptionInputParserTests
         Assert.Equal(2, parsed.Sources.Count);
     }
 
+    [Theory]
+    [InlineData("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa?feature=share https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaA?feature=share")]
+    [InlineData("youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa#videos youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaA#videos")]
+    [InlineData("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa/videos https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaA/videos")]
+    public void ParseSources_PreservesDistinctChannelIdsWithUrlSuffix(string input)
+    {
+        SubscriptionInputParser.SourceList parsed = SubscriptionInputParser.ParseSources(input);
+
+        Assert.Equal(2, parsed.Sources.Count);
+    }
+
     [Fact]
     public void ParseSources_DeduplicatesYoutubeChannelUrlsWithDifferentHostCase()
     {
