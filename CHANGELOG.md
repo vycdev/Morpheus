@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Use RSS 1.0 item `rdf:about` URLs when an item has no usable link, so those posts are not skipped.
 - Prefer usable RSS 2.0 and RSS 1.0 item links over extension links, retaining fallback URLs when the standard link is blank.
 - Preserve distinct case-sensitive YouTube channel IDs when bulk subscription URLs include subpaths such as `/videos`.
 - Prefer YouTube video links over feed metadata links when posting new uploads.

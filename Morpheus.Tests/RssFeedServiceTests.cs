@@ -60,6 +60,27 @@ public class RssFeedServiceTests
         Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("<link>   </link>")]
+    public void ParseEntries_WhenRssOneItemHasNoUsableLink_UsesRdfAbout(string linkElement)
+    {
+        XDocument document = XDocument.Parse($$"""
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                     xmlns="http://purl.org/rss/1.0/">
+              <item rdf:about="https://example.com/posts/1">
+                <title>Post without link</title>
+                {{linkElement}}
+              </item>
+            </rdf:RDF>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/posts/1", entry.EntryId);
+        Assert.Equal("Post without link", entry.Title);
+        Assert.Equal("https://example.com/posts/1", entry.Link);
+    }
+
     [Fact]
     public void ParseEntries_WhenLinkUsesHrefAttribute_ReturnsHref()
     {
