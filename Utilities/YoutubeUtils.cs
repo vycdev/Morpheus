@@ -240,7 +240,8 @@ public static partial class YoutubeUtils
                     {
                         string? s = urlEl.GetString();
                         int w = 0;
-                        if (it.TryGetProperty("width", out JsonElement wEl) && wEl.TryGetInt32(out int wi)) w = wi;
+                        if (it.TryGetProperty("width", out JsonElement wEl) &&
+                            wEl.ValueKind == JsonValueKind.Number && wEl.TryGetInt32(out int wi)) w = wi;
                         if (w >= bestW && !string.IsNullOrWhiteSpace(s)) { bestW = w; best = s; }
                     }
                 }

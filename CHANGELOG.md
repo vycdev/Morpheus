@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Ignore malformed YouTube avatar thumbnail widths instead of discarding otherwise usable thumbnails.
+
 - Prefer usable RSS 2.0 and RSS 1.0 item links over extension links, retaining fallback URLs when the standard link is blank.
 - Preserve distinct case-sensitive YouTube channel IDs when bulk subscription URLs include subpaths such as `/videos`.
 - Prefer YouTube video links over feed metadata links when posting new uploads.
