@@ -21,4 +21,19 @@ public class DateTimeExtensionsTests
 
         Assert.Equal("0 milliseconds", result);
     }
+
+    [Theory]
+    [InlineData(int.MinValue, 0)]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
+    [InlineData(50, 15)]
+    [InlineData(100, 30)]
+    [InlineData(101, 30)]
+    [InlineData(int.MaxValue, 30)]
+    public void GetPercentageBar_ClampsInputAndKeepsThirtyCells(int percentage, int filledCells)
+    {
+        string result = percentage.GetPercentageBar();
+
+        Assert.Equal(new string('█', filledCells) + new string('░', 30 - filledCells), result);
+    }
 }
