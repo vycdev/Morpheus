@@ -44,6 +44,27 @@ public class SubscriptionBrowserTests
         Assert.All(page.Items, item => Assert.Equal(SubscriptionFeedType.Rss, item.FeedType));
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(int.MaxValue)]
+    public void GetPage_EmptyFilteredCategoryHasNoItemNumbers(int requestedPage)
+    {
+        SubscriptionBrowserItem[] items =
+        [
+            new(SubscriptionFeedType.Youtube, "Video", 1),
+            new(SubscriptionFeedType.Rss, "Blog", 2)
+        ];
+
+        SubscriptionBrowserPage page = SubscriptionBrowser.GetPage(items, SubscriptionFeedType.Twitch, requestedPage);
+
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.PageIndex);
+        Assert.Equal(1, page.TotalPages);
+        Assert.Equal(0, page.TotalItems);
+        Assert.Equal((0, 0), (page.FirstItemNumber, page.LastItemNumber));
+    }
+
     [Fact]
     public void Counts_IncludeAllCategories()
     {
