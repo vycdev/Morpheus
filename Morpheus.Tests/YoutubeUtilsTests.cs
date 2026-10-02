@@ -116,6 +116,59 @@ public class YoutubeUtilsTests
         Assert.Single(handler.RequestedUris);
     }
 
+    [Fact]
+    public async Task ResolveChannelIdAsync_IgnoresUnrelatedChannelLinksBeforeCanonicalLink()
+    {
+        const string unrelatedId = "UC1234567890123456789012";
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<a href=\"https://www.youtube.com/channel/{unrelatedId}\">Other channel</a>" +
+                $"<link rel=\"canonical\" href=\"https://www.youtube.com/channel/{ChannelId}\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_DoesNotInferChannelFromUnrelatedLink()
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<a href=\"https://www.youtube.com/channel/UC1234567890123456789012\">Other channel</a>")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Theory]
+    [InlineData("<link href='https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv' rel='canonical'>")]
+    [InlineData("<LINK REL=canonical HREF=\"https://m.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    public async Task ResolveChannelIdAsync_AcceptsCanonicalLinksWithDifferentAttributeOrder(string html)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_IgnoresCanonicalLinkToDifferentHost()
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<link rel=\"canonical\" href=\"https://example.com/channel/UCabcdefghijklmnopqrstuv\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
         public List<Uri> RequestedUris { get; } = [];

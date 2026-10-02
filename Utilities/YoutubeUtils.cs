@@ -22,6 +22,15 @@ public static partial class YoutubeUtils
     [GeneratedRegex("/channel/(UC[0-9A-Za-z_-]{22})(?=[/?#\"'\\s<>]|$)")]
     private static partial Regex ChannelIdInUrlRegex();
 
+    [GeneratedRegex(@"<link\b[^>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex LinkTagRegex();
+
+    [GeneratedRegex(@"(?<![\w-])rel\s*=\s*(?:""canonical""|'canonical'|canonical(?=[\s/>]))", RegexOptions.IgnoreCase)]
+    private static partial Regex CanonicalRelRegex();
+
+    [GeneratedRegex(@"(?<![\w-])href\s*=\s*(?:""(?<url>[^""]+)""|'(?<url>[^']+)'|(?<url>[^\s>]+))", RegexOptions.IgnoreCase)]
+    private static partial Regex LinkHrefRegex();
+
     [GeneratedRegex("^[0-9A-Za-z_-]{11}$")]
     private static partial Regex VideoIdRegex();
 
@@ -70,10 +79,22 @@ public static partial class YoutubeUtils
             if (m.Success)
                 return m.Groups[1].Value;
 
-            // Fallback: canonical link tag often contains /channel/UC...
-            Match canonical = ChannelIdInUrlRegex().Match(html);
-            if (canonical.Success)
-                return canonical.Groups[1].Value;
+            // Only a canonical link for a YouTube channel identifies the page.
+            // Other channel links on the page may point to unrelated creators.
+            foreach (Match link in LinkTagRegex().Matches(html))
+            {
+                if (!CanonicalRelRegex().IsMatch(link.Value))
+                    continue;
+
+                Match href = LinkHrefRegex().Match(link.Value);
+                if (!href.Success || !Uri.TryCreate(href.Groups["url"].Value, UriKind.Absolute, out Uri? uri) ||
+                    !IsYoutubeHost(uri.Host))
+                    continue;
+
+                Match canonical = ChannelIdInUrlRegex().Match(uri.AbsolutePath);
+                if (canonical.Success && canonical.Index == 0)
+                    return canonical.Groups[1].Value;
+            }
 
             return null;
         }
