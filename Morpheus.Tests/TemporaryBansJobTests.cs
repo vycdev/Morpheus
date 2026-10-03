@@ -56,6 +56,45 @@ public class TemporaryBansJobTests
     }
 
     [Fact]
+    public async Task CompleteUnbanAsync_WhenRemovalSucceeds_MarksBanCompleted()
+    {
+        TemporaryBan ban = new();
+        bool removalCalled = false;
+
+        bool wasAlreadyUnbanned = await TemporaryBansJob.CompleteUnbanAsync(
+            ban,
+            () =>
+            {
+                removalCalled = true;
+                return Task.CompletedTask;
+            });
+
+        Assert.True(removalCalled);
+        Assert.False(wasAlreadyUnbanned);
+        Assert.NotNull(ban.UnbannedAt);
+    }
+
+    [Fact]
+    public async Task CompleteUnbanAsync_WhenRemovalIsForbidden_LeavesBanPending()
+    {
+        TemporaryBan ban = new();
+        HttpException forbidden = new(
+            HttpStatusCode.Forbidden,
+            null!,
+            DiscordErrorCode.UnknownBan,
+            "Forbidden",
+            []);
+
+        HttpException thrown = await Assert.ThrowsAsync<HttpException>(() =>
+            TemporaryBansJob.CompleteUnbanAsync(
+                ban,
+                () => Task.FromException(forbidden)));
+
+        Assert.Same(forbidden, thrown);
+        Assert.Null(ban.UnbannedAt);
+    }
+
+    [Fact]
     public async Task CompleteUnbanAsync_WhenDifferentDiscordResourceIsMissing_LeavesBanPending()
     {
         TemporaryBan ban = new();
