@@ -12,6 +12,33 @@ namespace Morpheus.Tests;
 public class DeleteOldLogsJobTests
 {
     [Fact]
+    public async Task Execute_DeletesOnlyLogsOlderThanThirtyDays()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        DateTime now = DateTime.UtcNow;
+        db.Logs.AddRange(
+            new Log { Message = "expired", InsertDate = now.AddDays(-31) },
+            new Log { Message = "recent", InsertDate = now.AddDays(-29) },
+            new Log { Message = "current", InsertDate = now });
+        await db.SaveChangesAsync();
+
+        DeleteOldLogsJob job = new(new LogsService(new LogQueue()), db);
+        await job.Execute(CreateContext(CancellationToken.None));
+
+        db.ChangeTracker.Clear();
+        string[] remaining = await db.Logs.OrderBy(log => log.InsertDate)
+            .Select(log => log.Message).ToArrayAsync();
+        Assert.Equal(["recent", "current"], remaining);
+    }
+
+    [Fact]
     public async Task Execute_WhenCanceledBeforeDeletion_PreservesOldLogs()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
