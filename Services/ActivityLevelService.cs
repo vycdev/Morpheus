@@ -134,7 +134,7 @@ public class ActivityLevelService(DB dbContext)
         userLevel.UserAverageMessageLength = previousMessageCount > 0
             ? ((previousAverageLength * previousMessageCount) + messageLength) / newMessageCount
             : messageLength;
-        userLevel.UserAverageMessageLengthEma = previousEmaLength <= 0.0
+        userLevel.UserAverageMessageLengthEma = previousMessageCount == 0
             ? messageLength
             : (1.0 - UserEmaAlpha) * previousEmaLength + UserEmaAlpha * messageLength;
     }

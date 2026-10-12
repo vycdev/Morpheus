@@ -160,6 +160,25 @@ public class ActivityScoringServiceTests
     }
 
     [Fact]
+    public void ScoreMessage_BlendsGuildAverageAfterInitialEmptyMessage()
+    {
+        ActivityScoringResult first = ActivityScoringService.ScoreMessage(
+            "", Now.AddMinutes(-1), null, null, Array.Empty<ActivitySimilaritySample>());
+        UserActivity previousGuildActivity = new()
+        {
+            GuildAverageMessageLength = first.GuildAverageMessageLength,
+            GuildMessageCount = first.GuildMessageCount
+        };
+
+        ActivityScoringResult second = ActivityScoringService.ScoreMessage(
+            new string('x', 100), Now, null, previousGuildActivity,
+            Array.Empty<ActivitySimilaritySample>());
+
+        Assert.Equal(2, second.GuildMessageCount);
+        Assert.Equal(100 * (2.0 / 501.0), second.GuildAverageMessageLength, precision: 12);
+    }
+
+    [Fact]
     public void ScoreMessage_WithMaximumGuildMessageCount_DoesNotWrapNegative()
     {
         UserActivity previousGuildActivity = new()

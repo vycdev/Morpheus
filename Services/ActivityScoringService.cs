@@ -220,9 +220,8 @@ public class ActivityScoringService(DB dbContext)
             ? int.MaxValue
             : previousActivityInGuild.GuildMessageCount + 1;
         double previousAverage = previousActivityInGuild.GuildAverageMessageLength;
-        double averageMessageLength = previousAverage <= 0.0
-            ? messageLength
-            : (1.0 - GuildMessageLengthEmaAlpha) * previousAverage + GuildMessageLengthEmaAlpha * messageLength;
+        double averageMessageLength = (1.0 - GuildMessageLengthEmaAlpha) * previousAverage
+            + GuildMessageLengthEmaAlpha * messageLength;
 
         return (averageMessageLength, messageCount);
     }
