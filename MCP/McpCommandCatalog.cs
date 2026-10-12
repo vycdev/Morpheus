@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
-using System.Text;
 using Discord.Commands;
 using Morpheus.Attributes;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Morpheus.MCP;
 
@@ -41,7 +41,7 @@ public sealed record McpCommandManifest(
 public sealed class McpCommandCatalog(CommandService commandService)
 {
     // Update only after reviewing the MCP safety and context needs of every changed command.
-    internal const string ReviewedRegistryFingerprint = "654e34fc826bae2c31284f1b34793b005aff2ac49ee206e2dd21e3cea70dbbf8";
+    internal const string ReviewedRegistryFingerprint = "d1db0efc02e6d1e587054607f79235a230069c9ffb458794f900c59c2454434e";
 
     private readonly object buildLock = new();
     private volatile McpCommandManifest? cachedManifest;

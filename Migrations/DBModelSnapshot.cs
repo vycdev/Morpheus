@@ -152,6 +152,11 @@ namespace Morpheus.Migrations
                     b.Property<int>("QuoteRemoveRequiredApprovals")
                         .HasColumnType("integer");
 
+                    b.Property<int>("QuoteSubmissionMinLevel")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(5);
+
                     b.Property<decimal>("QuotesApprovalChannelId")
                         .HasColumnType("numeric(20,0)");
 

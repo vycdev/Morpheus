@@ -32,6 +32,7 @@ public class Guild
     public bool UseGlobalQuotes { get; set; } = false;
     public ulong QuotesApprovalChannelId { get; set; }
     public int QuoteAddRequiredApprovals { get; set; } = 5;
+    public int QuoteSubmissionMinLevel { get; set; } = 5;
     public int QuoteRemoveRequiredApprovals { get; set; } = 5;
 
     // Settings 

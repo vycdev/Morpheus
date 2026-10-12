@@ -847,6 +847,8 @@ public class QuoteServiceTests
         await db.Users.AddAsync(user);
         await db.Guilds.AddAsync(guild);
         await db.SaveChangesAsync();
+        db.UserLevels.Add(new UserLevels { UserId = user.Id, GuildId = guild.Id, Level = 5 });
+        await db.SaveChangesAsync();
 
         return (user, guild);
     }
