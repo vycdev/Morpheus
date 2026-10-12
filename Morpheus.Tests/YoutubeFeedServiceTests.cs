@@ -22,6 +22,26 @@ public class YoutubeFeedServiceTests
         Assert.Equal(DateTime.MinValue, YoutubeFeedService.ParsePublished("not-a-date"));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("<published>  </published>")]
+    public void ParseEntries_WhenPublishedIsMissingOrBlank_UsesUpdatedDate(string publishedElement)
+    {
+        XDocument document = XDocument.Parse($"""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                {publishedElement}
+                <updated>2025-07-30T10:00:00Z</updated>
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
     [Fact]
     public void ParseEntries_TrimsWhitespaceAroundLinks()
     {
