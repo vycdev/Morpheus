@@ -10,6 +10,30 @@ public class EnvironmentVariableTestCollection
 [Collection("Environment variable tests")]
 public class EnvTests
 {
+    [Theory]
+    [InlineData("1", true)]
+    [InlineData("yes", true)]
+    [InlineData("ON", true)]
+    [InlineData("0", false)]
+    [InlineData("no", false)]
+    [InlineData("OFF", false)]
+    [InlineData("unknown", null)]
+    public void GetBoolean_ParsesAliasesAndUsesDefaultForInvalidValues(string value, bool? expected)
+    {
+        string key = $"MORPHEUS_ENV_TEST_{Guid.NewGuid():N}";
+        Env.Variables[key] = value;
+
+        try
+        {
+            Assert.Equal(expected ?? true, Env.Get(key, true));
+            Assert.Equal(expected ?? false, Env.Get(key, false));
+        }
+        finally
+        {
+            Env.Variables.Remove(key);
+        }
+    }
+
     [Fact]
     public void Load_DuplicateKeys_UsesLastValue()
     {
