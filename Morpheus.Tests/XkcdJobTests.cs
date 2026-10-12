@@ -66,6 +66,26 @@ public class XkcdJobTests
     }
 
     [Fact]
+    public async Task FetchItemsAsync_DeduplicatesRepeatedComicLinks()
+    {
+        const string feed = """
+            <rss version="2.0">
+              <channel>
+                <item><title>Newest</title><link>https://xkcd.com/1234/</link></item>
+                <item><title>Repeated</title><link> https://xkcd.com/1234/ </link></item>
+                <item><title>Older</title><link>https://xkcd.com/1233/</link></item>
+              </channel>
+            </rss>
+            """;
+        using HttpClient httpClient = new(new StaticResponseHandler(feed));
+
+        List<XkcdJob.XkcdItem> items = await XkcdJob.FetchItemsAsync(httpClient, CancellationToken.None);
+
+        Assert.Equal(["https://xkcd.com/1234/", "https://xkcd.com/1233/"],
+            items.Select(item => item.Link));
+    }
+
+    [Fact]
     public async Task FetchItemsAsync_WhenCallerCancels_PropagatesCancellation()
     {
         using HttpClient httpClient = new();
