@@ -198,6 +198,20 @@ public class QuoteService(DB dbContext)
         DateTime now = utcNow ?? DateTime.UtcNow;
         await using var transaction = await dbContext.Database.BeginTransactionAsync();
 
+        if (!isAdmin)
+        {
+            int requiredLevel = await dbContext.Guilds.AsNoTracking()
+                .Where(guild => guild.Id == guildId)
+                .Select(guild => guild.QuoteSubmissionMinLevel)
+                .SingleAsync();
+            int level = await dbContext.UserLevels.AsNoTracking()
+                .Where(levels => levels.GuildId == guildId && levels.UserId == userId)
+                .Select(levels => (int?)levels.Level)
+                .SingleOrDefaultAsync() ?? 0;
+            if (level < requiredLevel)
+                return QuoteAddRequestResult.LevelTooLow(requiredLevel);
+        }
+
         Quote quote = new()
         {
             GuildId = guildId,
@@ -684,7 +698,8 @@ public enum QuoteAddRequestStatus
 {
     Approved,
     PendingApproval,
-    PendingWithoutApprovalChannel
+    PendingWithoutApprovalChannel,
+    LevelTooLow
 }
 
 public sealed record QuoteAddRequestResult(
@@ -693,9 +708,13 @@ public sealed record QuoteAddRequestResult(
     string QuoteContent,
     int ApprovalId,
     int RequiredApprovals,
-    ulong ApprovalChannelId)
+    ulong ApprovalChannelId,
+    int RequiredLevel = 0)
 {
     public bool RequiresApprovalMessage => Status == QuoteAddRequestStatus.PendingApproval;
+
+    public static QuoteAddRequestResult LevelTooLow(int requiredLevel) =>
+        new(QuoteAddRequestStatus.LevelTooLow, 0, string.Empty, 0, 0, 0, requiredLevel);
 
     public static QuoteAddRequestResult Approved(int quoteId, string quoteContent) =>
         new(QuoteAddRequestStatus.Approved, quoteId, quoteContent, 0, 0, 0);

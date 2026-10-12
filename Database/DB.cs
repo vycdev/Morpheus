@@ -26,6 +26,7 @@ public class DB(DbContextOptions<DB> options) : Microsoft.EntityFrameworkCore.Db
         modelBuilder.Entity<BotSetting>().HasIndex(s => s.Key).IsUnique();
         modelBuilder.Entity<User>().HasIndex(u => u.DiscordId).IsUnique();
         modelBuilder.Entity<Guild>().HasIndex(g => g.DiscordId).IsUnique();
+        modelBuilder.Entity<Guild>().Property(g => g.QuoteSubmissionMinLevel).HasDefaultValue(5).HasSentinel(-1);
         modelBuilder.Entity<QuoteApproval>().HasIndex(a => new { a.QuoteApprovalMessageId, a.UserId }).IsUnique();
         modelBuilder.Entity<QuoteScore>().HasIndex(s => new { s.QuoteId, s.UserId }).IsUnique();
         modelBuilder.Entity<Quote>().HasIndex(q => new { q.InsertDate, q.Approved, q.Removed });

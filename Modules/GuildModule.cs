@@ -272,6 +272,33 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
         await ReplyAsync($"Quotes approval channel set to <#{guild.QuotesApprovalChannelId}>");
     }
 
+    [Name("Set Quote Minimum Level")]
+    [Summary("Sets the minimum server level required to submit quotes (default 5). Use 0 to allow everyone. Administrators bypass this requirement.")]
+    [Command("setquoteminlevel")]
+    [Alias("setquotesubmissionlevel")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(1, 10)]
+    public async Task SetQuoteMinLevel(int level)
+    {
+        if (level < 0)
+        {
+            await ReplyAsync("Minimum quote submission level must be at least 0.");
+            return;
+        }
+
+        var guild = await dbContext.Guilds.FirstOrDefaultAsync(g => g.Id == Context.DbGuild!.Id);
+        if (guild == null)
+        {
+            await ReplyAsync("Guild not found.");
+            return;
+        }
+
+        guild.QuoteSubmissionMinLevel = level;
+        await dbContext.SaveChangesAsync();
+        await ReplyAsync($"Minimum quote submission level set to {level}. Administrators bypass this requirement.");
+    }
+
     [Name("Set Quote Add Required Approvals")]
     [Summary("Sets how many approvals are required to add a quote.")]
     [Command("setquoteaddapprovals")]
@@ -416,6 +443,7 @@ public class GuildModule(DiscordSocketClient client, CommandService commands, In
             $"Level Up Quotes: {BoolStatus(dbGuild.LevelUpQuotes)}\n" +
             $"Use Global Quotes: {BoolStatus(dbGuild.UseGlobalQuotes)}\n" +
             $"Quotes Approval Channel: {ChannelOrNone(dbGuild.QuotesApprovalChannelId)}\n" +
+            $"Quote Submission Minimum Level: {dbGuild.QuoteSubmissionMinLevel}\n" +
             $"Quote Add Required Approvals: {dbGuild.QuoteAddRequiredApprovals}\n" +
             $"Quote Remove Required Approvals: {dbGuild.QuoteRemoveRequiredApprovals}\n" +
             $"Welcome Messages: {BoolStatus(dbGuild.WelcomeMessages)}\n" +
