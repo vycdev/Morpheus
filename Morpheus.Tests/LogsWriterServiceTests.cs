@@ -94,32 +94,60 @@ public class LogsWriterServiceTests
         await using DB observer = new(options);
         await observer.Database.EnsureCreatedAsync();
 
+        ShutdownState shutdown = new();
         using ServiceProvider provider = new ServiceCollection()
-            .AddScoped(_ => new DB(options))
+            .AddScoped<DB>(_ => new ShutdownDb(options, shutdown))
             .BuildServiceProvider();
         LogQueue queue = new(capacity: 125);
         for (int i = 0; i < 125; i++)
             Assert.True(queue.TryEnqueue(LogsService.CreateGeneralLog($"shutdown {i}", Discord.LogSeverity.Info)));
 
-        LogsWriterService writer = new(queue, provider.GetRequiredService<IServiceScopeFactory>());
+        using LogsWriterService writer = new(queue, provider.GetRequiredService<IServiceScopeFactory>());
         await writer.StartAsync(CancellationToken.None);
-        // Wait until the worker has taken the first batch before requesting shutdown.
-        // BackgroundService starts on the thread pool; stopping it before it starts
-        // would not exercise its final-flush path.
-        DateTime deadline = DateTime.UtcNow.AddSeconds(2);
-        while (queue.Reader.Count == 125 && DateTime.UtcNow < deadline)
-            await Task.Delay(10);
-        Assert.True(queue.Reader.Count < 125, "Log writer did not start draining the queue.");
-        await writer.StopAsync(CancellationToken.None);
+        try
+        {
+            // Hold the first save until StopAsync cancels the worker. This leaves
+            // all 125 entries for the final flush, regardless of scheduler speed.
+            await shutdown.FirstSaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(75, queue.Reader.Count);
+            Assert.Equal(0, await observer.Logs.CountAsync());
+        }
+        finally
+        {
+            await writer.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        }
 
         string[] messages = await observer.Logs.OrderBy(log => log.Id)
             .Select(log => log.Message).ToArrayAsync();
         Assert.Equal(125, messages.Length);
         Assert.Equal(0, queue.Reader.Count);
+        Assert.Equal(new[] { 50, 50, 25 }, shutdown.FinalBatchSizes);
         Assert.Equal(
             Enumerable.Range(0, 125)
                 .Select(i => LogsService.FormatGeneralLog($"shutdown {i}", Discord.LogSeverity.Info)),
             messages);
+    }
+
+    private sealed class ShutdownState
+    {
+        public TaskCompletionSource FirstSaveStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public List<int> FinalBatchSizes { get; } = [];
+    }
+
+    private sealed class ShutdownDb(DbContextOptions<DB> options, ShutdownState state) : DB(options)
+    {
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (state.FirstSaveStarted.TrySetResult())
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            Assert.False(cancellationToken.CanBeCanceled);
+            int count = await base.SaveChangesAsync(cancellationToken);
+            state.FinalBatchSizes.Add(count);
+            return count;
+        }
     }
 
     private sealed class FailureState
