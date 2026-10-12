@@ -12,6 +12,8 @@ public class RssFeedService(LogsService logsService)
 {
     private static readonly HttpClient HttpClient = CreateClient();
     private static readonly XNamespace Atom = "http://www.w3.org/2005/Atom";
+    private static readonly XNamespace RssOne = "http://purl.org/rss/1.0/";
+    private static readonly XNamespace Rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
     private static HttpClient CreateClient()
     {
@@ -103,7 +105,10 @@ public class RssFeedService(LogsService logsService)
                 .Where(element => element.Name.LocalName == "link")
                 .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
                 .Select(element => FirstNonBlank(element.Value, element.Attribute("href")?.Value))
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                ?? (item.Name.Namespace == RssOne
+                    ? FirstNonBlank(item.Attribute(Rdf + "about")?.Value)
+                    : string.Empty);
             string id = FirstNonBlank(
                 ChildByLocalName(item, "guid")?.Value,
                 ChildByLocalName(item, "id")?.Value,

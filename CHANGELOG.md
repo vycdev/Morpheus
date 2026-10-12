@@ -5,6 +5,7 @@
 - Require the guild's minimum level to submit quotes, defaulting to 5, with an Administrator bypass. Configure it with `setquoteminlevel`; set 0 to allow everyone.
 - Ignore repeated xkcd comic links in a feed so comics are not posted twice or recorded twice.
 - Use a feed entry's alternate date when its preferred Atom or RSS publication date is blank.
+- Use RSS 1.0 item `rdf:about` URLs when an item has no usable link, so those posts are not skipped.
 - Prefer usable RSS 2.0 and RSS 1.0 item links over extension links, retaining fallback URLs when the standard link is blank.
 - Preserve distinct case-sensitive YouTube channel IDs when bulk subscription URLs include subpaths such as `/videos`.
 - Prefer YouTube video links over feed metadata links when posting new uploads.
