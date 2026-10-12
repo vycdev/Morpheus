@@ -97,6 +97,25 @@ public class TwitchServiceTests
         Assert.Empty(result.Streams);
     }
 
+    [Fact]
+    public async Task GetLiveStreamsResultAsync_WhenLaterBatchFails_DoesNotReportPartialPollAsSuccessful()
+    {
+        LaterBatchFailureHandler handler = new();
+        using HttpClient httpClient = new(handler);
+        TwitchService service = new(new LogsService(new LogQueue()), httpClient, "test-client", "test-secret");
+        string[] userIds = Enumerable.Range(1, 101)
+            .Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+
+        TwitchService.LiveStreamsResult result = await service.GetLiveStreamsResultAsync(userIds);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.Streams.ContainsKey("1"));
+        Assert.Equal(2, handler.StreamRequests.Count);
+        Assert.Equal(100, handler.StreamRequests[0].Split("user_id=").Length - 1);
+        Assert.EndsWith("?user_id=101", handler.StreamRequests[1]);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -182,6 +201,32 @@ public class TwitchServiceTests
             {
                 Content = new StringContent("temporarily unavailable")
             });
+        }
+    }
+
+    private sealed class LaterBatchFailureHandler : HttpMessageHandler
+    {
+        public List<string> StreamRequests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"access_token\":\"token\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+                });
+            }
+
+            StreamRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
+            return Task.FromResult(StreamRequests.Count == 1
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"data\":[{\"id\":\"stream-1\",\"user_id\":\"1\",\"title\":\"Live\",\"type\":\"live\"}]}",
+                        Encoding.UTF8, "application/json")
+                }
+                : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         }
     }
 
