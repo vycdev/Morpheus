@@ -13,6 +13,17 @@ public class SimHasherTests
     }
 
     [Fact]
+    public void ComputeSimHash_MapsUnicodeDigitsLikeAsciiDigits()
+    {
+        (ulong unicodeHash, int unicodeLength) = SimHasher.ComputeSimHash("Report ２０２６");
+        (ulong plainHash, int plainLength) = SimHasher.ComputeSimHash("report 0000");
+
+        Assert.Equal(plainLength, unicodeLength);
+        Assert.Equal(plainHash, unicodeHash);
+        Assert.NotEqual(0UL, unicodeHash);
+    }
+
+    [Fact]
     public void ComputeSimHash_ReturnsZeroHashForVeryShortNormalizedText()
     {
         (ulong hash, int normalizedLength) = SimHasher.ComputeSimHash("hi!");
