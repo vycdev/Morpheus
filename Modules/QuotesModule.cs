@@ -266,7 +266,7 @@ public class QuotesModule : MorpheusModuleBase
     }
 
     [Name("Add Quote")]
-    [Summary("Adds a quote to the guild (may require approval).")]
+    [Summary("Adds a quote to the guild if you meet its minimum level (default 5) or are an administrator. May require approval.")]
     [Command("addquote")]
     [Alias("quoteadd", "qadd")]
     [RequireContext(ContextType.Guild)]
@@ -299,7 +299,7 @@ public class QuotesModule : MorpheusModuleBase
             return;
         }
 
-        var isAdmin = Context.User is SocketGuildUser guUser && guUser.GuildPermissions.Administrator;
+        var isAdmin = Context.User is IGuildUser guUser && guUser.GuildPermissions.Administrator;
         if (forceFlag && !isAdmin)
         {
             await ReplyAsync("You cannot use the force flag unless you are an administrator.");
@@ -315,6 +315,12 @@ public class QuotesModule : MorpheusModuleBase
             forceFlag,
             guildDb.QuotesApprovalChannelId,
             guildDb.QuoteAddRequiredApprovals);
+
+        if (result.Status == QuoteAddRequestStatus.LevelTooLow)
+        {
+            await ReplyAsync($"You must reach level {result.RequiredLevel} in this server to submit quotes. Administrators bypass this requirement.");
+            return;
+        }
 
         if (result.Status == QuoteAddRequestStatus.Approved)
         {
