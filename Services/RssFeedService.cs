@@ -52,7 +52,8 @@ public class RssFeedService(LogsService logsService)
                             .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
                     string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
                     string title = e.Element(Atom + "title")?.Value ?? string.Empty;
-                    string pubRaw = e.Element(Atom + "published")?.Value ?? e.Element(Atom + "updated")?.Value ?? string.Empty;
+                    string pubRaw = FirstNonBlank(e.Element(Atom + "published")?.Value,
+                        e.Element(Atom + "updated")?.Value);
                     DateTime published = ParsePublished(pubRaw);
 
                     if (!string.IsNullOrWhiteSpace(id))
@@ -108,10 +109,10 @@ public class RssFeedService(LogsService logsService)
                 ChildByLocalName(item, "id")?.Value,
                 link);
             string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
-            string pubRaw = ChildByLocalName(item, "pubDate")?.Value
-                            ?? ChildByLocalName(item, "published")?.Value
-                            ?? ChildByLocalName(item, "date")?.Value
-                            ?? string.Empty;
+            string pubRaw = FirstNonBlank(
+                ChildByLocalName(item, "pubDate")?.Value,
+                ChildByLocalName(item, "published")?.Value,
+                ChildByLocalName(item, "date")?.Value);
             DateTime published = ParsePublished(pubRaw);
 
             if (!string.IsNullOrWhiteSpace(id))
