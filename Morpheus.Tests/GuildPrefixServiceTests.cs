@@ -12,6 +12,32 @@ namespace Morpheus.Tests;
 public class GuildPrefixServiceTests
 {
     [Fact]
+    public async Task GetPrefixAsync_CachesDefaultForMissingGuildAndAcceptsLaterUpdate()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using (DB setup = new(options))
+            await setup.Database.EnsureCreatedAsync();
+
+        using ServiceProvider services = new ServiceCollection()
+            .AddScoped(_ => new DB(options))
+            .BuildServiceProvider();
+        GuildPrefixService service = new(services.GetRequiredService<IServiceScopeFactory>());
+
+        Assert.Equal(service.DefaultPrefix, await service.GetPrefixAsync(123));
+
+        // Closing the database proves both the fallback and later update are cached.
+        await connection.CloseAsync();
+        Assert.Equal(service.DefaultPrefix, await service.GetPrefixAsync(123));
+        service.SetPrefix(123, "new!");
+        Assert.Equal("new!", await service.GetPrefixAsync(123));
+    }
+
+    [Fact]
     public async Task GetPrefixAsync_DoesNotOverwriteConcurrentPrefixUpdate()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
