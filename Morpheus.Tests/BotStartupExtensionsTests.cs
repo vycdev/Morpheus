@@ -7,7 +7,7 @@ namespace Morpheus.Tests;
 public class BotStartupExtensionsTests
 {
     [Fact]
-    public async Task AddBotJobs_ConfiguresCronTriggersInUtc()
+    public async Task AddBotJobs_ConfiguresDailyCronFireTimesInUtc()
     {
         await using ServiceProvider services = new ServiceCollection()
             .AddLogging()
@@ -18,14 +18,21 @@ public class BotStartupExtensionsTests
 
         try
         {
-            string[] triggerNames = ["botAvatarDaily", "honeypotRenameDaily", "ubiDistribution", "wealthTax"];
+            (string Name, string Cron)[] expected =
+            [
+                ("botAvatarDaily", "0 0 0 * * ?"),
+                ("honeypotRenameDaily", "0 5 0 * * ?"),
+                ("ubiDistribution", "0 0 0 * * ?"),
+                ("wealthTax", "0 30 23 * * ?")
+            ];
 
-            foreach (string triggerName in triggerNames)
+            foreach ((string triggerName, string cronExpression) in expected)
             {
                 ITrigger? trigger = await scheduler.GetTrigger(new TriggerKey(triggerName, "discord"));
                 ICronTrigger cronTrigger = Assert.IsAssignableFrom<ICronTrigger>(trigger);
 
                 Assert.Equal(TimeZoneInfo.Utc, cronTrigger.TimeZone);
+                Assert.Equal(cronExpression, cronTrigger.CronExpressionString);
             }
         }
         finally
