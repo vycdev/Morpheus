@@ -1,3 +1,6 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Morpheus.Database;
 using Morpheus.Database.Enums;
 using Morpheus.Database.Models;
 using Morpheus.Services;
@@ -6,6 +9,45 @@ namespace Morpheus.Tests;
 
 public class ActivityServiceTests
 {
+    [Fact]
+    public async Task GetActivityRoleAssignments_RanksOnlyCurrentMembersWithRecentGuildActivity()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        Guild guild = new() { DiscordId = 1, Name = "Current guild" };
+        Guild otherGuild = new() { DiscordId = 2, Name = "Other guild" };
+        User first = new() { DiscordId = 10, Username = "first" };
+        User second = new() { DiscordId = 20, Username = "second" };
+        User departed = new() { DiscordId = 30, Username = "departed" };
+        db.AddRange(guild, otherGuild, first, second, departed);
+        await db.SaveChangesAsync();
+
+        DateTime recent = DateTime.UtcNow.AddDays(-1);
+        DateTime old = DateTime.UtcNow.AddDays(-31);
+        db.UserActivity.AddRange(
+            new UserActivity { UserId = first.Id, GuildId = guild.Id, XpGained = 8, InsertDate = recent },
+            new UserActivity { UserId = first.Id, GuildId = guild.Id, XpGained = 100, InsertDate = old },
+            new UserActivity { UserId = second.Id, GuildId = guild.Id, XpGained = 4, InsertDate = recent },
+            new UserActivity { UserId = departed.Id, GuildId = guild.Id, XpGained = 200, InsertDate = recent },
+            new UserActivity { UserId = second.Id, GuildId = otherGuild.Id, XpGained = 300, InsertDate = recent });
+        await db.SaveChangesAsync();
+
+        ActivityRoleAssignmentResult result = new ActivityService(db)
+            .GetActivityRoleAssignments(guild.Id, [first.DiscordId, second.DiscordId]);
+
+        Assert.Equal(2, result.EligibleUserCount);
+        Assert.Equal([first.DiscordId, second.DiscordId], result.Candidates.Select(c => c.User.DiscordId));
+        Assert.Equal([8L, 4L], result.Candidates.Select(c => c.TotalXp));
+        Assert.Equal([first.DiscordId], result.UsersByRole[RoleType.TopOnePercent].Select(u => u.DiscordId));
+    }
+
     [Fact]
     public void BuildActivityRoleAssignments_UsesConfiguredPercentagesForFullGuild()
     {
