@@ -54,9 +54,9 @@ public class RssFeedService(LogsService logsService)
                             .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
                     string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
                     string title = e.Element(Atom + "title")?.Value ?? string.Empty;
-                    string pubRaw = FirstNonBlank(e.Element(Atom + "published")?.Value,
+                    DateTime published = ParseFirstPublished(
+                        e.Element(Atom + "published")?.Value,
                         e.Element(Atom + "updated")?.Value);
-                    DateTime published = ParsePublished(pubRaw);
 
                     if (!string.IsNullOrWhiteSpace(id))
                         entries.Add(new FeedEntry(id, title, link, published));
@@ -114,11 +114,10 @@ public class RssFeedService(LogsService logsService)
                 ChildByLocalName(item, "id")?.Value,
                 link);
             string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
-            string pubRaw = FirstNonBlank(
+            DateTime published = ParseFirstPublished(
                 ChildByLocalName(item, "pubDate")?.Value,
                 ChildByLocalName(item, "published")?.Value,
                 ChildByLocalName(item, "date")?.Value);
-            DateTime published = ParsePublished(pubRaw);
 
             if (!string.IsNullOrWhiteSpace(id))
                 entries.Add(new FeedEntry(id, title, link, published));
@@ -133,12 +132,18 @@ public class RssFeedService(LogsService logsService)
     private static string FirstNonBlank(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
-    internal static DateTime ParsePublished(string value) =>
-        DateTime.TryParse(
-            value,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out DateTime published)
-            ? published
-            : DateTime.MinValue;
+    internal static DateTime ParsePublished(string value) => ParseFirstPublished(value);
+
+    private static DateTime ParseFirstPublished(params string?[] values)
+    {
+        foreach (string? value in values)
+        {
+            if (DateTime.TryParse(value, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out DateTime published))
+                return published;
+        }
+
+        return DateTime.MinValue;
+    }
 }

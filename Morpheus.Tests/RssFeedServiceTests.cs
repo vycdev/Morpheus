@@ -204,6 +204,25 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_WhenPubDateIsInvalid_UsesValidDate()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <channel>
+                <item>
+                  <link>https://example.com/posts/1</link>
+                  <pubDate>not-a-date</pubDate>
+                  <dc:date>2025-07-30T12:00:00+02:00</dc:date>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
     public void ParseEntries_TrimsWhitespaceAroundLinks()
     {
         XDocument document = XDocument.Parse("""
@@ -319,6 +338,32 @@ public class RssFeedServiceTests
               <entry>
                 <id>entry-1</id>
                 <published>  </published>
+                <updated>2025-07-30T12:00:00+02:00</updated>
+              </entry>
+            </feed>
+            """;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task server = ServeOnceAsync(listener, xml, timeout.Token);
+        RssFeedService service = new(new LogsService(new LogQueue()));
+
+        var result = await service.FetchAsync($"http://127.0.0.1:{port}/feed.xml", timeout.Token);
+        await server;
+
+        RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenAtomPublishedIsInvalid_UsesUpdated()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>entry-1</id>
+                <published>not-a-date</published>
                 <updated>2025-07-30T12:00:00+02:00</updated>
               </entry>
             </feed>
