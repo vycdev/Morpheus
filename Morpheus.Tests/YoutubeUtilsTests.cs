@@ -110,6 +110,18 @@ public class YoutubeUtilsTests
     }
 
     [Theory]
+    [InlineData("https://www.youtube.com/@someone/channel/UCabcdefghijklmnopqrstuv")]
+    [InlineData("https://www.youtube.com/user/someone/channel/UCabcdefghijklmnopqrstuv")]
+    public async Task ResolveChannelIdAsync_DoesNotInferIdsFromNestedChannelPaths(string input)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, input));
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Theory]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuvx")]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv_")]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv!junk")]

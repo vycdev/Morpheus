@@ -60,7 +60,7 @@ public static partial class YoutubeUtils
             return null;
 
         Match urlMatch = ChannelIdInUrlRegex().Match(scrapeUri.AbsolutePath);
-        if (urlMatch.Success)
+        if (urlMatch.Success && urlMatch.Index == 0)
             return urlMatch.Groups[1].Value;
 
         try
