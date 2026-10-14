@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.
 - Require the guild's minimum level to submit quotes, defaulting to 5, with an Administrator bypass. Configure it with `setquoteminlevel`; set 0 to allow everyone.
 - Ignore repeated xkcd comic links in a feed so comics are not posted twice or recorded twice.
 - Use a feed entry's alternate date when its preferred Atom or RSS publication date is blank.
