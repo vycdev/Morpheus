@@ -1,4 +1,5 @@
 using Morpheus.Services;
+using Morpheus.Jobs;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -79,6 +80,62 @@ public class RssFeedServiceTests
         Assert.Equal("https://example.com/posts/1", entry.EntryId);
         Assert.Equal("Post without link", entry.Title);
         Assert.Equal("https://example.com/posts/1", entry.Link);
+    }
+
+    [Theory]
+    [InlineData(null, "https://example.com/posts/1")]
+    [InlineData("true", "https://example.com/posts/1")]
+    [InlineData("false", "")]
+    public void ParseEntries_WhenLinkIsMissing_UsesOnlyPermalinkGuids(string? isPermaLink, string expectedLink)
+    {
+        string attribute = isPermaLink is null ? "" : $" isPermaLink=\"{isPermaLink}\"";
+        XDocument document = XDocument.Parse($$"""
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <title>Post without link</title>
+                  <guid{{attribute}}>https://example.com/posts/1</guid>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/posts/1", entry.EntryId);
+        Assert.Equal(expectedLink, entry.Link);
+        Assert.Equal(expectedLink.Length > 0 ? expectedLink : entry.Title, RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("ftp://example.com/posts/1")]
+    public void ParseEntries_DoesNotPostNonHttpGuidAsLink(string guid)
+    {
+        XDocument document = XDocument.Parse($$"""
+            <rss version="2.0"><channel><item>
+              <title>Post</title><guid>{{guid}}</guid>
+            </item></channel></rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal(guid, entry.EntryId);
+        Assert.Empty(entry.Link);
+        Assert.Equal("Post", RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
+    public void ParseEntries_PrefersItemLinkOverPermalinkGuid()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0"><channel><item>
+              <guid>https://example.com/old</guid>
+              <link>https://example.com/current</link>
+            </item></channel></rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/old", entry.EntryId);
+        Assert.Equal("https://example.com/current", entry.Link);
     }
 
     [Fact]

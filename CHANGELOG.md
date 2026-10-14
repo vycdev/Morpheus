@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
+- Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
 - Require the guild's minimum level to submit quotes, defaulting to 5, with an Administrator bypass. Configure it with `setquoteminlevel`; set 0 to allow everyone.
 - Ignore repeated xkcd comic links in a feed so comics are not posted twice or recorded twice.
 - Use a feed entry's alternate date when its preferred Atom or RSS publication date is blank.
