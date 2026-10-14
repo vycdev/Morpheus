@@ -101,6 +101,7 @@ public class RssFeedService(LogsService logsService)
         {
             // Prefer a usable link in the item's namespace (RSS 2.0 or RSS 1.0),
             // then fall back to extension links when the RSS link is absent or blank.
+            XElement? guid = ChildByLocalName(item, "guid");
             string link = item.Elements()
                 .Where(element => element.Name.LocalName == "link")
                 .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
@@ -108,9 +109,9 @@ public class RssFeedService(LogsService logsService)
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
                 ?? (item.Name.Namespace == RssOne
                     ? FirstNonBlank(item.Attribute(Rdf + "about")?.Value)
-                    : string.Empty);
+                    : item.Name.Namespace == XNamespace.None ? RssGuidPermalink(guid) : string.Empty);
             string id = FirstNonBlank(
-                ChildByLocalName(item, "guid")?.Value,
+                guid?.Value,
                 ChildByLocalName(item, "id")?.Value,
                 link);
             string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
@@ -125,6 +126,17 @@ public class RssFeedService(LogsService logsService)
         }
 
         return entries;
+    }
+
+    private static string RssGuidPermalink(XElement? guid)
+    {
+        string value = FirstNonBlank(guid?.Value);
+        if (string.Equals((string?)guid?.Attribute("isPermaLink"), "false", StringComparison.OrdinalIgnoreCase) ||
+            !Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return string.Empty;
+
+        return value;
     }
 
     private static XElement? ChildByLocalName(XElement parent, string localName) =>
