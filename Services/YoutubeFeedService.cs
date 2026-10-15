@@ -59,10 +59,9 @@ public class YoutubeFeedService(LogsService logsService)
                 ? $"https://www.youtube.com/watch?v={vid}"
                 : rawLink.Trim();
             string? publishedRaw = e.Element(Atom + "published")?.Value;
-            string pubRaw = !string.IsNullOrWhiteSpace(publishedRaw)
-                ? publishedRaw
-                : e.Element(Atom + "updated")?.Value ?? string.Empty;
-            DateTime published = ParsePublished(pubRaw);
+            DateTime published = ParsePublished(publishedRaw ?? string.Empty);
+            if (published == DateTime.MinValue)
+                published = ParsePublished(e.Element(Atom + "updated")?.Value ?? string.Empty);
 
             entries.Add(new VideoEntry(vid, title, link, published));
         }
