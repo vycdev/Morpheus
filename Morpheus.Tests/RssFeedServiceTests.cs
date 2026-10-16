@@ -86,6 +86,8 @@ public class RssFeedServiceTests
     [InlineData(null, "https://example.com/posts/1")]
     [InlineData("true", "https://example.com/posts/1")]
     [InlineData("false", "")]
+    [InlineData(" false ", "")]
+    [InlineData(" FALSE ", "")]
     public void ParseEntries_WhenLinkIsMissing_UsesOnlyPermalinkGuids(string? isPermaLink, string expectedLink)
     {
         string attribute = isPermaLink is null ? "" : $" isPermaLink=\"{isPermaLink}\"";
