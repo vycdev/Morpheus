@@ -44,13 +44,16 @@ public class RssFeedService(LogsService logsService)
             {
                 foreach (XElement e in atomEntries)
                 {
+                    List<XElement> links = e.Elements(Atom + "link").ToList();
                     string link = FirstNonBlank(
-                        e.Elements(Atom + "link")
-                            .Where(l => (string?)l.Attribute("rel") is null or "alternate")
+                        links.Where(l => (string?)l.Attribute("rel") is null or "alternate" &&
+                                         string.Equals((string?)l.Attribute("type"), "text/html", StringComparison.OrdinalIgnoreCase))
                             .Select(l => l.Attribute("href")?.Value)
                             .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
-                        e.Elements(Atom + "link")
+                        links.Where(l => (string?)l.Attribute("rel") is null or "alternate")
                             .Select(l => l.Attribute("href")?.Value)
+                            .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                        links.Select(l => l.Attribute("href")?.Value)
                             .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
                     string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
                     string title = e.Element(Atom + "title")?.Value ?? string.Empty;
