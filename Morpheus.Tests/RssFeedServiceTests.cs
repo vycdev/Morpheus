@@ -330,6 +330,32 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public async Task FetchAsync_PrefersHtmlAlternateLinkOverFeedAlternateLink()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>entry-1</id>
+                <link rel="alternate" type="application/atom+xml" href="https://example.com/feed/entry-1.atom" />
+                <link rel="alternate" type="text/html" href="https://example.com/posts/1" />
+              </entry>
+            </feed>
+            """;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task server = ServeOnceAsync(listener, xml, timeout.Token);
+        RssFeedService service = new(new LogsService(new LogQueue()));
+
+        var result = await service.FetchAsync($"http://127.0.0.1:{port}/feed.xml", timeout.Token);
+        await server;
+
+        RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("https://example.com/posts/1", entry.Link);
+    }
+
+    [Fact]
     public async Task FetchAsync_WhenFirstAtomLinkHasBlankHref_UsesNextUsableLink()
     {
         const string xml = """
