@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep RSS 1.0 entries from reposting when their link changes but their `rdf:about` identity stays the same.
 - Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
 - Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
 - Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.

@@ -113,6 +113,7 @@ public class RssFeedService(LogsService logsService)
             string id = FirstNonBlank(
                 guid?.Value,
                 ChildByLocalName(item, "id")?.Value,
+                item.Name.Namespace == RssOne ? item.Attribute(Rdf + "about")?.Value : null,
                 link);
             string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
             DateTime published = ParseFirstPublished(
