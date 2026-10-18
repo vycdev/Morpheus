@@ -25,8 +25,8 @@ public static partial class YoutubeUtils
     [GeneratedRegex(@"<link\b[^>]*>", RegexOptions.IgnoreCase)]
     private static partial Regex LinkTagRegex();
 
-    [GeneratedRegex(@"(?<![\w-])rel\s*=\s*(?:""canonical""|'canonical'|canonical(?=[\s/>]))", RegexOptions.IgnoreCase)]
-    private static partial Regex CanonicalRelRegex();
+    [GeneratedRegex(@"(?<![\w-])rel\s*=\s*(?:""(?<value>[^""]*)""|'(?<value>[^']*)'|(?<value>[^\s/>]+))", RegexOptions.IgnoreCase)]
+    private static partial Regex RelAttributeRegex();
 
     [GeneratedRegex(@"(?<![\w-])href\s*=\s*(?:""(?<url>[^""]+)""|'(?<url>[^']+)'|(?<url>[^\s>]+))", RegexOptions.IgnoreCase)]
     private static partial Regex LinkHrefRegex();
@@ -83,7 +83,10 @@ public static partial class YoutubeUtils
             // Other channel links on the page may point to unrelated creators.
             foreach (Match link in LinkTagRegex().Matches(html))
             {
-                if (!CanonicalRelRegex().IsMatch(link.Value))
+                Match rel = RelAttributeRegex().Match(link.Value);
+                if (!rel.Success || !rel.Groups["value"].Value
+                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                        .Contains("canonical", StringComparer.OrdinalIgnoreCase))
                     continue;
 
                 Match href = LinkHrefRegex().Match(link.Value);
