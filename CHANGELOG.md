@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reject parenthesized and comma-terminated web links in quotes without accepting malformed ports.
 - Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
 - Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
 - Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.
