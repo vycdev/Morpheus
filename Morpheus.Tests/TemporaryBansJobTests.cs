@@ -16,6 +16,13 @@ namespace Morpheus.Tests;
 public class TemporaryBansJobTests
 {
     [Fact]
+    public void Job_DisallowsConcurrentExecution()
+    {
+        Assert.True(Attribute.IsDefined(
+            typeof(TemporaryBansJob), typeof(DisallowConcurrentExecutionAttribute)));
+    }
+
+    [Fact]
     public async Task Execute_WhenCanceledBeforeLoadingDueBans_PropagatesCancellation()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
