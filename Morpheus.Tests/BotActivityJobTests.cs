@@ -8,6 +8,24 @@ namespace Morpheus.Tests;
 
 public class BotActivityJobTests
 {
+    [Theory]
+    [InlineData(1, "counting down to the end of time 🎉")]
+    [InlineData(3, "fireworks everywhere 🎆")]
+    public void Schedule_NewYearsEveTakesPriorityUntilTwoAm(int hour, string expected)
+    {
+        // Inspect the same ordered schedule and IsActive check used by Execute,
+        // without connecting to Discord or introducing a new production API.
+        Array schedule = Assert.IsAssignableFrom<Array>(typeof(BotActivityJob)
+            .GetField("Schedule", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null));
+        DateTime now = new(2027, 1, 1, hour, 0, 0);
+        object? active = schedule.Cast<object>().FirstOrDefault(activity =>
+            (bool)activity.GetType().GetMethod("IsActive")!.Invoke(activity, [now])!);
+
+        Assert.NotNull(active);
+        Assert.Equal(expected, active.GetType().GetProperty("Description")!.GetValue(active));
+    }
+
     [Fact]
     public async Task Execute_WhenCanceledBeforeActivityUpdate_PropagatesCancellation()
     {
