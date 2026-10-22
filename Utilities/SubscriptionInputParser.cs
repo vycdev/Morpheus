@@ -57,8 +57,16 @@ internal static partial class SubscriptionInputParser
             {
                 int commaIndex = line.IndexOf(',');
                 int queryIndex = line.IndexOf('?');
+                // A comma before a later path segment belongs to the URL, not
+                // to the legacy "URL,display name" syntax.
+                int nextSlash = commaIndex >= 0 ? line.IndexOf('/', commaIndex + 1) : -1;
+                int nextWhitespace = commaIndex >= 0 ? line.IndexOfAny([' ', '\t'], commaIndex + 1) : -1;
+                bool commaInPath = nextSlash >= 0 &&
+                    (queryIndex < 0 || nextSlash < queryIndex) &&
+                    (nextWhitespace < 0 || nextSlash < nextWhitespace);
                 if (commaIndex > 0 &&
                     (queryIndex < 0 || commaIndex < queryIndex) &&
+                    !commaInPath &&
                     IsHttpUrl(line[..commaIndex].Trim()))
                     separatorIndex = commaIndex;
             }

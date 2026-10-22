@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve RSS feed URLs containing commas in a path segment when bulk-subscribing.
 - Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
 - Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
 - Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.
