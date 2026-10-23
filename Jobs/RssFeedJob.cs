@@ -98,17 +98,33 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
         HashSet<string> seen = history.Keys.ToHashSet();
         bool migrated = false;
 
-        foreach (RssFeedService.FeedEntry entry in entries)
+        foreach (IGrouping<string, RssFeedService.FeedEntry> group in entries
+                     .Where(entry => entry.LegacyEntryId is not null)
+                     .GroupBy(entry => entry.LegacyEntryId!))
         {
-            if (seen.Contains(entry.EntryId) || entry.LegacyEntryId is not { } legacyId ||
-                currentIds.Contains(legacyId) || !history.Remove(legacyId, out RssSeenEntry? legacy))
+            string legacyId = group.Key;
+            if (currentIds.Contains(legacyId) || !history.TryGetValue(legacyId, out RssSeenEntry? legacy))
+                continue;
+
+            // A reused URL does not identify which entry was seen. An entry published
+            // after the saved observation cannot own it; an undated entry could, so it
+            // must remain a candidate when checking whether ownership is ambiguous.
+            List<IGrouping<string, RssFeedService.FeedEntry>> candidates = group
+                .Where(entry => entry.Published == DateTime.MinValue || entry.Published <= legacy.SeenAt)
+                .GroupBy(entry => entry.EntryId)
+                .ToList();
+            if (candidates.Count != 1 || candidates[0].All(entry => entry.Published == DateTime.MinValue))
+                continue;
+
+            string entryId = candidates[0].Key;
+            if (seen.Contains(entryId))
                 continue;
 
             // Consume the old identity rather than retaining a permanent URL alias:
             // a later, distinct entry may legitimately reuse that URL.
-            legacy.EntryId = entry.EntryId;
+            legacy.EntryId = entryId;
             seen.Remove(legacyId);
-            seen.Add(entry.EntryId);
+            seen.Add(entryId);
             migrated = true;
         }
 

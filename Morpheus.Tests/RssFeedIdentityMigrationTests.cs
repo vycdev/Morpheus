@@ -39,6 +39,7 @@ public class RssFeedIdentityMigrationTests : IAsyncLifetime
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry>
                 {{idElement}}
+                <published>2025-07-29T10:00:00Z</published>
                 <link rel="alternate" type="application/atom+xml" href="{{AtomUrl}}" />
                 <link rel="alternate" type="text/html" href="{{ArticleUrl}}" />
               </entry>
@@ -103,6 +104,98 @@ public class RssFeedIdentityMigrationTests : IAsyncLifetime
         Assert.False(migrated);
         Assert.Contains(original.EntryId, seen);
         Assert.DoesNotContain(next.EntryId, seen);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LoadSeenEntriesAsync_WhenOldAndNewEntriesShareLegacyLink_MigratesOnlyHistoricalEntry(bool newestFirst)
+    {
+        RssFeedService.FeedEntry original = ParseRssOne("https://example.com/articles/123", ArticleUrl);
+        RssFeedService.FeedEntry next = ParseRssOne("https://example.com/articles/456", ArticleUrl, "2025-07-31T10:00:00Z");
+        RssFeedService.FeedEntry[] entries = newestFirst ? [next, original] : [original, next];
+        await SeedAsync(ArticleUrl);
+
+        (HashSet<string> seen, bool migrated) = await RssFeedJob.LoadSeenEntriesAsync(db, FeedUrl, entries);
+
+        Assert.True(migrated);
+        Assert.Contains(original.EntryId, seen);
+        Assert.DoesNotContain(next.EntryId, seen);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        RssSeenEntry stored = await db.RssSeenEntries.SingleAsync();
+        Assert.Equal(original.EntryId, stored.EntryId);
+        Assert.Equal(OriginalSeenAt, stored.SeenAt);
+
+        (seen, migrated) = await RssFeedJob.LoadSeenEntriesAsync(db, FeedUrl, [next]);
+        Assert.False(migrated);
+        Assert.DoesNotContain(next.EntryId, seen);
+    }
+
+    [Fact]
+    public async Task LoadSeenEntriesAsync_WhenOnlyCandidateIsNewerThanHistory_LeavesItUnseen()
+    {
+        RssFeedService.FeedEntry next = ParseRssOne("https://example.com/articles/456", ArticleUrl, "2025-07-31T10:00:00Z");
+        await SeedAsync(ArticleUrl);
+
+        (HashSet<string> seen, bool migrated) = await RssFeedJob.LoadSeenEntriesAsync(db, FeedUrl, [next]);
+
+        Assert.False(migrated);
+        Assert.DoesNotContain(next.EntryId, seen);
+        Assert.False(db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not-a-date")]
+    public async Task LoadSeenEntriesAsync_WhenOnlyCandidateHasNoUsableDate_LeavesItUnseen(string? published)
+    {
+        RssFeedService.FeedEntry entry = ParseRssOne("https://example.com/articles/123", ArticleUrl, published);
+        await SeedAsync(ArticleUrl);
+
+        (HashSet<string> seen, bool migrated) = await RssFeedJob.LoadSeenEntriesAsync(db, FeedUrl, [entry]);
+
+        Assert.False(migrated);
+        Assert.DoesNotContain(entry.EntryId, seen);
+        Assert.False(db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, null)]
+    [InlineData(true, "2025-07-28T10:00:00Z")]
+    [InlineData(false, "2025-07-28T10:00:00Z")]
+    public async Task LoadSeenEntriesAsync_WhenLegacyOwnerIsAmbiguous_LeavesBothCandidatesUnseen(bool reverseOrder, string? competingDate)
+    {
+        RssFeedService.FeedEntry original = ParseRssOne("https://example.com/articles/123", ArticleUrl);
+        RssFeedService.FeedEntry competing = ParseRssOne("https://example.com/articles/456", ArticleUrl, competingDate);
+        RssFeedService.FeedEntry[] entries = reverseOrder ? [competing, original] : [original, competing];
+        await SeedAsync(ArticleUrl);
+
+        (HashSet<string> seen, bool migrated) = await RssFeedJob.LoadSeenEntriesAsync(db, FeedUrl, entries);
+
+        Assert.False(migrated);
+        Assert.DoesNotContain(original.EntryId, seen);
+        Assert.DoesNotContain(competing.EntryId, seen);
+        Assert.False(db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData("2025-07-28T10:00:00Z")]
+    [InlineData("2025-07-31T10:00:00Z")]
+    public async Task LoadSeenEntriesAsync_WhenHistoricalOwnerAlreadyHasStableHistory_DoesNotAssignLegacyIdToAnotherEntry(string competingDate)
+    {
+        RssFeedService.FeedEntry original = ParseRssOne("https://example.com/articles/123", ArticleUrl);
+        RssFeedService.FeedEntry competing = ParseRssOne("https://example.com/articles/456", ArticleUrl, competingDate);
+        await SeedAsync(ArticleUrl);
+        await SeedAsync(original.EntryId);
+
+        (HashSet<string> seen, bool migrated) = await RssFeedJob.LoadSeenEntriesAsync(db, FeedUrl, [competing, original]);
+
+        Assert.False(migrated);
+        Assert.Contains(original.EntryId, seen);
+        Assert.DoesNotContain(competing.EntryId, seen);
+        Assert.False(db.ChangeTracker.HasChanges());
     }
 
     [Fact]
@@ -186,12 +279,13 @@ public class RssFeedIdentityMigrationTests : IAsyncLifetime
         return entry.Id;
     }
 
-    private static RssFeedService.FeedEntry ParseRssOne(string about, string link) =>
+    private static RssFeedService.FeedEntry ParseRssOne(string about, string link, string? published = "2025-07-29T10:00:00Z") =>
         Assert.Single(RssFeedService.ParseEntries(XDocument.Parse($$"""
             <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-                     xmlns="http://purl.org/rss/1.0/">
+                     xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
               <item rdf:about="{{about}}">
                 <title>Post</title><link>{{link}}</link>
+                {{(published is null ? "" : $"<dc:date>{published}</dc:date>")}}
               </item>
             </rdf:RDF>
             """)));
