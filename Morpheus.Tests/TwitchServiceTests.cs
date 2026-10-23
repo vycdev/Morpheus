@@ -1,6 +1,7 @@
 using Morpheus.Services;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 
 namespace Morpheus.Tests;
 
@@ -61,6 +62,47 @@ public class TwitchServiceTests
         Assert.True(live.ContainsKey("42"));
         Assert.Single(handler.StreamRequests);
         Assert.Equal("https://api.twitch.tv/helix/streams?user_id=42", handler.StreamRequests[0]);
+    }
+
+    [Fact]
+    public async Task GetLiveStreamsResultAsync_RequestsEnoughResultsForAllSubscribedUsers()
+    {
+        using HttpClient httpClient = new(new DefaultPageSizeHandler());
+        TwitchService service = new(new LogsService(new LogQueue()), httpClient, "test-client", "test-secret");
+        string[] userIds = Enumerable.Range(1, 25).Select(id => id.ToString()).ToArray();
+
+        TwitchService.LiveStreamsResult result = await service.GetLiveStreamsResultAsync(userIds);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(25, result.Streams.Count);
+        Assert.Contains("25", result.Streams.Keys);
+    }
+
+    private sealed class DefaultPageSizeHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "id.twitch.tv")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"access_token\":\"token\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+                });
+
+            // Helix defaults to 20 results per page, even if more user_id filters are supplied.
+            string[] parameters = request.RequestUri!.Query.TrimStart('?').Split('&');
+            string? first = parameters.FirstOrDefault(part => part.StartsWith("first=", StringComparison.Ordinal));
+            int pageSize = first == null ? 20 : int.Parse(first["first=".Length..]);
+            string[] ids = parameters.Where(part => part.StartsWith("user_id=", StringComparison.Ordinal))
+                .Select(part => part["user_id=".Length..]).Take(pageSize).ToArray();
+            string json = JsonSerializer.Serialize(new { data = ids.Select(id => new
+            {
+                id = $"stream-{id}", user_id = id, type = "live", title = "Live"
+            }) });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        }
     }
 
     private sealed class RecordingHandler : HttpMessageHandler
