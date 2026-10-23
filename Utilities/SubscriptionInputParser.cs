@@ -55,12 +55,41 @@ internal static partial class SubscriptionInputParser
             int separatorIndex = line.IndexOf('|');
             if (separatorIndex < 0)
             {
-                int commaIndex = line.IndexOf(',');
                 int queryIndex = line.IndexOf('?');
-                if (commaIndex > 0 &&
-                    (queryIndex < 0 || commaIndex < queryIndex) &&
-                    IsHttpUrl(line[..commaIndex].Trim()))
-                    separatorIndex = commaIndex;
+                bool sawPathComma = false;
+                for (int commaIndex = line.IndexOf(',');
+                     commaIndex > 0 && (queryIndex < 0 || commaIndex < queryIndex);
+                     commaIndex = line.IndexOf(',', commaIndex + 1))
+                {
+                    string candidateUrl = line[..commaIndex].Trim();
+                    // Once a whitespace-separated name has begun, its commas
+                    // cannot introduce a second display name.
+                    if (candidateUrl.Any(char.IsWhiteSpace))
+                        break;
+
+                    // Whitespace before a CSV comma makes the delimiter explicit,
+                    // even when the complete URL itself contains commas.
+                    if (char.IsWhiteSpace(line[commaIndex - 1]) && IsHttpUrl(candidateUrl))
+                    {
+                        separatorIndex = commaIndex;
+                        break;
+                    }
+
+                    // Once a path comma is recognized, preserve any later commas
+                    // within that URL token too. An unspaced final comma is
+                    // ambiguous; use "URL | Name", "URL Name", or "URL ,Name".
+                    int nextSlash = line.IndexOf('/', commaIndex + 1);
+                    int nextWhitespace = line.IndexOfAny([' ', '\t'], commaIndex + 1);
+                    bool commaInPath = nextSlash >= 0 &&
+                        (queryIndex < 0 || nextSlash < queryIndex) &&
+                        (nextWhitespace < 0 || nextSlash < nextWhitespace);
+                    sawPathComma |= commaInPath;
+                    if (!sawPathComma && IsHttpUrl(candidateUrl))
+                    {
+                        separatorIndex = commaIndex;
+                        break;
+                    }
+                }
             }
 
             string sourcePart = separatorIndex >= 0 ? line[..separatorIndex].Trim() : line;

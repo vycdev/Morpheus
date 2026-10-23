@@ -90,7 +90,10 @@ public class TwitchService
             .Chunk(100))
         {
             string query = string.Join("&", batch.Select(id => $"user_id={Uri.EscapeDataString(id)}"));
-            string url = $"https://api.twitch.tv/helix/streams?{query}";
+            // Helix defaults to 20 results per page; request enough for every filtered user
+            // so additional live streams are not mistaken for offline subscriptions.
+            string url = $"https://api.twitch.tv/helix/streams?{query}"
+                + (batch.Length > 20 ? $"&first={batch.Length}" : string.Empty);
             HelixStreamsResponse? resp = await SendHelixAsync<HelixStreamsResponse>(url, ct);
             if (resp?.Data == null)
                 return new LiveStreamsResult(live, false);

@@ -46,6 +46,12 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
     // 1) Your yearly schedule (examples: Halloween, Christmas, Birthday)
     private static readonly AnnualActivity[] Schedule =
     [
+        // New Year's Eve runs into Jan 1, so check it before New Year's Day.
+        new AnnualActivity(
+            startMonth: 12, startDay: 31, startTime: new TimeSpan(20, 0, 0),
+            endMonth:   1, endDay:   1,  endTime: new TimeSpan(2, 0, 0),
+            description: "counting down to the end of time 🎉"
+        ),
         // New Year Celebration: Jan 1, 00:00 → Jan 2, 00:00
         new AnnualActivity(
             startMonth: 1, startDay: 1, startTime: TimeSpan.Zero,
@@ -136,13 +142,6 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
             startMonth: 12, startDay: 24, startTime: new TimeSpan(18, 0, 0),
             endMonth:   12, endDay:   26, endTime: new TimeSpan(6, 0, 0),
             description: "I'm home alone 🎄"
-        ),
-
-        // New Year's Eve: Dec 31, 20:00 → Jan 1, 02:00
-        new AnnualActivity(
-            startMonth: 12, startDay: 31, startTime: new TimeSpan(20, 0, 0),
-            endMonth:   1, endDay:   1,  endTime: new TimeSpan(2, 0, 0),
-            description: "counting down to the end of time 🎉"
         )
     ];
 

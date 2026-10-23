@@ -43,6 +43,63 @@ public class YoutubeFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_WhenPublishedIsMalformed_UsesValidUpdatedDate()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                <published>not-a-date</published>
+                <updated>2025-07-30T10:00:00Z</updated>
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Theory]
+    [InlineData("2025-07-29T10:00:00Z", "2025-07-29T10:00:00Z")]
+    [InlineData("not-a-date", null)]
+    public void ParseEntries_WhenUpdatedDateIsInvalid_PrefersValidPublishedOrReturnsMinimum(
+        string publishedValue, string? expectedValue)
+    {
+        XDocument document = XDocument.Parse($"""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                <published>{publishedValue}</published>
+                <updated>not-a-date</updated>
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+        Assert.Equal(YoutubeFeedService.ParsePublished(expectedValue ?? string.Empty), entry.Published);
+    }
+
+    [Fact]
+    public void ParseEntries_WhenBothDatesAreValid_PrefersPublished()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                <published>2025-07-29T10:00:00Z</published>
+                <updated>2025-07-30T10:00:00Z</updated>
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+        Assert.Equal(new DateTime(2025, 7, 29, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
     public void ParseEntries_TrimsWhitespaceAroundLinks()
     {
         XDocument document = XDocument.Parse("""

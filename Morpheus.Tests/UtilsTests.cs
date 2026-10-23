@@ -93,6 +93,8 @@ public class UtilsTests
     [InlineData("https://192.168.1.1:99999/path")]
     [InlineData("ftp://example.com:80suffix")]
     [InlineData("[invalid](https://example.com:123456)")]
+    [InlineData("(https://example.com:65536)")]
+    [InlineData("https://example.com:80suffix,")]
     public void ContainsUrl_RejectsInvalidPortsOnSchemeUrls(string text)
     {
         Assert.False(Utils.ContainsUrl(text));
@@ -104,6 +106,15 @@ public class UtilsTests
     [InlineData("[valid](https://example.com:443/path)")]
     [InlineData("http://example.com:65536 then https://valid.example:8443")]
     public void ContainsUrl_AcceptsValidSchemeUrls(string text)
+    {
+        Assert.True(Utils.ContainsUrl(text));
+    }
+
+    [Theory]
+    [InlineData("(https://example.com)")]
+    [InlineData("Visit https://example.com, then continue")]
+    [InlineData("See https://example.com/path.")]
+    public void ContainsUrl_DetectsSchemeUrlsFollowedByPunctuation(string text)
     {
         Assert.True(Utils.ContainsUrl(text));
     }
