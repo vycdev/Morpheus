@@ -61,6 +61,30 @@ public class RssFeedServiceTests
         Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
     }
 
+    [Fact]
+    public void ParseEntries_RssOneUsesRdfAboutAsStableIdentityWhenLinkChanges()
+    {
+        const string feed = """
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                     xmlns="http://purl.org/rss/1.0/">
+              <item rdf:about="https://example.com/articles/123">
+                <title>Post</title>
+                <link>REPLACE_LINK</link>
+              </item>
+            </rdf:RDF>
+            """;
+
+        RssFeedService.FeedEntry original = Assert.Single(RssFeedService.ParseRssEntries(
+            XDocument.Parse(feed.Replace("REPLACE_LINK", "https://example.com/old"))));
+        RssFeedService.FeedEntry updated = Assert.Single(RssFeedService.ParseRssEntries(
+            XDocument.Parse(feed.Replace("REPLACE_LINK", "https://example.com/new"))));
+
+        Assert.Equal("https://example.com/articles/123", original.EntryId);
+        Assert.Equal(original.EntryId, updated.EntryId);
+        Assert.Equal("https://example.com/old", original.Link);
+        Assert.Equal("https://example.com/new", updated.Link);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("<link>   </link>")]
