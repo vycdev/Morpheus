@@ -39,12 +39,8 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
             if (entries.Count == 0)
                 continue;
 
-            List<string> entryIds = entries.Select(e => e.EntryId).ToList();
-            HashSet<string> seen = (await db.RssSeenEntries
-                    .Where(v => v.FeedUrl == feedUrl && entryIds.Contains(v.EntryId))
-                    .Select(v => v.EntryId)
-                    .ToListAsync(cancellationToken))
-                .ToHashSet();
+            (HashSet<string> seen, bool migrated) = await LoadSeenEntriesAsync(db, feedUrl, entries, cancellationToken);
+            changed |= migrated;
 
             // If nothing from this feed has ever been seen, this is an initial run: mark
             // everything seen and only post the latest entry to avoid backfilling history.
@@ -83,6 +79,40 @@ public class RssFeedJob(DB db, RssFeedService rssFeed, DiscordWebhookService dis
 
         if (changed)
             await db.SaveChangesAsync(cancellationToken);
+    }
+
+    internal static async Task<(HashSet<string> Seen, bool Migrated)> LoadSeenEntriesAsync(
+        DB db,
+        string feedUrl,
+        IReadOnlyList<RssFeedService.FeedEntry> entries,
+        CancellationToken cancellationToken = default)
+    {
+        HashSet<string> currentIds = entries.Select(entry => entry.EntryId).ToHashSet();
+        List<string> lookupIds = currentIds
+            .Concat(entries.Select(entry => entry.LegacyEntryId).OfType<string>())
+            .Distinct()
+            .ToList();
+        Dictionary<string, RssSeenEntry> history = await db.RssSeenEntries
+            .Where(entry => entry.FeedUrl == feedUrl && lookupIds.Contains(entry.EntryId))
+            .ToDictionaryAsync(entry => entry.EntryId, cancellationToken);
+        HashSet<string> seen = history.Keys.ToHashSet();
+        bool migrated = false;
+
+        foreach (RssFeedService.FeedEntry entry in entries)
+        {
+            if (seen.Contains(entry.EntryId) || entry.LegacyEntryId is not { } legacyId ||
+                currentIds.Contains(legacyId) || !history.Remove(legacyId, out RssSeenEntry? legacy))
+                continue;
+
+            // Consume the old identity rather than retaining a permanent URL alias:
+            // a later, distinct entry may legitimately reuse that URL.
+            legacy.EntryId = entry.EntryId;
+            seen.Remove(legacyId);
+            seen.Add(entry.EntryId);
+            migrated = true;
+        }
+
+        return (seen, migrated);
     }
 
     internal static async Task<bool> DispatchAsync(
