@@ -194,6 +194,34 @@ public class YoutubeUtilsTests
         Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
     }
 
+    [Theory]
+    [InlineData("<link rel=\"alternate canonical\" href=\"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    [InlineData("<link href='https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv' rel='canonical alternate'>")]
+    public async Task ResolveChannelIdAsync_AcceptsCanonicalRelAmongOtherTokens(string html)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Theory]
+    [InlineData("<link rel=\"notcanonical\" href=\"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    [InlineData("<link rel=\"canonical-other\" href=\"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    public async Task ResolveChannelIdAsync_IgnoresNonCanonicalRelTokens(string html)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
     [Fact]
     public async Task ResolveChannelIdAsync_IgnoresCanonicalLinkToDifferentHost()
     {
