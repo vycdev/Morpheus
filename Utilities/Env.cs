@@ -29,6 +29,12 @@ public class Env
                     continue;
 
                 string value = parts[1].Trim();
+                // Quoted .env values may contain spaces, # and = as literal content.
+                // Strip only a matching pair of surrounding quotes.
+                if (value.Length >= 2 &&
+                    ((value[0] == '"' && value[^1] == '"') ||
+                     (value[0] == '\'' && value[^1] == '\'')))
+                    value = value[1..^1];
                 Environment.SetEnvironmentVariable(key, value);
                 Variables[key] = value;
             }
