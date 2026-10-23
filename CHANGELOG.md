@@ -5,7 +5,6 @@
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
 - Use a valid YouTube entry updated date when its published date is malformed.
 - Honor whitespace-padded `isPermaLink="false"` on RSS GUIDs so non-permalink IDs are not posted as links.
-- Migrate saved RSS 1.0 and Atom fallback IDs when their preferred identity changes, preventing upgrade reposts while preserving distinct entries that share a link.
 - Migrate saved RSS 1.0 and Atom fallback IDs when publication dates identify one historical owner. Ambiguous or undated entries may repost after upgrading so newly published entries sharing an old URL are not silently skipped.
 - Prefer HTML alternate links over Atom/XML alternate links when posting Atom entries.
 - Keep RSS 1.0 entries from reposting when their link changes but their `rdf:about` identity stays the same.
