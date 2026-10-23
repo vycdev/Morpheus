@@ -56,6 +56,7 @@ internal static partial class SubscriptionInputParser
             if (separatorIndex < 0)
             {
                 int queryIndex = line.IndexOf('?');
+                bool sawPathComma = false;
                 for (int commaIndex = line.IndexOf(',');
                      commaIndex > 0 && (queryIndex < 0 || commaIndex < queryIndex);
                      commaIndex = line.IndexOf(',', commaIndex + 1))
@@ -66,14 +67,24 @@ internal static partial class SubscriptionInputParser
                     if (candidateUrl.Any(char.IsWhiteSpace))
                         break;
 
-                    // Skip path commas, but continue looking for a later CSV
-                    // separator after the complete URL.
+                    // Whitespace before a CSV comma makes the delimiter explicit,
+                    // even when the complete URL itself contains commas.
+                    if (char.IsWhiteSpace(line[commaIndex - 1]) && IsHttpUrl(candidateUrl))
+                    {
+                        separatorIndex = commaIndex;
+                        break;
+                    }
+
+                    // Once a path comma is recognized, preserve any later commas
+                    // within that URL token too. An unspaced final comma is
+                    // ambiguous; use "URL | Name", "URL Name", or "URL ,Name".
                     int nextSlash = line.IndexOf('/', commaIndex + 1);
                     int nextWhitespace = line.IndexOfAny([' ', '\t'], commaIndex + 1);
                     bool commaInPath = nextSlash >= 0 &&
                         (queryIndex < 0 || nextSlash < queryIndex) &&
                         (nextWhitespace < 0 || nextSlash < nextWhitespace);
-                    if (!commaInPath && IsHttpUrl(candidateUrl))
+                    sawPathComma |= commaInPath;
+                    if (!sawPathComma && IsHttpUrl(candidateUrl))
                     {
                         separatorIndex = commaIndex;
                         break;
