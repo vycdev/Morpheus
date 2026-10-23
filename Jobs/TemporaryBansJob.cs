@@ -10,6 +10,7 @@ using Quartz;
 
 namespace Morpheus.Jobs;
 
+[DisallowConcurrentExecution]
 public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClient discordClient) : IJob
 {
     private void Log(string message, LogSeverity severity = LogSeverity.Info) => logsService.Log($"Quartz Job - {message}", severity);
