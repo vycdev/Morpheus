@@ -114,4 +114,32 @@ public class EnvTests
             File.Delete(filePath);
         }
     }
+
+    [Theory]
+    [InlineData("\"yes\"", "yes")]
+    [InlineData("'value with spaces = # literal'", "value with spaces = # literal")]
+    [InlineData("\"unmatched'", "\"unmatched'")]
+    [InlineData("'inner'quote'", "inner'quote")]
+    public void Load_QuotedValue_RemovesOnlyMatchingOuterQuotes(string configured, string expected)
+    {
+        string key = $"MORPHEUS_ENV_TEST_{Guid.NewGuid():N}";
+        string? originalEnvironmentValue = Environment.GetEnvironmentVariable(key);
+        Dictionary<string, string> originalVariables = new(Env.Variables);
+        string filePath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(filePath, $"{key}={configured}\n");
+            Env.Load(filePath);
+            Assert.Equal(expected, Env.Get(key, string.Empty));
+            Assert.Equal(expected, Environment.GetEnvironmentVariable(key));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(key, originalEnvironmentValue);
+            Env.Variables.Clear();
+            foreach ((string existingKey, string existingValue) in originalVariables)
+                Env.Variables[existingKey] = existingValue;
+            File.Delete(filePath);
+        }
+    }
 }
