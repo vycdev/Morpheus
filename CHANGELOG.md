@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
+- Use a valid YouTube entry updated date when its published date is malformed.
 - Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
 - Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
 - Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.
