@@ -109,6 +109,35 @@ public class RemindersJobTests
     }
 
     [Fact]
+    public async Task ProcessDueRemindersAsync_WhenLaterDeliveryThrows_PersistsCompletedDeliveries()
+    {
+        Reminder first = new() { Id = 1, ChannelId = 42, Text = "First" };
+        Reminder second = new() { Id = 2, ChannelId = 42, Text = "Second" };
+        List<int> removed = [];
+        List<int[]> savedRemovals = [];
+        InvalidOperationException error = new("Channel lookup failed");
+
+        InvalidOperationException caught = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RemindersJob.ProcessDueRemindersAsync(
+                [first, second],
+                reminder => reminder.Id == first.Id
+                    ? Task.FromResult(true)
+                    : Task.FromException<bool>(error),
+                reminder => removed.Add(reminder.Id),
+                () =>
+                {
+                    savedRemovals.Add([.. removed]);
+                    return Task.CompletedTask;
+                },
+                CancellationToken.None));
+
+        Assert.Same(error, caught);
+        Assert.Equal([first.Id], removed);
+        Assert.Single(savedRemovals);
+        Assert.Equal([first.Id], savedRemovals[0]);
+    }
+
+    [Fact]
     public void Job_DisallowsConcurrentDeliveryRuns()
     {
         Assert.True(typeof(RemindersJob).IsDefined(typeof(DisallowConcurrentExecutionAttribute), inherit: false));
