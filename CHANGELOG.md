@@ -10,6 +10,7 @@
 - Resolve YouTube channels from canonical links whose `rel` attribute includes other tokens.
 - Request enough Twitch stream results for every subscribed user in a polling batch, even when more than 20 are live.
 - Reject parenthesized and comma-terminated web links in quotes without accepting malformed ports.
+- Keep the New Year's Eve bot activity active until 02:00 on January 1 before switching to the New Year's Day activity.
 - Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
 - Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
 - Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.
