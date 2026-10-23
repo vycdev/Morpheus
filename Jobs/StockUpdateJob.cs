@@ -12,10 +12,12 @@ public class StockUpdateJob(LogsService logsService, DB db, StocksService stocks
     private void Log(string message) =>
         logsService.Log($"Quartz Job - {message}");
 
-    public async Task Execute(IJobExecutionContext context)
+    public Task Execute(IJobExecutionContext context) =>
+        ExecuteAtAsync(context, DateTime.UtcNow);
+
+    internal async Task ExecuteAtAsync(IJobExecutionContext context, DateTime utcNow)
     {
         CancellationToken cancellationToken = context.CancellationToken;
-        DateTime utcNow = DateTime.UtcNow;
         DateOnly today = DateOnly.FromDateTime(utcNow);
         DateTime todayStart = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         int currentMinutes = utcNow.Hour * 60 + utcNow.Minute;

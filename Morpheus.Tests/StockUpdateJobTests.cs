@@ -23,7 +23,8 @@ public class StockUpdateJobTests
         await using DB db = new(options);
         await db.Database.EnsureCreatedAsync();
 
-        DateTime todayStart = DateTime.UtcNow.Date;
+        DateTime utcNow = new(2026, 10, 23, 8, 0, 0, DateTimeKind.Utc);
+        DateTime todayStart = utcNow.Date;
         Stock due = new()
         {
             EntityType = StockEntityType.User,
@@ -46,15 +47,15 @@ public class StockUpdateJobTests
             new StocksService(db, logsService, new EconomyService(db, logsService)));
         IJobExecutionContext context = CreateContext(CancellationToken.None);
 
-        await job.Execute(context);
+        await job.ExecuteAtAsync(context, utcNow);
         db.ChangeTracker.Clear();
         Stock updatedDue = await db.Stocks.SingleAsync(s => s.Id == due.Id);
         Stock untouched = await db.Stocks.SingleAsync(s => s.Id == alreadyUpdated.Id);
-        Assert.True(updatedDue.LastUpdatedDate >= todayStart);
+        Assert.Equal(utcNow, updatedDue.LastUpdatedDate);
         Assert.Equal(todayStart, untouched.LastUpdatedDate);
 
         DateTime firstUpdate = updatedDue.LastUpdatedDate;
-        await job.Execute(context);
+        await job.ExecuteAtAsync(context, utcNow.AddMinutes(5));
         db.ChangeTracker.Clear();
         Assert.Equal(firstUpdate, (await db.Stocks.SingleAsync(s => s.Id == due.Id)).LastUpdatedDate);
     }
