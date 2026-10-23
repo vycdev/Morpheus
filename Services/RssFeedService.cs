@@ -130,7 +130,7 @@ public class RssFeedService(LogsService logsService)
     private static string RssGuidPermalink(XElement? guid)
     {
         string value = FirstNonBlank(guid?.Value);
-        if (string.Equals((string?)guid?.Attribute("isPermaLink"), "false", StringComparison.OrdinalIgnoreCase) ||
+        if (string.Equals(((string?)guid?.Attribute("isPermaLink"))?.Trim(), "false", StringComparison.OrdinalIgnoreCase) ||
             !Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             return string.Empty;
