@@ -29,17 +29,15 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
         if (!dueBans.Any())
             return;
 
-        foreach (var ban in dueBans)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
+        await ProcessDueBansAsync(
+            dueBans,
+            async ban =>
             {
                 var guild = discordClient.GetGuild(ban.GuildId);
                 if (guild == null)
                 {
                     Log($"Guild {ban.GuildId} not found for temp ban {ban.Id}. Will retry later.", LogSeverity.Warning);
-                    continue;
+                    return false;
                 }
 
                 bool wasAlreadyUnbanned = await CompleteUnbanAsync(
@@ -50,6 +48,29 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
                 Log(wasAlreadyUnbanned
                     ? $"User {ban.UserId} was already unbanned from guild {ban.GuildId} (temp ban {ban.Id})."
                     : $"Unbanned user {ban.UserId} from guild {ban.GuildId} (temp ban {ban.Id}).");
+                return true;
+            },
+            // Persist each Discord side effect even if Quartz cancels before
+            // the next ban, so a retry cannot repeat the removal.
+            () => db.SaveChangesAsync(CancellationToken.None),
+            (ban, ex) => Log($"Failed to unban user {ban.UserId} from guild {ban.GuildId}: {ex.Message}", LogSeverity.Warning),
+            cancellationToken);
+    }
+
+    internal static async Task ProcessDueBansAsync(
+        IReadOnlyList<TemporaryBan> dueBans,
+        Func<TemporaryBan, Task<bool>> unbanAsync,
+        Func<Task> saveChangesAsync,
+        Action<TemporaryBan, Exception> logFailure,
+        CancellationToken cancellationToken)
+    {
+        foreach (TemporaryBan ban in dueBans)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            bool completed;
+            try
+            {
+                completed = await unbanAsync(ban);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -57,12 +78,17 @@ public class TemporaryBansJob(LogsService logsService, DB db, DiscordSocketClien
             }
             catch (Exception ex)
             {
-                Log($"Failed to unban user {ban.UserId} from guild {ban.GuildId}: {ex.Message}", LogSeverity.Warning);
-                // We do not set UnbannedAt here; it will retry next run
+                logFailure(ban, ex);
+                continue;
             }
+
+            // Persistence errors must stop the job rather than allowing more
+            // unbans without a durable record of which ones completed.
+            if (completed)
+                await saveChangesAsync();
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     internal static async Task<bool> CompleteUnbanAsync(
