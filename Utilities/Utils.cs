@@ -30,7 +30,11 @@ public static class Utils
         // syntactically valid URI so malformed ports are not accepted.
         foreach (Match match in _schemeRegex.Matches(text))
         {
-            if (IsValidAbsoluteUrl(match.Value))
+            // The URL regex may consume surrounding sentence punctuation (for example
+            // a closing parenthesis or comma). Retry without it, but still validate
+            // the complete remaining URL so malformed ports are not accepted.
+            if (IsValidAbsoluteUrl(match.Value) ||
+                IsValidAbsoluteUrl(match.Value.TrimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}')))
                 return true;
         }
 

@@ -10,6 +10,30 @@ public class EnvironmentVariableTestCollection
 [Collection("Environment variable tests")]
 public class EnvTests
 {
+    [Theory]
+    [InlineData("1", true)]
+    [InlineData("yes", true)]
+    [InlineData("ON", true)]
+    [InlineData("0", false)]
+    [InlineData("no", false)]
+    [InlineData("OFF", false)]
+    [InlineData("unknown", null)]
+    public void GetBoolean_ParsesAliasesAndUsesDefaultForInvalidValues(string value, bool? expected)
+    {
+        string key = $"MORPHEUS_ENV_TEST_{Guid.NewGuid():N}";
+        Env.Variables[key] = value;
+
+        try
+        {
+            Assert.Equal(expected ?? true, Env.Get(key, true));
+            Assert.Equal(expected ?? false, Env.Get(key, false));
+        }
+        finally
+        {
+            Env.Variables.Remove(key);
+        }
+    }
+
     [Fact]
     public void Load_DuplicateKeys_UsesLastValue()
     {
@@ -84,6 +108,34 @@ public class EnvTests
         finally
         {
             Environment.SetEnvironmentVariable(commentKey, originalEnvironmentValue);
+            Env.Variables.Clear();
+            foreach ((string existingKey, string existingValue) in originalVariables)
+                Env.Variables[existingKey] = existingValue;
+            File.Delete(filePath);
+        }
+    }
+
+    [Theory]
+    [InlineData("\"yes\"", "yes")]
+    [InlineData("'value with spaces = # literal'", "value with spaces = # literal")]
+    [InlineData("\"unmatched'", "\"unmatched'")]
+    [InlineData("'inner'quote'", "inner'quote")]
+    public void Load_QuotedValue_RemovesOnlyMatchingOuterQuotes(string configured, string expected)
+    {
+        string key = $"MORPHEUS_ENV_TEST_{Guid.NewGuid():N}";
+        string? originalEnvironmentValue = Environment.GetEnvironmentVariable(key);
+        Dictionary<string, string> originalVariables = new(Env.Variables);
+        string filePath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(filePath, $"{key}={configured}\n");
+            Env.Load(filePath);
+            Assert.Equal(expected, Env.Get(key, string.Empty));
+            Assert.Equal(expected, Environment.GetEnvironmentVariable(key));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(key, originalEnvironmentValue);
             Env.Variables.Clear();
             foreach ((string existingKey, string existingValue) in originalVariables)
                 Env.Variables[existingKey] = existingValue;

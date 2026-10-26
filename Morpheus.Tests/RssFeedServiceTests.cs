@@ -1,4 +1,5 @@
 using Morpheus.Services;
+using Morpheus.Jobs;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -58,6 +59,109 @@ public class RssFeedServiceTests
         Assert.Equal("Namespaced item", entry.Title);
         Assert.Equal("https://example.com/posts/1", entry.Link);
         Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
+    public void ParseEntries_RssOneUsesRdfAboutAsStableIdentityWhenLinkChanges()
+    {
+        const string feed = """
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                     xmlns="http://purl.org/rss/1.0/">
+              <item rdf:about="https://example.com/articles/123">
+                <title>Post</title>
+                <link>REPLACE_LINK</link>
+              </item>
+            </rdf:RDF>
+            """;
+
+        RssFeedService.FeedEntry original = Assert.Single(RssFeedService.ParseRssEntries(
+            XDocument.Parse(feed.Replace("REPLACE_LINK", "https://example.com/old"))));
+        RssFeedService.FeedEntry updated = Assert.Single(RssFeedService.ParseRssEntries(
+            XDocument.Parse(feed.Replace("REPLACE_LINK", "https://example.com/new"))));
+
+        Assert.Equal("https://example.com/articles/123", original.EntryId);
+        Assert.Equal(original.EntryId, updated.EntryId);
+        Assert.Equal("https://example.com/old", original.Link);
+        Assert.Equal("https://example.com/new", updated.Link);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("<link>   </link>")]
+    public void ParseEntries_WhenRssOneItemHasNoUsableLink_UsesRdfAbout(string linkElement)
+    {
+        XDocument document = XDocument.Parse($$"""
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                     xmlns="http://purl.org/rss/1.0/">
+              <item rdf:about="https://example.com/posts/1">
+                <title>Post without link</title>
+                {{linkElement}}
+              </item>
+            </rdf:RDF>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/posts/1", entry.EntryId);
+        Assert.Equal("Post without link", entry.Title);
+        Assert.Equal("https://example.com/posts/1", entry.Link);
+    }
+
+    [Theory]
+    [InlineData(null, "https://example.com/posts/1")]
+    [InlineData("true", "https://example.com/posts/1")]
+    [InlineData("false", "")]
+    [InlineData(" false ", "")]
+    [InlineData(" FALSE ", "")]
+    public void ParseEntries_WhenLinkIsMissing_UsesOnlyPermalinkGuids(string? isPermaLink, string expectedLink)
+    {
+        string attribute = isPermaLink is null ? "" : $" isPermaLink=\"{isPermaLink}\"";
+        XDocument document = XDocument.Parse($$"""
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <title>Post without link</title>
+                  <guid{{attribute}}>https://example.com/posts/1</guid>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/posts/1", entry.EntryId);
+        Assert.Equal(expectedLink, entry.Link);
+        Assert.Equal(expectedLink.Length > 0 ? expectedLink : entry.Title, RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("ftp://example.com/posts/1")]
+    public void ParseEntries_DoesNotPostNonHttpGuidAsLink(string guid)
+    {
+        XDocument document = XDocument.Parse($$"""
+            <rss version="2.0"><channel><item>
+              <title>Post</title><guid>{{guid}}</guid>
+            </item></channel></rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal(guid, entry.EntryId);
+        Assert.Empty(entry.Link);
+        Assert.Equal("Post", RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
+    public void ParseEntries_PrefersItemLinkOverPermalinkGuid()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0"><channel><item>
+              <guid>https://example.com/old</guid>
+              <link>https://example.com/current</link>
+            </item></channel></rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("https://example.com/old", entry.EntryId);
+        Assert.Equal("https://example.com/current", entry.Link);
     }
 
     [Fact]
@@ -164,6 +268,44 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_WhenPubDateIsBlank_UsesDate()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <channel>
+                <item>
+                  <link>https://example.com/posts/1</link>
+                  <pubDate>  </pubDate>
+                  <dc:date>2025-07-30T12:00:00+02:00</dc:date>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
+    public void ParseEntries_WhenPubDateIsInvalid_UsesValidDate()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <channel>
+                <item>
+                  <link>https://example.com/posts/1</link>
+                  <pubDate>not-a-date</pubDate>
+                  <dc:date>2025-07-30T12:00:00+02:00</dc:date>
+                </item>
+              </channel>
+            </rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
     public void ParseEntries_TrimsWhitespaceAroundLinks()
     {
         XDocument document = XDocument.Parse("""
@@ -196,6 +338,32 @@ public class RssFeedServiceTests
                 <title>Entry</title>
                 <link rel="alternate" href="&#x20;https://example.com/posts/1&#x20;" />
                 <updated>2025-07-30T10:00:00Z</updated>
+              </entry>
+            </feed>
+            """;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task server = ServeOnceAsync(listener, xml, timeout.Token);
+        RssFeedService service = new(new LogsService(new LogQueue()));
+
+        var result = await service.FetchAsync($"http://127.0.0.1:{port}/feed.xml", timeout.Token);
+        await server;
+
+        RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
+        Assert.Equal("https://example.com/posts/1", entry.Link);
+    }
+
+    [Fact]
+    public async Task FetchAsync_PrefersHtmlAlternateLinkOverFeedAlternateLink()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>entry-1</id>
+                <link rel="alternate" type="application/atom+xml" href="https://example.com/feed/entry-1.atom" />
+                <link rel="alternate" type="text/html" href="https://example.com/posts/1" />
               </entry>
             </feed>
             """;
@@ -269,6 +437,58 @@ public class RssFeedServiceTests
 
         RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
         Assert.Equal("https://example.com/posts/1", entry.EntryId);
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenAtomPublishedIsBlank_UsesUpdated()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>entry-1</id>
+                <published>  </published>
+                <updated>2025-07-30T12:00:00+02:00</updated>
+              </entry>
+            </feed>
+            """;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task server = ServeOnceAsync(listener, xml, timeout.Token);
+        RssFeedService service = new(new LogsService(new LogQueue()));
+
+        var result = await service.FetchAsync($"http://127.0.0.1:{port}/feed.xml", timeout.Token);
+        await server;
+
+        RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenAtomPublishedIsInvalid_UsesUpdated()
+    {
+        const string xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>entry-1</id>
+                <published>not-a-date</published>
+                <updated>2025-07-30T12:00:00+02:00</updated>
+              </entry>
+            </feed>
+            """;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task server = ServeOnceAsync(listener, xml, timeout.Token);
+        RssFeedService service = new(new LogsService(new LogQueue()));
+
+        var result = await service.FetchAsync($"http://127.0.0.1:{port}/feed.xml", timeout.Token);
+        await server;
+
+        RssFeedService.FeedEntry entry = Assert.Single(result.Entries);
+        Assert.Equal(new DateTime(2025, 7, 30, 10, 0, 0, DateTimeKind.Utc), entry.Published);
     }
 
     [Fact]

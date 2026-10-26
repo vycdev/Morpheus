@@ -18,4 +18,25 @@ public class McpDiscordIdTests
     [Fact]
     public void ParseOptional_AllowsAnOmittedId() =>
         Assert.Null(McpDiscordId.ParseOptional(null, "id"));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("0")]
+    [InlineData("00000000000000000000")]
+    [InlineData(" 1")]
+    [InlineData("1 ")]
+    [InlineData("+1")]
+    [InlineData("-1")]
+    [InlineData("1.0")]
+    [InlineData("١")]
+    [InlineData("18446744073709551616")]
+    [InlineData("000000000000000000001")]
+    public void Parse_RejectsMalformedOrOutOfRangeIds(string value)
+    {
+        ArgumentException required = Assert.Throws<ArgumentException>(() => McpDiscordId.Parse(value, "guildId"));
+        Assert.Equal("guildId", required.ParamName);
+
+        ArgumentException optional = Assert.Throws<ArgumentException>(() => McpDiscordId.ParseOptional(value, "channelId"));
+        Assert.Equal("channelId", optional.ParamName);
+    }
 }

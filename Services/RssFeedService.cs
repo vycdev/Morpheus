@@ -12,6 +12,8 @@ public class RssFeedService(LogsService logsService)
 {
     private static readonly HttpClient HttpClient = CreateClient();
     private static readonly XNamespace Atom = "http://www.w3.org/2005/Atom";
+    private static readonly XNamespace RssOne = "http://purl.org/rss/1.0/";
+    private static readonly XNamespace Rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
     private static HttpClient CreateClient()
     {
@@ -21,7 +23,12 @@ public class RssFeedService(LogsService logsService)
         return client;
     }
 
-    public record FeedEntry(string EntryId, string Title, string Link, DateTime Published);
+    public record FeedEntry(string EntryId, string Title, string Link, DateTime Published)
+    {
+        // Only populated when the parser's identity preference changed. Ordinary links
+        // must not alias stable IDs, since distinct entries can share a URL.
+        internal string? LegacyEntryId { get; init; }
+    }
 
     /// <summary>
     /// Fetches a feed and returns its title + icon (if any) plus the parsed entries. Returns
@@ -34,35 +41,7 @@ public class RssFeedService(LogsService logsService)
             string xml = await HttpClient.GetStringAsync(feedUrl, ct).ConfigureAwait(false);
             XDocument doc = XDocument.Parse(xml);
 
-            List<FeedEntry> entries = [];
-
-            // Atom (<entry>) first, then RSS (<item>), including namespaced RSS 1.0 feeds.
-            List<XElement> atomEntries = doc.Descendants(Atom + "entry").ToList();
-            if (atomEntries.Count > 0)
-            {
-                foreach (XElement e in atomEntries)
-                {
-                    string link = FirstNonBlank(
-                        e.Elements(Atom + "link")
-                            .Where(l => (string?)l.Attribute("rel") is null or "alternate")
-                            .Select(l => l.Attribute("href")?.Value)
-                            .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
-                        e.Elements(Atom + "link")
-                            .Select(l => l.Attribute("href")?.Value)
-                            .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
-                    string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
-                    string title = e.Element(Atom + "title")?.Value ?? string.Empty;
-                    string pubRaw = e.Element(Atom + "published")?.Value ?? e.Element(Atom + "updated")?.Value ?? string.Empty;
-                    DateTime published = ParsePublished(pubRaw);
-
-                    if (!string.IsNullOrWhiteSpace(id))
-                        entries.Add(new FeedEntry(id, title, link, published));
-                }
-            }
-            else
-            {
-                entries.AddRange(ParseRssEntries(doc));
-            }
+            IReadOnlyList<FeedEntry> entries = ParseEntries(doc);
 
             XElement? channel = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "channel");
             string? feedTitle = doc.Root?.Element(Atom + "title")?.Value
@@ -90,6 +69,46 @@ public class RssFeedService(LogsService logsService)
         }
     }
 
+    internal static IReadOnlyList<FeedEntry> ParseEntries(XDocument doc)
+    {
+        // Atom (<entry>) first, then RSS (<item>), including namespaced RSS 1.0 feeds.
+        List<XElement> atomEntries = doc.Descendants(Atom + "entry").ToList();
+        if (atomEntries.Count == 0)
+            return ParseRssEntries(doc);
+
+        List<FeedEntry> entries = [];
+        foreach (XElement e in atomEntries)
+        {
+            List<XElement> links = e.Elements(Atom + "link").ToList();
+            string legacyLink = FirstNonBlank(
+                links.Where(l => (string?)l.Attribute("rel") is null or "alternate")
+                    .Select(l => l.Attribute("href")?.Value)
+                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                links.Select(l => l.Attribute("href")?.Value)
+                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
+            string link = FirstNonBlank(
+                links.Where(l => (string?)l.Attribute("rel") is null or "alternate" &&
+                                 string.Equals((string?)l.Attribute("type"), "text/html", StringComparison.OrdinalIgnoreCase))
+                    .Select(l => l.Attribute("href")?.Value)
+                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                legacyLink);
+            string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
+            string legacyId = FirstNonBlank(e.Element(Atom + "id")?.Value, legacyLink);
+            string title = e.Element(Atom + "title")?.Value ?? string.Empty;
+            DateTime published = ParseFirstPublished(
+                e.Element(Atom + "published")?.Value,
+                e.Element(Atom + "updated")?.Value);
+
+            if (!string.IsNullOrWhiteSpace(id))
+                entries.Add(new FeedEntry(id, title, link, published)
+                {
+                    LegacyEntryId = legacyId != id && legacyId.Length > 0 ? legacyId : null
+                });
+        }
+
+        return entries;
+    }
+
     internal static IReadOnlyList<FeedEntry> ParseRssEntries(XDocument doc)
     {
         List<FeedEntry> entries = [];
@@ -98,27 +117,46 @@ public class RssFeedService(LogsService logsService)
         {
             // Prefer a usable link in the item's namespace (RSS 2.0 or RSS 1.0),
             // then fall back to extension links when the RSS link is absent or blank.
+            XElement? guid = ChildByLocalName(item, "guid");
             string link = item.Elements()
                 .Where(element => element.Name.LocalName == "link")
                 .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
                 .Select(element => FirstNonBlank(element.Value, element.Attribute("href")?.Value))
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                ?? (item.Name.Namespace == RssOne
+                    ? FirstNonBlank(item.Attribute(Rdf + "about")?.Value)
+                    : item.Name.Namespace == XNamespace.None ? RssGuidPermalink(guid) : string.Empty);
+            string explicitId = FirstNonBlank(guid?.Value, ChildByLocalName(item, "id")?.Value);
+            string legacyId = FirstNonBlank(explicitId, link);
             string id = FirstNonBlank(
-                ChildByLocalName(item, "guid")?.Value,
-                ChildByLocalName(item, "id")?.Value,
+                explicitId,
+                item.Name.Namespace == RssOne ? item.Attribute(Rdf + "about")?.Value : null,
                 link);
             string title = ChildByLocalName(item, "title")?.Value ?? string.Empty;
-            string pubRaw = ChildByLocalName(item, "pubDate")?.Value
-                            ?? ChildByLocalName(item, "published")?.Value
-                            ?? ChildByLocalName(item, "date")?.Value
-                            ?? string.Empty;
-            DateTime published = ParsePublished(pubRaw);
+            DateTime published = ParseFirstPublished(
+                ChildByLocalName(item, "pubDate")?.Value,
+                ChildByLocalName(item, "published")?.Value,
+                ChildByLocalName(item, "date")?.Value);
 
             if (!string.IsNullOrWhiteSpace(id))
-                entries.Add(new FeedEntry(id, title, link, published));
+                entries.Add(new FeedEntry(id, title, link, published)
+                {
+                    LegacyEntryId = legacyId != id && legacyId.Length > 0 ? legacyId : null
+                });
         }
 
         return entries;
+    }
+
+    private static string RssGuidPermalink(XElement? guid)
+    {
+        string value = FirstNonBlank(guid?.Value);
+        if (string.Equals(((string?)guid?.Attribute("isPermaLink"))?.Trim(), "false", StringComparison.OrdinalIgnoreCase) ||
+            !Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return string.Empty;
+
+        return value;
     }
 
     private static XElement? ChildByLocalName(XElement parent, string localName) =>
@@ -127,12 +165,18 @@ public class RssFeedService(LogsService logsService)
     private static string FirstNonBlank(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
-    internal static DateTime ParsePublished(string value) =>
-        DateTime.TryParse(
-            value,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out DateTime published)
-            ? published
-            : DateTime.MinValue;
+    internal static DateTime ParsePublished(string value) => ParseFirstPublished(value);
+
+    private static DateTime ParseFirstPublished(params string?[] values)
+    {
+        foreach (string? value in values)
+        {
+            if (DateTime.TryParse(value, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out DateTime published))
+                return published;
+        }
+
+        return DateTime.MinValue;
+    }
 }

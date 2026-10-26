@@ -144,6 +144,27 @@ public class RssFeedJobTests
     }
 
     [Fact]
+    public async Task DispatchAsync_WhenTitleCrossesSurrogateBoundary_DoesNotSplitEmoji()
+    {
+        RssFeedService.FeedEntry entry = new(
+            "entry-1", new string('a', 1998) + "😀" + "b", string.Empty, DateTime.UtcNow);
+        string? deliveredContent = null;
+
+        bool succeeded = await RssFeedJob.DispatchAsync(
+            entry,
+            [new RssSubscription()],
+            (_, content) =>
+            {
+                deliveredContent = content;
+                return Task.FromResult(true);
+            });
+
+        Assert.True(succeeded);
+        Assert.Equal(new string('a', 1998) + "…", deliveredContent);
+        Assert.DoesNotContain(deliveredContent!, char.IsSurrogate);
+    }
+
+    [Fact]
     public async Task DispatchAsync_WhenCallerCancels_PropagatesCancellationBeforeDelivery()
     {
         RssFeedService.FeedEntry entry = new("entry-1", "Entry", "https://example.com/entry-1", DateTime.UtcNow);

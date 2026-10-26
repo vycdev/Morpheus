@@ -151,6 +151,7 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
                 x.Element("title")?.Value ?? string.Empty,
                 x.Element("link")?.Value.Trim() ?? string.Empty))
             .Where(i => !string.IsNullOrEmpty(i.Link))
+            .DistinctBy(i => i.Link, StringComparer.Ordinal)
             .ToList();
     }
 

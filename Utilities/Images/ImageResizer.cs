@@ -1,6 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace Morpheus.Utilities.Images;
 
@@ -14,23 +12,19 @@ public static class ImageResizer
     /// </summary>
     public static byte[] DownscaleIfTooLarge(byte[] imageData)
     {
-        using MemoryStream ms = new(imageData);
-        ImageInfo info = Image.Identify(ms);
-
+        ArgumentNullException.ThrowIfNull(imageData);
+        using SKData data = SKData.CreateCopy(imageData);
+        using SKCodec codec = SKCodec.Create(data)
+            ?? throw new ArgumentException("Unsupported or invalid image data.", nameof(imageData));
+        SKImageInfo info = codec.Info;
         if (info.Width <= MaxDimension && info.Height <= MaxDimension)
             return imageData;
 
-        ms.Position = 0;
-        using Image<Rgba32> image = Image.Load<Rgba32>(ms);
-
         float scale = Math.Min((float)MaxDimension / info.Width, (float)MaxDimension / info.Height);
-        int newWidth = Math.Max(1, (int)(info.Width * scale));
-        int newHeight = Math.Max(1, (int)(info.Height * scale));
-
-        image.Mutate(x => x.Resize(newWidth, newHeight));
-
-        using MemoryStream output = new();
-        image.SaveAsPng(output);
-        return output.ToArray();
+        int width = Math.Max(1, (int)(info.Width * scale));
+        int height = Math.Max(1, (int)(info.Height * scale));
+        using SKBitmap image = SkiaImages.Decode(imageData);
+        using SKBitmap resized = SkiaImages.Resize(image, width, height);
+        return SkiaImages.Encode(resized);
     }
 }

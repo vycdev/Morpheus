@@ -1,8 +1,5 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.Fonts;
+using SkiaSharp;
+using SkiaSharp.HarfBuzz;
 
 namespace Morpheus.Utilities.Images;
 
@@ -15,71 +12,45 @@ public static class ImageMemefier
         if (string.IsNullOrWhiteSpace(text))
             throw new ArgumentException("Text cannot be empty.", nameof(text));
 
-        using MemoryStream ms = new(imageData);
-        using Image<Rgba32> original = Image.Load<Rgba32>(ms);
-
-        int imgWidth = original.Width;
-        int imgHeight = original.Height;
-        int maxCaptionHeight = imgHeight / 2;
-        int horizontalPadding = (int)(imgWidth * 0.05f);
-        int verticalPadding = (int)(imgWidth * 0.03f);
-        int textAreaWidth = imgWidth - horizontalPadding * 2;
-
-        if (textAreaWidth <= 0)
+        using SKBitmap original = SkiaImages.Decode(imageData);
+        int maxCaptionHeight = original.Height / 2;
+        int horizontalPadding = (int)(original.Width * 0.05f);
+        int verticalPadding = (int)(original.Width * 0.03f);
+        int textAreaWidth = original.Width - horizontalPadding * 2;
+        if (textAreaWidth <= 0 || maxCaptionHeight < 1)
             throw new ArgumentException("Image is too small to add text.");
 
-        if (!SystemFonts.Families.Any())
-            throw new InvalidOperationException("No system fonts available.");
-
-        FontFamily fontFamily = SystemFonts.Families.First();
-
-        // Find the largest font size where text fits within the max caption height
-        float fontSize = imgWidth * 0.1f;
-        float minFontSize = Math.Max(10, imgWidth * 0.02f);
-        Font font;
-        FontRectangle measured;
+        float minFontSize = Math.Max(10, original.Width * 0.02f);
+        using SKFont font = SkiaImages.CreateFont(Math.Max(minFontSize, original.Width * 0.1f), SKFontStyle.Bold);
+        using SKShaper shaper = new(font.Typeface);
+        List<string> lines;
+        float textHeight;
         int captionHeight;
-
         while (true)
         {
-            font = fontFamily.CreateFont(fontSize, FontStyle.Bold);
-            TextOptions measureOptions = new(font)
-            {
-                WrappingLength = textAreaWidth,
-                Origin = new PointF(0, 0)
-            };
-            measured = TextMeasurer.MeasureSize(text, measureOptions);
-            captionHeight = (int)measured.Height + verticalPadding * 2;
-
-            if (captionHeight <= maxCaptionHeight || fontSize <= minFontSize)
+            lines = SkiaImages.WrapText(text, font, shaper, textAreaWidth);
+            textHeight = lines.Count * font.Spacing;
+            captionHeight = (int)Math.Ceiling(textHeight) + verticalPadding * 2;
+            if (captionHeight <= maxCaptionHeight || font.Size <= minFontSize)
                 break;
-
-            fontSize *= 0.9f;
+            font.Size = Math.Max(minFontSize, font.Size * 0.9f);
         }
-
         captionHeight = Math.Min(captionHeight, maxCaptionHeight);
 
-        // Create the final image: white caption bar + original image
-        int totalHeight = captionHeight + imgHeight;
-        using Image<Rgba32> result = new(imgWidth, totalHeight, Color.White);
-
-        // Draw wrapped text centered vertically in the caption area
-        float textX = horizontalPadding;
-        float textY = (captionHeight - measured.Height) / 2f;
-
-        RichTextOptions drawOptions = new(font)
+        using SKBitmap result = new(original.Width, original.Height + captionHeight);
+        using SKCanvas canvas = new(result);
+        canvas.Clear(SKColors.White);
+        canvas.Save();
+        canvas.ClipRect(new SKRect(0, 0, original.Width, captionHeight));
+        using SKPaint paint = new() { Color = SKColors.Black, IsAntialias = true };
+        float baseline = (captionHeight - textHeight) / 2f - font.Metrics.Ascent;
+        foreach (string line in lines)
         {
-            WrappingLength = textAreaWidth,
-            Origin = new PointF(textX, textY)
-        };
-
-        result.Mutate(ctx => ctx.DrawText(drawOptions, text, Color.Black));
-
-        // Draw the original image below the caption
-        result.Mutate(ctx => ctx.DrawImage(original, new Point(0, captionHeight), 1f));
-
-        using MemoryStream outputMs = new();
-        result.SaveAsPng(outputMs);
-        return outputMs.ToArray();
+            canvas.DrawShapedText(shaper, line, horizontalPadding, baseline, SKTextAlign.Left, font, paint);
+            baseline += font.Spacing;
+        }
+        canvas.Restore();
+        canvas.DrawBitmap(original, 0, captionHeight, new SKSamplingOptions(SKFilterMode.Nearest));
+        return SkiaImages.Encode(result);
     }
 }

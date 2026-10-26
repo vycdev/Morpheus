@@ -2,8 +2,30 @@
 
 ## Unreleased
 
+- Persist completed temporary unbans before processing another ban so cancellation cannot replay successful removals.
+- Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
+- Use a valid YouTube entry updated date when its published date is malformed.
+- Honor whitespace-padded `isPermaLink="false"` on RSS GUIDs so non-permalink IDs are not posted as links.
+- Migrate saved RSS 1.0 and Atom fallback IDs when publication dates identify one historical owner. Ambiguous or undated entries may repost after upgrading so newly published entries sharing an old URL are not silently skipped.
+- Prefer HTML alternate links over Atom/XML alternate links when posting Atom entries.
+- Keep RSS 1.0 entries from reposting when their link changes but their `rdf:about` identity stays the same.
+- Resolve YouTube channels from canonical links whose `rel` attribute includes other tokens.
+- Request enough Twitch stream results for every subscribed user in a polling batch, even when more than 20 are live.
+- Reject parenthesized and comma-terminated web links in quotes without accepting malformed ports.
+- Keep the New Year's Eve bot activity active until 02:00 on January 1 before switching to the New Year's Day activity.
+- Preserve RSS feed URLs containing commas in path segments when bulk-subscribing. Use `URL | Name`, whitespace, or a comma preceded by whitespace (`URL ,Name`) to attach a name to a comma-containing URL without ambiguity.
+- Read matching single- or double-quoted `.env` values without including their surrounding quotes.
+- Use a valid alternate RSS or Atom entry date when the preferred publication date is malformed.
+- Post RSS 2.0 item permalink GUIDs as links when the item has no link element.
+- Do not infer YouTube channel IDs from nested channel links inside unrelated channel URLs.
 - Require the guild's minimum level to submit quotes, defaulting to 5, with an Administrator bypass. Configure it with `setquoteminlevel`; set 0 to allow everyone.
-
+- Ignore repeated xkcd comic links in a feed so comics are not posted twice or recorded twice.
+- Use a feed entry's alternate date when its preferred Atom or RSS publication date is blank.
+- Use RSS 1.0 item `rdf:about` URLs when an item has no usable link, so those posts are not skipped.
+- Use the YouTube feed's updated date when an entry's published date is missing or blank.
+- Ignore malformed YouTube avatar thumbnail widths instead of discarding otherwise usable thumbnails.
+- Resolve YouTube channels from canonical page links rather than unrelated channel links elsewhere on the page.
+- Keep user and guild message-length averages smooth when an empty message precedes non-empty text.
 - Prefer usable RSS 2.0 and RSS 1.0 item links over extension links, retaining fallback URLs when the standard link is blank.
 - Preserve distinct case-sensitive YouTube channel IDs when bulk subscription URLs include subpaths such as `/videos`.
 - Prefer YouTube video links over feed metadata links when posting new uploads.

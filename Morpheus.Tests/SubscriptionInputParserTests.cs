@@ -97,6 +97,45 @@ public class SubscriptionInputParserTests
     }
 
     [Theory]
+    [InlineData("https://example.com/releases,stable/feed.xml?lang=en", null)]
+    [InlineData("https://example.com/releases,stable/feed.xml | Releases", "Releases")]
+    public void ParseRssSources_PreservesCommaInFeedPath(string input, string? expectedDisplayName)
+    {
+        SubscriptionInputParser.RssSource parsed = Assert.Single(SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal(expectedDisplayName is null
+            ? "https://example.com/releases,stable/feed.xml?lang=en"
+            : "https://example.com/releases,stable/feed.xml", parsed.Url);
+        Assert.Equal(expectedDisplayName, parsed.DisplayName);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/releases,stable/feed.xml ,Release feed", "Release feed")]
+    [InlineData("https://example.com/releases,stable/feed.xml ,Release/notes", "Release/notes")]
+    [InlineData("https://example.com/releases,stable/feed.xml Release, feed", "Release, feed")]
+    public void ParseRssSources_PreservesCommaPathWithDisplayName(string input, string expectedName)
+    {
+        SubscriptionInputParser.RssSource parsed = Assert.Single(SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal("https://example.com/releases,stable/feed.xml", parsed.Url);
+        Assert.Equal(expectedName, parsed.DisplayName);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/releases,stable/feed,latest.xml", null)]
+    [InlineData("https://example.com/releases,stable/feed,latest.xml Release feed", "Release feed")]
+    [InlineData("https://example.com/releases,stable/feed,latest.xml Release, feed", "Release, feed")]
+    [InlineData("https://example.com/releases,stable/feed,latest.xml | Release feed", "Release feed")]
+    [InlineData("https://example.com/releases,stable/feed,latest.xml ,Release feed", "Release feed")]
+    public void ParseRssSources_PreservesMultipleCommasInFeedPath(string input, string? expectedName)
+    {
+        SubscriptionInputParser.RssSource parsed = Assert.Single(SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal("https://example.com/releases,stable/feed,latest.xml", parsed.Url);
+        Assert.Equal(expectedName, parsed.DisplayName);
+    }
+
+    [Theory]
     [InlineData("https://example.com/feed.xml?tags=release,stable")]
     [InlineData("https://example.com/feed.xml?tags=release,stable Example feed")]
     public void ParseRssSources_PreservesQueryCommasInMultilineInput(string firstSource)

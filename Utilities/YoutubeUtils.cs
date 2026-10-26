@@ -22,6 +22,15 @@ public static partial class YoutubeUtils
     [GeneratedRegex("/channel/(UC[0-9A-Za-z_-]{22})(?=[/?#\"'\\s<>]|$)")]
     private static partial Regex ChannelIdInUrlRegex();
 
+    [GeneratedRegex(@"<link\b[^>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex LinkTagRegex();
+
+    [GeneratedRegex(@"(?<![\w-])rel\s*=\s*(?:""(?<value>[^""]*)""|'(?<value>[^']*)'|(?<value>[^\s/>]+))", RegexOptions.IgnoreCase)]
+    private static partial Regex RelAttributeRegex();
+
+    [GeneratedRegex(@"(?<![\w-])href\s*=\s*(?:""(?<url>[^""]+)""|'(?<url>[^']+)'|(?<url>[^\s>]+))", RegexOptions.IgnoreCase)]
+    private static partial Regex LinkHrefRegex();
+
     [GeneratedRegex("^[0-9A-Za-z_-]{11}$")]
     private static partial Regex VideoIdRegex();
 
@@ -51,7 +60,7 @@ public static partial class YoutubeUtils
             return null;
 
         Match urlMatch = ChannelIdInUrlRegex().Match(scrapeUri.AbsolutePath);
-        if (urlMatch.Success)
+        if (urlMatch.Success && urlMatch.Index == 0)
             return urlMatch.Groups[1].Value;
 
         try
@@ -70,10 +79,25 @@ public static partial class YoutubeUtils
             if (m.Success)
                 return m.Groups[1].Value;
 
-            // Fallback: canonical link tag often contains /channel/UC...
-            Match canonical = ChannelIdInUrlRegex().Match(html);
-            if (canonical.Success)
-                return canonical.Groups[1].Value;
+            // Only a canonical link for a YouTube channel identifies the page.
+            // Other channel links on the page may point to unrelated creators.
+            foreach (Match link in LinkTagRegex().Matches(html))
+            {
+                Match rel = RelAttributeRegex().Match(link.Value);
+                if (!rel.Success || !rel.Groups["value"].Value
+                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                        .Contains("canonical", StringComparer.OrdinalIgnoreCase))
+                    continue;
+
+                Match href = LinkHrefRegex().Match(link.Value);
+                if (!href.Success || !Uri.TryCreate(href.Groups["url"].Value, UriKind.Absolute, out Uri? uri) ||
+                    !IsYoutubeHost(uri.Host))
+                    continue;
+
+                Match canonical = ChannelIdInUrlRegex().Match(uri.AbsolutePath);
+                if (canonical.Success && canonical.Index == 0)
+                    return canonical.Groups[1].Value;
+            }
 
             return null;
         }
@@ -240,7 +264,8 @@ public static partial class YoutubeUtils
                     {
                         string? s = urlEl.GetString();
                         int w = 0;
-                        if (it.TryGetProperty("width", out JsonElement wEl) && wEl.TryGetInt32(out int wi)) w = wi;
+                        if (it.TryGetProperty("width", out JsonElement wEl) &&
+                            wEl.ValueKind == JsonValueKind.Number && wEl.TryGetInt32(out int wi)) w = wi;
                         if (w >= bestW && !string.IsNullOrWhiteSpace(s)) { bestW = w; best = s; }
                     }
                 }

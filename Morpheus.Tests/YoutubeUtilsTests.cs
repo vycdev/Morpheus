@@ -40,6 +40,31 @@ public class YoutubeUtilsTests
             YoutubeUtils.GetChannelAvatarAsync(httpClient, "UC123", cts.Token));
     }
 
+    [Fact]
+    public async Task GetChannelAvatarAsync_SkipsThumbnailWithMalformedWidth()
+    {
+        RecordingHandler handler = new(request => request.Method == HttpMethod.Get
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("\"INNERTUBE_API_KEY\":\"test\",\"INNERTUBE_CLIENT_VERSION\":\"1.0\"")
+            }
+            : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {"header":{"c4TabbedHeaderRenderer":{"avatar":{"thumbnails":[
+                        {"url":"https://example.com/broken.jpg","width":"invalid"},
+                        {"url":"https://example.com/valid.jpg","width":128}
+                    ]}}}}
+                    """)
+            });
+        using HttpClient httpClient = new(handler);
+
+        string? avatar = await YoutubeUtils.GetChannelAvatarAsync(httpClient, ChannelId);
+
+        Assert.Equal("https://example.com/valid.jpg", avatar);
+        Assert.Equal(2, handler.RequestedUris.Count);
+    }
+
     [Theory]
     [InlineData("https://www.youtube.com/@channel", "/@channel", "?cbrd=1&ucbcb=1")]
     [InlineData("youtube.com/user/channel", "/user/channel", "?cbrd=1&ucbcb=1")]
@@ -85,6 +110,18 @@ public class YoutubeUtilsTests
     }
 
     [Theory]
+    [InlineData("https://www.youtube.com/@someone/channel/UCabcdefghijklmnopqrstuv")]
+    [InlineData("https://www.youtube.com/user/someone/channel/UCabcdefghijklmnopqrstuv")]
+    public async Task ResolveChannelIdAsync_DoesNotInferIdsFromNestedChannelPaths(string input)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, input));
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Theory]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuvx")]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv_")]
     [InlineData("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv!junk")]
@@ -114,6 +151,87 @@ public class YoutubeUtilsTests
 
         Assert.Equal(ChannelId, result);
         Assert.Single(handler.RequestedUris);
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_IgnoresUnrelatedChannelLinksBeforeCanonicalLink()
+    {
+        const string unrelatedId = "UC1234567890123456789012";
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<a href=\"https://www.youtube.com/channel/{unrelatedId}\">Other channel</a>" +
+                $"<link rel=\"canonical\" href=\"https://www.youtube.com/channel/{ChannelId}\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_DoesNotInferChannelFromUnrelatedLink()
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<a href=\"https://www.youtube.com/channel/UC1234567890123456789012\">Other channel</a>")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Theory]
+    [InlineData("<link href='https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv' rel='canonical'>")]
+    [InlineData("<LINK REL=canonical HREF=\"https://m.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    public async Task ResolveChannelIdAsync_AcceptsCanonicalLinksWithDifferentAttributeOrder(string html)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Theory]
+    [InlineData("<link rel=\"alternate canonical\" href=\"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    [InlineData("<link href='https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv' rel='canonical alternate'>")]
+    public async Task ResolveChannelIdAsync_AcceptsCanonicalRelAmongOtherTokens(string html)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Theory]
+    [InlineData("<link rel=\"notcanonical\" href=\"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    [InlineData("<link rel=\"canonical-other\" href=\"https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv\">")]
+    public async Task ResolveChannelIdAsync_IgnoresNonCanonicalRelTokens(string html)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_IgnoresCanonicalLinkToDifferentHost()
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<link rel=\"canonical\" href=\"https://example.com/channel/UCabcdefghijklmnopqrstuv\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
     }
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler

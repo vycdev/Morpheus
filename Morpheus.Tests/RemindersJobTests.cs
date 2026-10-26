@@ -68,6 +68,76 @@ public class RemindersJobTests
     }
 
     [Fact]
+    public async Task ProcessDueRemindersAsync_WhenCanceledDuringFinalDelivery_PersistsRetryBeforeStopping()
+    {
+        Reminder reminder = new() { Id = 1, ChannelId = 42, Text = "Try again" };
+        DateTime now = new(2026, 9, 29, 8, 0, 0, DateTimeKind.Utc);
+        using CancellationTokenSource cancellation = new();
+        int saveCount = 0;
+        int persistedFailureCount = 0;
+        DateTime? persistedNextAttempt = null;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            RemindersJob.ProcessDueRemindersAsync(
+                [reminder],
+                async r =>
+                {
+                    bool shouldDelete = await RemindersJob.DeliverAsync(
+                        r,
+                        _ =>
+                        {
+                            cancellation.Cancel();
+                            return Task.FromException(new InvalidOperationException("Discord unavailable"));
+                        },
+                        _ => { },
+                        now);
+                    return shouldDelete;
+                },
+                _ => Assert.Fail("A failed delivery must stay queued"),
+                () =>
+                {
+                    saveCount++;
+                    persistedFailureCount = reminder.DeliveryFailureCount;
+                    persistedNextAttempt = reminder.NextDeliveryAttemptAt;
+                    return Task.CompletedTask;
+                },
+                cancellation.Token));
+
+        Assert.Equal(1, saveCount);
+        Assert.Equal(1, persistedFailureCount);
+        Assert.Equal(now.AddMinutes(1), persistedNextAttempt);
+    }
+
+    [Fact]
+    public async Task ProcessDueRemindersAsync_WhenLaterDeliveryThrows_PersistsCompletedDeliveries()
+    {
+        Reminder first = new() { Id = 1, ChannelId = 42, Text = "First" };
+        Reminder second = new() { Id = 2, ChannelId = 42, Text = "Second" };
+        List<int> removed = [];
+        List<int[]> savedRemovals = [];
+        InvalidOperationException error = new("Channel lookup failed");
+
+        InvalidOperationException caught = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RemindersJob.ProcessDueRemindersAsync(
+                [first, second],
+                reminder => reminder.Id == first.Id
+                    ? Task.FromResult(true)
+                    : Task.FromException<bool>(error),
+                reminder => removed.Add(reminder.Id),
+                () =>
+                {
+                    savedRemovals.Add([.. removed]);
+                    return Task.CompletedTask;
+                },
+                CancellationToken.None));
+
+        Assert.Same(error, caught);
+        Assert.Equal([first.Id], removed);
+        Assert.Single(savedRemovals);
+        Assert.Equal([first.Id], savedRemovals[0]);
+    }
+
+    [Fact]
     public void Job_DisallowsConcurrentDeliveryRuns()
     {
         Assert.True(typeof(RemindersJob).IsDefined(typeof(DisallowConcurrentExecutionAttribute), inherit: false));

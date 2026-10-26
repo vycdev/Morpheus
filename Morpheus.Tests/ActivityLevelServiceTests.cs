@@ -6,6 +6,18 @@ namespace Morpheus.Tests;
 public class ActivityLevelServiceTests
 {
     [Fact]
+    public void ApplyActivityToUserLevel_BlendsAfterInitialEmptyMessage()
+    {
+        UserLevels userLevel = new();
+        ActivityLevelService.ApplyActivityToUserLevel(userLevel, new UserActivity { MessageLength = 0 });
+        ActivityLevelService.ApplyActivityToUserLevel(userLevel, new UserActivity { MessageLength = 100 });
+
+        Assert.Equal(2, userLevel.UserMessageCount);
+        Assert.Equal(50, userLevel.UserAverageMessageLength);
+        Assert.Equal(100 * (2.0 / 501.0), userLevel.UserAverageMessageLengthEma, precision: 12);
+    }
+
+    [Fact]
     public void ApplyActivityToUserLevel_SaturatesProgressCounters()
     {
         UserLevels userLevel = new()

@@ -71,7 +71,20 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            bool shouldDelete = await deliverAsync(reminder);
+            bool shouldDelete;
+            try
+            {
+                shouldDelete = await deliverAsync(reminder);
+            }
+            catch
+            {
+                // A later delivery can fail before the final batch save. Persist
+                // earlier sends/removals so a retry does not send them twice.
+                if (hasProcessedReminders)
+                    await saveChangesAsync();
+                throw;
+            }
+
             if (shouldDelete)
                 remove(reminder);
             hasProcessedReminders = true;
