@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Upgrade ImageSharp to 4.1.3 and ImageSharp.Drawing to 3.1.3 to address the reported image-processing vulnerabilities. Release builds now require a Six Labors license; see CONTRIBUTING.md for local and Docker setup.
 - Persist completed temporary unbans before processing another ban so cancellation cannot replay successful removals.
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
 - Use a valid YouTube entry updated date when its published date is malformed.

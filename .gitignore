@@ -365,6 +365,9 @@ FodyWeavers.xsd
 # Environment file
 .env
 
+# Six Labors build license
+sixlabors.lic
+
 # Todo 
 .todo
 

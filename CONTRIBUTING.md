@@ -18,12 +18,33 @@ dotnet build
 
 - Requires .NET 10 SDK and a Python 3 interpreter on your PATH.
 - Optional: `dotnet-ef` tools if you will add migrations.
+- Install a system TTF font for image rendering and its tests. On Debian/Ubuntu,
+  use `sudo apt-get install fonts-dejavu-core`, matching the runtime container.
 
 Install dotnet-ef (if needed):
 
 ```powershell
 dotnet tool install --global dotnet-ef
 ```
+
+### Six Labors build license
+
+ImageSharp 4 and ImageSharp.Drawing 3 require a valid Six Labors license for
+Release builds. Eligible projects can apply for a free Community license at
+https://licensing.sixlabors.com/; see https://sixlabors.com/pricing/ for the
+current terms. An assembly-scoped license must cover `Morpheus`.
+
+Place `sixlabors.lic` at the repository root (it is ignored by Git), or provide an
+absolute path through the supported MSBuild property:
+
+```powershell
+dotnet build -c Release -p:SixLaborsLicenseFile=/absolute/path/sixlabors.lic
+dotnet test -c Release -p:SixLaborsLicenseFile=/absolute/path/sixlabors.lic
+```
+
+Debug builds and tests are supported without a license and emit a licensing
+warning. Release and publish validation require the license; a successful Debug
+build does not validate that deployment prerequisite.
 
 ## Publishing the Docker image
 
@@ -36,6 +57,17 @@ pwsh .\publish\publish.ps1
 ```
 
 Keep `publish/.env` untracked because it contains registry credentials. Publishing also requires PowerShell and a running Docker daemon.
+
+Publishing also requires the Six Labors license described above. The script uses
+`sixlabors.lic` from the repository root by default; set `SIXLABORS_LICENSE_FILE`
+in `publish/.env` to use another path (relative to the repository root or absolute).
+It passes the file as a BuildKit secret to the build and publish steps. The
+license is excluded from the Docker build context and is not copied into image
+layers. A direct Docker build uses the same secret:
+
+```powershell
+docker build --secret id=sixlabors_license,src=/absolute/path/sixlabors.lic -t morpheus .
+```
 
 ## Running the command list generator
 

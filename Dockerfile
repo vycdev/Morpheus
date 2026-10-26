@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
@@ -14,12 +15,16 @@ COPY ["Morpheus.csproj", "."]
 RUN dotnet restore "./Morpheus.csproj"
 COPY . .
 WORKDIR "/src/."
-RUN dotnet build "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN --mount=type=secret,id=sixlabors_license,target=/run/secrets/sixlabors.lic \
+    dotnet build "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/build \
+    -p:SixLaborsLicenseFile=/run/secrets/sixlabors.lic
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN --mount=type=secret,id=sixlabors_license,target=/run/secrets/sixlabors.lic \
+    dotnet publish "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false \
+    -p:SixLaborsLicenseFile=/run/secrets/sixlabors.lic
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final

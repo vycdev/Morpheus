@@ -22,7 +22,7 @@ public static class ActivityGraphGenerator
         int marginTop = 40;
         int marginBottom = 100;
 
-        using Image<Rgba32> image = new Image<Rgba32>(width, height, Color.White);
+        using Image<Rgba32> image = new Image<Rgba32>(width, height, Color.White.ToPixel<Rgba32>());
 
         // drawing area
         int plotWidth = width - marginLeft - marginRight;
@@ -51,28 +51,29 @@ public static class ActivityGraphGenerator
         int niceMax = (int)Math.Max(1, Math.Ceiling(niceStep * yTicks));
         globalMax = niceMax;
 
-        image.Mutate(ctx =>
+        image.Mutate(ctx => ctx.Paint(canvas =>
         {
             // background
-            ctx.Fill(Color.White);
+            canvas.Fill(Brushes.Solid(Color.White));
 
             // draw axes (simple thin rectangles)
-            ctx.Fill(Color.LightGray, new RectangleF(originX - 1, marginTop, 1, plotHeight));
-            ctx.Fill(Color.LightGray, new RectangleF(originX, originY - 1, plotWidth, 1));
+            canvas.Fill(Brushes.Solid(Color.LightGray), new PathBuilder().AddRectangle(originX - 1, marginTop, 1, plotHeight));
+            canvas.Fill(Brushes.Solid(Color.LightGray), new PathBuilder().AddRectangle(originX, originY - 1, plotWidth, 1));
 
             // horizontal grid and y labels
             for (int i = 0; i <= yTicks; i++)
             {
                 float t = i / (float)yTicks;
                 float y = marginTop + t * plotHeight;
-                ctx.Fill(Color.LightGray, new RectangleF(originX, y - 0.5f, plotWidth, 1));
+                canvas.Fill(Brushes.Solid(Color.LightGray), new PathBuilder().AddRectangle(originX, y - 0.5f, plotWidth, 1));
 
                 int labelVal = (int)Math.Round((yTicks - i) * niceStep);
                 string lbl = labelVal.ToString();
                 // approximate text size
                 var approxWidth = lbl.Length * font.Size * 0.6f;
                 var approxHeight = font.Size;
-                ctx.DrawText(lbl, font, Color.Black, new PointF(originX - 10 - approxWidth, y - approxHeight / 2));
+                canvas.DrawText(new RichTextOptions(font) { Origin = new PointF(originX - 10 - approxWidth, y - approxHeight / 2) },
+                    lbl, Brushes.Solid(Color.Black), null);
             }
 
             // x labels: show day ticks evenly
@@ -85,11 +86,11 @@ public static class ActivityGraphGenerator
                 DateTime dt = baseStart.AddDays(d);
                 string lbl = dt.ToString("yyyy-MM-dd");
                 var origin = new PointF(x, originY + 45);
-                ctx.SetDrawingTransform(Matrix3x2.CreateRotation(-0.6f, origin));
-                ctx.DrawText(lbl, font, Color.Black, origin);
-                ctx.SetDrawingTransform(Matrix3x2.Identity);
+                canvas.Save(new DrawingOptions { Transform = new Matrix4x4(Matrix3x2.CreateRotation(-0.6f, origin)) });
+                canvas.DrawText(new RichTextOptions(font) { Origin = origin }, lbl, Brushes.Solid(Color.Black), null);
+                canvas.Restore();
             }
-        });
+        }));
 
         // color palette (distinct colors)
         List<Color> palette = new()
@@ -131,12 +132,12 @@ public static class ActivityGraphGenerator
 
             var color = palette[idx % palette.Count];
             // draw points and connecting segments by sampling (avoid DrawLines API differences)
-            image.Mutate(ctx =>
+            image.Mutate(ctx => ctx.Paint(canvas =>
             {
                 for (int i = 0; i < points.Length; i++)
                 {
                     var p = points[i];
-                    ctx.Fill(color, new EllipsePolygon(p.X, p.Y, 3));
+                    canvas.Fill(Brushes.Solid(color), new EllipsePolygon(p.X, p.Y, 3));
                     if (i > 0)
                     {
                         var p0 = points[i - 1];
@@ -150,32 +151,34 @@ public static class ActivityGraphGenerator
                             float t = s / (float)steps;
                             float sx = p0.X + dx * t;
                             float sy = p0.Y + dy * t;
-                            ctx.Fill(color, new EllipsePolygon(sx, sy, 1.5f));
+                            canvas.Fill(Brushes.Solid(color), new EllipsePolygon(sx, sy, 1.5f));
                         }
                     }
                 }
-            });
+            }));
 
             // legend
             float legendX = width - marginRight + 10;
             float legendY = marginTop + idx * 22;
             var legendFont = font;
-            image.Mutate(ctx =>
+            image.Mutate(ctx => ctx.Paint(canvas =>
             {
-                ctx.Fill(color, new RectangleF(legendX, legendY + 4, 12, 12));
-                ctx.DrawText(label, legendFont, Color.Black, new PointF(legendX + 18, legendY));
-            });
+                canvas.Fill(Brushes.Solid(color), new PathBuilder().AddRectangle(legendX, legendY + 4, 12, 12));
+                canvas.DrawText(new RichTextOptions(legendFont) { Origin = new PointF(legendX + 18, legendY) },
+                    label, Brushes.Solid(Color.Black), null);
+            }));
 
             idx++;
             if (idx >= 10) break; // top 10
         }
 
         // footer
-        image.Mutate(ctx =>
+        image.Mutate(ctx => ctx.Paint(canvas =>
         {
             Font f = GetFont(10);
-            ctx.DrawText($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", f, Color.Gray, new PointF(8, height - marginBottom + 70));
-        });
+            canvas.DrawText(new RichTextOptions(f) { Origin = new PointF(8, height - marginBottom + 70) },
+                $"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", Brushes.Solid(Color.Gray), null);
+        }));
 
         using MemoryStream ms = new();
         image.SaveAsPng(ms);

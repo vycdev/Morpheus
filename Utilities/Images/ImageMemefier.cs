@@ -48,7 +48,7 @@ public static class ImageMemefier
                 WrappingLength = textAreaWidth,
                 Origin = new PointF(0, 0)
             };
-            measured = TextMeasurer.MeasureSize(text, measureOptions);
+            measured = TextMeasurer.MeasureRenderableBounds(text, measureOptions);
             captionHeight = (int)measured.Height + verticalPadding * 2;
 
             if (captionHeight <= maxCaptionHeight || fontSize <= minFontSize)
@@ -61,7 +61,7 @@ public static class ImageMemefier
 
         // Create the final image: white caption bar + original image
         int totalHeight = captionHeight + imgHeight;
-        using Image<Rgba32> result = new(imgWidth, totalHeight, Color.White);
+        using Image<Rgba32> result = new(imgWidth, totalHeight, Color.White.ToPixel<Rgba32>());
 
         // Draw wrapped text centered vertically in the caption area
         float textX = horizontalPadding;
@@ -73,7 +73,7 @@ public static class ImageMemefier
             Origin = new PointF(textX, textY)
         };
 
-        result.Mutate(ctx => ctx.DrawText(drawOptions, text, Color.Black));
+        result.Mutate(ctx => ctx.Paint(canvas => canvas.DrawText(drawOptions, text, Brushes.Solid(Color.Black), null)));
 
         // Draw the original image below the caption
         result.Mutate(ctx => ctx.DrawImage(original, new Point(0, captionHeight), 1f));

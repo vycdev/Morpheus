@@ -1,6 +1,7 @@
 **/.classpath
 **/.dockerignore
 **/.env
+**/sixlabors.lic
 **/.git
 **/.gitignore
 **/.project

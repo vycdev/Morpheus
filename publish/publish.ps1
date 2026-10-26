@@ -27,7 +27,8 @@ function Publish-DockerImage {
         [string]$ImageName,
         [string]$Tag,
         [string]$ContextPath,
-        [string]$DockerfilePath
+        [string]$DockerfilePath,
+        [string]$LicenseFile
     )
 
     $localImage = "$($ImageName):$($Tag)"
@@ -35,7 +36,7 @@ function Publish-DockerImage {
 
     echo ""
     echo "Building image: $localImage"
-    docker build -f $DockerfilePath -t $localImage $ContextPath
+    docker build --secret "id=sixlabors_license,src=$LicenseFile" -f $DockerfilePath -t $localImage $ContextPath
     Assert-DockerSucceeded "Docker build for $ImageName"
 
     echo "Tagging image: $registryImage"
@@ -69,6 +70,19 @@ $imageName = Get-RequiredValue "IMAGE_NAME" $IMAGE_NAME
 $tag = Get-RequiredValue "IMAGE_TAG" $IMAGE_TAG
 $dockerfile = Join-Path $repoRoot "Dockerfile"
 
+# The license is mounted only for compilation, never copied into an image layer.
+$licenseFile = $SIXLABORS_LICENSE_FILE
+if ([string]::IsNullOrWhiteSpace($licenseFile)) {
+    $licenseFile = Join-Path $repoRoot "sixlabors.lic"
+}
+elseif (-not [System.IO.Path]::IsPathRooted($licenseFile)) {
+    $licenseFile = Join-Path $repoRoot $licenseFile
+}
+if (-not (Test-Path -LiteralPath $licenseFile -PathType Leaf)) {
+    throw "Missing Six Labors license. Add sixlabors.lic at the repository root or set SIXLABORS_LICENSE_FILE in publish/.env."
+}
+$licenseFile = (Resolve-Path -LiteralPath $licenseFile).Path
+
 # Echo variables
 echo "Registry: $($registry)"
 echo "Username: $($username)"
@@ -85,4 +99,5 @@ Publish-DockerImage `
     -ImageName $imageName `
     -Tag $tag `
     -ContextPath $repoRoot `
-    -DockerfilePath $dockerfile
+    -DockerfilePath $dockerfile `
+    -LicenseFile $licenseFile

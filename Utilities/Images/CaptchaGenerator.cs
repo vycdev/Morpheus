@@ -2,6 +2,7 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Drawing;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.Fonts;
 
@@ -23,7 +24,7 @@ public class CaptchaGenerator
 
     private readonly string _charSet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     private readonly string[] _fontFamilies = new[] { "Arial", "Verdana", "Times New Roman", "Courier New", "Tahoma", "Georgia", "Comic Sans MS" };
-    private readonly Color[] _backgroundColors = new[] { Color.WhiteSmoke, Color.LightGray, Color.FromRgb(240, 240, 240), Color.AliceBlue, Color.Lavender };
+    private readonly Color[] _backgroundColors = new[] { Color.WhiteSmoke, Color.LightGray, Color.FromPixel(new Rgb24(240, 240, 240)), Color.AliceBlue, Color.Lavender };
 
     private readonly FontCollection _fontCollection = new();
     private readonly FontFamily _defaultFamily;
@@ -47,7 +48,7 @@ public class CaptchaGenerator
     {
         string captchaText = GenerateRandomText();
 
-        using Image<Rgba32> image = new(_width, _height, _backgroundColors[_random.Next(_backgroundColors.Length)]);
+        using Image<Rgba32> image = new(_width, _height, _backgroundColors[_random.Next(_backgroundColors.Length)].ToPixel<Rgba32>());
 
         string drawn = DrawText(image, captchaText);
         AddDistortionAndNoise(image);
@@ -73,8 +74,9 @@ public class CaptchaGenerator
         {
             char ch = text[i];
             string familyName = _fontFamilies[_random.Next(_fontFamilies.Length)];
-            FontFamily? family = SystemFonts.Families.FirstOrDefault(f => string.Equals(f.Name, familyName, StringComparison.OrdinalIgnoreCase));
-            FontFamily resolvedFamily = family ?? _defaultFamily;
+            FontFamily resolvedFamily = SystemFonts.TryGet(familyName, out FontFamily family)
+                ? family
+                : _defaultFamily;
 
             int fontSize = _random.Next(Math.Max(16, _height / 3), Math.Min(_height * 2 / 3, _height - 10));
             if (fontSize <= 0) fontSize = 16;
@@ -96,8 +98,10 @@ public class CaptchaGenerator
             float top = (float)(_random.NextDouble() * (maxTop - 5f) + 5f);
 
             var rndCol = GetRandomDarkRgba();
-            var textColor = Color.FromRgba(rndCol.R, rndCol.G, rndCol.B, rndCol.A);
-            image.Mutate(ctx => ctx.DrawText(ch.ToString(), font, textColor, new PointF(currentX, top)));
+            var textColor = Color.FromPixel(rndCol);
+            image.Mutate(ctx => ctx.Paint(canvas => canvas.DrawText(
+                new RichTextOptions(font) { Origin = new PointF(currentX, top) },
+                ch.ToString(), Brushes.Solid(textColor), null)));
 
             currentX += approxWidth * (0.9f + (float)_random.NextDouble() * 0.25f);
             currentX += _random.Next(1, Math.Max(2, _height / 20));
@@ -130,7 +134,8 @@ public class CaptchaGenerator
                 var c = GetRandomDarkRgba(150);
                 // Draw a small filled rectangle as a dot
                 float size = Math.Max(1, _height / 120);
-                image.Mutate(ctx => ctx.Fill(Color.FromRgba(c.R, c.G, c.B, c.A), new SixLabors.ImageSharp.Drawing.RectangularPolygon(bx - size / 2, by - size / 2, size, size)));
+                image.Mutate(ctx => ctx.Paint(canvas => canvas.Fill(Brushes.Solid(Color.FromPixel(c)),
+                    new PathBuilder().AddRectangle(bx - size / 2, by - size / 2, size, size))));
             }
         }
 
@@ -148,7 +153,8 @@ public class CaptchaGenerator
                 float lx = p1.X + (p2.X - p1.X) * t;
                 float ly = p1.Y + (p2.Y - p1.Y) * t;
                 var c = GetRandomGrayRgba(180);
-                image.Mutate(ctx => ctx.Fill(Color.FromRgba(c.R, c.G, c.B, c.A), new SixLabors.ImageSharp.Drawing.RectangularPolygon(lx - 0.5f, ly - 0.5f, 1, 1)));
+                image.Mutate(ctx => ctx.Paint(canvas => canvas.Fill(Brushes.Solid(Color.FromPixel(c)),
+                    new PathBuilder().AddRectangle(lx - 0.5f, ly - 0.5f, 1, 1))));
             }
         }
 

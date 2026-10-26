@@ -40,9 +40,9 @@ public static class ImageDeepFryer
     [
         Color.White, Color.Yellow, Color.Cyan, Color.Magenta, Color.Lime,
         Color.Gold, Color.GreenYellow, Color.Aqua, Color.Chartreuse,
-        Color.FromRgb(255, 255, 100), Color.FromRgb(255, 100, 255),
-        Color.FromRgb(100, 255, 255), Color.FromRgb(255, 200, 50),
-        Color.FromRgb(200, 255, 50), Color.FromRgb(255, 150, 200)
+        Color.FromPixel(new Rgb24(255, 255, 100)), Color.FromPixel(new Rgb24(255, 100, 255)),
+        Color.FromPixel(new Rgb24(100, 255, 255)), Color.FromPixel(new Rgb24(255, 200, 50)),
+        Color.FromPixel(new Rgb24(200, 255, 50)), Color.FromPixel(new Rgb24(255, 150, 200))
     ];
 
     /// <summary>
@@ -393,12 +393,11 @@ public static class ImageDeepFryer
         int tempH = (int)(fontSize * 1.8f) + 20;
         if (tempW <= 0 || tempH <= 0) return;
 
-        using Image<Rgba32> textImage = new(tempW, tempH, Color.Transparent);
-        textImage.Mutate(ctx => ctx.DrawText(
-            text, font,
+        using Image<Rgba32> textImage = new(tempW, tempH, Color.Transparent.ToPixel<Rgba32>());
+        textImage.Mutate(ctx => ctx.Paint(canvas => canvas.DrawText(
+            new RichTextOptions(font) { Origin = new PointF(5, 5) }, text,
             Brushes.Solid(color),
-            Pens.Solid(Color.Black, outlineWidth),
-            new PointF(5, 5)));
+            Pens.Solid(Color.Black, outlineWidth))));
 
         // Boost brightness so text/emoji survives the deepfry darkening
         textImage.Mutate(ctx => ctx.Brightness(1.5f).Contrast(1.5f));
