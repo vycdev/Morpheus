@@ -18,6 +18,8 @@ dotnet build
 
 - Requires .NET 10 SDK and a Python 3 interpreter on your PATH.
 - Optional: `dotnet-ef` tools if you will add migrations.
+- Image rendering uses SkiaSharp. On Debian/Ubuntu hosts, install `libfontconfig1` and `fonts-dejavu-core` before running image tests or the bot. The Dockerfile installs these packages, and NuGet supplies the native Skia library. No activation key or vendor account is required.
+- Image commands accept PNG, JPEG, WebP, GIF, BMP, and ICO inputs supported by Skia. TIFF is no longer supported. Transformations render the first frame of animated inputs; images that need no downscaling pass through unchanged. Rendering and font metrics can differ from earlier releases.
 
 Install dotnet-ef (if needed):
 

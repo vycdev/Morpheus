@@ -1,6 +1,5 @@
 using Morpheus.Utilities.Images;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace Morpheus.Tests;
 
@@ -12,11 +11,11 @@ public class ImageResizerTests
     public void DownscaleIfTooLarge_PassesThroughImagesWithinDimensionLimit(int width, int height)
     {
         byte[] input;
-        using (Image<Rgba32> image = new(width, height, new Rgba32(255, 0, 0)))
-        using (MemoryStream stream = new())
+        using (SKBitmap image = new(width, height))
         {
-            image.SaveAsJpeg(stream);
-            input = stream.ToArray();
+            image.Erase(SKColors.Red);
+            using SKData data = image.Encode(SKEncodedImageFormat.Jpeg, 90);
+            input = data.ToArray();
         }
 
         byte[] output = ImageResizer.DownscaleIfTooLarge(input);
@@ -35,16 +34,16 @@ public class ImageResizerTests
         int expectedHeight)
     {
         byte[] input;
-        using (Image<Rgba32> image = new(width, height, new Rgba32(255, 0, 0)))
-        using (MemoryStream stream = new())
+        using (SKBitmap image = new(width, height))
         {
-            image.SaveAsPng(stream);
-            input = stream.ToArray();
+            image.Erase(SKColors.Red);
+            using SKData data = image.Encode(SKEncodedImageFormat.Png, 90);
+            input = data.ToArray();
         }
 
         byte[] output = ImageResizer.DownscaleIfTooLarge(input);
 
-        using Image<Rgba32> resized = Image.Load<Rgba32>(output);
+        using SKBitmap resized = SKBitmap.Decode(output);
         Assert.Equal(expectedWidth, resized.Width);
         Assert.Equal(expectedHeight, resized.Height);
     }

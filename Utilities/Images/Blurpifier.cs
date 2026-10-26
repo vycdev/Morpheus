@@ -1,6 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace Morpheus.Utilities.Images;
 
@@ -17,27 +15,12 @@ public static class Blurpifier
         if (maxOffset < 0) maxOffset = 0;
         seed = seed == 0 ? Environment.TickCount : seed;
 
-        using var inStream = new MemoryStream(inputImage);
-        using Image<Rgba32> src = Image.Load<Rgba32>(inStream);
+        using SKBitmap src = SkiaImages.Decode(inputImage);
         int w = src.Width, h = src.Height;
-
-        // Pixelate: downscale then upscale
-        int w2 = Math.Max(1, w / pixelScale);
-        int h2 = Math.Max(1, h / pixelScale);
-
-        using Image<Rgba32> small = src.Clone(ctx => ctx.Resize(new ResizeOptions
-        {
-            Size = new SixLabors.ImageSharp.Size(w2, h2),
-            Mode = ResizeMode.Stretch,
-            Sampler = KnownResamplers.Bicubic
-        }));
-
-        using Image<Rgba32> pixelated = small.Clone(ctx => ctx.Resize(new ResizeOptions
-        {
-            Size = new SixLabors.ImageSharp.Size(w, h),
-            Mode = ResizeMode.Stretch,
-            Sampler = KnownResamplers.NearestNeighbor
-        }));
+        using SKBitmap small = SkiaImages.Resize(src, Math.Max(1, w / pixelScale), Math.Max(1, h / pixelScale));
+        using SKBitmap pixelated = SkiaImages.Resize(small, w, h, nearest: true);
+        SKColor[] pixels = pixelated.Pixels;
+        SKColor[] output = new SKColor[w * h];
 
         // Build displacement
         double[] offX = new double[w * h];
@@ -70,10 +53,10 @@ public static class Blurpifier
             offX = nx; offY = ny;
         }
 
-        using Image<Rgba32> dest = new(w, h);
+        using SKBitmap dest = new(w, h);
 
         // Sample function with bilinear interpolation
-        Rgba32 Sample(double fx, double fy)
+        SKColor Sample(double fx, double fy)
         {
             if (fx <= 0) fx = 0; if (fy <= 0) fy = 0; if (fx >= w - 1) fx = w - 1; if (fy >= h - 1) fy = h - 1;
             int x0 = (int)Math.Floor(fx);
@@ -83,28 +66,28 @@ public static class Blurpifier
             float dx = (float)(fx - x0);
             float dy = (float)(fy - y0);
 
-            Rgba32 c00 = pixelated[x0, y0];
-            Rgba32 c10 = pixelated[x1, y0];
-            Rgba32 c01 = pixelated[x0, y1];
-            Rgba32 c11 = pixelated[x1, y1];
+            SKColor c00 = pixels[y0 * w + x0];
+            SKColor c10 = pixels[y0 * w + x1];
+            SKColor c01 = pixels[y1 * w + x0];
+            SKColor c11 = pixels[y1 * w + x1];
 
             // Linear blends
-            float r0 = c00.R + (c10.R - c00.R) * dx;
-            float g0 = c00.G + (c10.G - c00.G) * dx;
-            float b0 = c00.B + (c10.B - c00.B) * dx;
-            float a0 = c00.A + (c10.A - c00.A) * dx;
+            float r0 = c00.Red + (c10.Red - c00.Red) * dx;
+            float g0 = c00.Green + (c10.Green - c00.Green) * dx;
+            float b0 = c00.Blue + (c10.Blue - c00.Blue) * dx;
+            float a0 = c00.Alpha + (c10.Alpha - c00.Alpha) * dx;
 
-            float r1 = c01.R + (c11.R - c01.R) * dx;
-            float g1 = c01.G + (c11.G - c01.G) * dx;
-            float b1 = c01.B + (c11.B - c01.B) * dx;
-            float a1 = c01.A + (c11.A - c01.A) * dx;
+            float r1 = c01.Red + (c11.Red - c01.Red) * dx;
+            float g1 = c01.Green + (c11.Green - c01.Green) * dx;
+            float b1 = c01.Blue + (c11.Blue - c01.Blue) * dx;
+            float a1 = c01.Alpha + (c11.Alpha - c01.Alpha) * dx;
 
             byte r = (byte)Math.Clamp(r0 + (r1 - r0) * dy, 0, 255);
             byte g = (byte)Math.Clamp(g0 + (g1 - g0) * dy, 0, 255);
             byte b = (byte)Math.Clamp(b0 + (b1 - b0) * dy, 0, 255);
             byte a = (byte)Math.Clamp(a0 + (a1 - a0) * dy, 0, 255);
 
-            return new Rgba32(r, g, b, a);
+            return new SKColor(r, g, b, a);
         }
 
         for (int y = 0; y < h; y++)
@@ -115,12 +98,11 @@ public static class Blurpifier
                 int idx = row + x;
                 double sx = x + offX[idx];
                 double sy = y + offY[idx];
-                dest[x, y] = Sample(sx, sy);
+                output[idx] = Sample(sx, sy);
             }
         }
 
-        using var outStream = new MemoryStream();
-        dest.SaveAsPng(outStream);
-        return outStream.ToArray();
+        dest.Pixels = output;
+        return SkiaImages.Encode(dest);
     }
 }
