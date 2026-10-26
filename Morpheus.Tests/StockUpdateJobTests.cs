@@ -61,6 +61,43 @@ public class StockUpdateJobTests
     }
 
     [Fact]
+    public async Task Execute_DoesNotUpdateStockUntilItsScheduledUtcMinute()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using DB db = new(options);
+        await db.Database.EnsureCreatedAsync();
+
+        DateTime scheduled = new(2026, 10, 23, 8, 0, 0, DateTimeKind.Utc);
+        DateTime lastUpdated = scheduled.Date.AddDays(-1);
+        Stock stock = new()
+        {
+            EntityType = StockEntityType.User,
+            EntityId = 1001,
+            UpdateTimeMinutes = 8 * 60,
+            LastUpdatedDate = lastUpdated
+        };
+        db.Stocks.Add(stock);
+        await db.SaveChangesAsync();
+
+        LogsService logsService = new(new LogQueue());
+        StockUpdateJob job = new(logsService, db,
+            new StocksService(db, logsService, new EconomyService(db, logsService)));
+        IJobExecutionContext context = CreateContext(CancellationToken.None);
+
+        await job.ExecuteAtAsync(context, scheduled.AddSeconds(-1));
+        db.ChangeTracker.Clear();
+        Assert.Equal(lastUpdated, (await db.Stocks.SingleAsync(s => s.Id == stock.Id)).LastUpdatedDate);
+
+        await job.ExecuteAtAsync(context, scheduled);
+        db.ChangeTracker.Clear();
+        Assert.Equal(scheduled, (await db.Stocks.SingleAsync(s => s.Id == stock.Id)).LastUpdatedDate);
+    }
+
+    [Fact]
     public async Task Execute_WhenSchedulerCancels_PropagatesCancellation()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
