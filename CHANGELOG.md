@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Persist completed temporary unbans before processing another ban so cancellation cannot replay successful removals.
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
 - Use a valid YouTube entry updated date when its published date is malformed.
 - Honor whitespace-padded `isPermaLink="false"` on RSS GUIDs so non-permalink IDs are not posted as links.
