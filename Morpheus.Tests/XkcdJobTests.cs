@@ -86,6 +86,27 @@ public class XkcdJobTests
     }
 
     [Fact]
+    public async Task FetchItemsAsync_IgnoresMissingAndBlankLinks()
+    {
+        const string feed = """
+            <rss version="2.0">
+              <channel>
+                <item><title>Missing link</title></item>
+                <item><title>Blank link</title><link>  </link></item>
+                <item><title>Valid comic</title><link>https://xkcd.com/1234/</link></item>
+              </channel>
+            </rss>
+            """;
+        using HttpClient httpClient = new(new StaticResponseHandler(feed));
+
+        List<XkcdJob.XkcdItem> items = await XkcdJob.FetchItemsAsync(httpClient, CancellationToken.None);
+
+        XkcdJob.XkcdItem item = Assert.Single(items);
+        Assert.Equal("Valid comic", item.Title);
+        Assert.Equal("https://xkcd.com/1234/", item.Link);
+    }
+
+    [Fact]
     public async Task FetchItemsAsync_WhenCallerCancels_PropagatesCancellation()
     {
         using HttpClient httpClient = new();
