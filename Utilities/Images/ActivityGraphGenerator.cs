@@ -1,249 +1,84 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.Drawing;
-using SixLabors.Fonts;
-using System.Numerics;
+using SkiaSharp;
+using SkiaSharp.HarfBuzz;
 
 namespace Morpheus.Utilities.Images;
 
-// Simple activity graph generator: renders a small line chart for multiple series.
 public static class ActivityGraphGenerator
 {
-    // Returns PNG bytes. series: dictionary of "label" -> list of daily values (oldest -> newest)
+    // Returns PNG bytes. Values run from oldest to newest; missing days are zero-filled.
     public static byte[] GenerateLineChart(Dictionary<string, List<int>> series, int days, int width = 1000, int height = 520, DateTime? start = null)
     {
         if (series == null || series.Count == 0) throw new ArgumentException("No series provided.");
         if (days <= 0) throw new ArgumentOutOfRangeException(nameof(days));
+        const int marginLeft = 80, marginRight = 160, marginTop = 40, marginBottom = 100;
+        if (width <= marginLeft + marginRight) throw new ArgumentOutOfRangeException(nameof(width));
+        if (height <= marginTop + marginBottom) throw new ArgumentOutOfRangeException(nameof(height));
 
-        int marginLeft = 80;
-        int marginRight = 160;
-        int marginTop = 40;
-        int marginBottom = 100;
-
-        using Image<Rgba32> image = new Image<Rgba32>(width, height, Color.White);
-
-        // drawing area
+        using SKBitmap image = new(width, height);
+        using SKCanvas canvas = new(image);
+        canvas.Clear(SKColors.White);
+        using SKFont font = SkiaImages.CreateFont(12);
+        using SKShaper shaper = new(font.Typeface);
+        using SKPaint ink = new() { Color = SKColors.Black, IsAntialias = true };
+        using SKPaint grid = new() { Color = SKColors.LightGray, StrokeWidth = 1 };
         int plotWidth = width - marginLeft - marginRight;
         int plotHeight = height - marginTop - marginBottom;
-        int originX = marginLeft;
-        int originY = marginTop + plotHeight; // bottom-left of plotting area
+        int originY = marginTop + plotHeight;
+        const int yTicks = 6;
+        int maxValue = Math.Max(1, series.Values.SelectMany(v => v).DefaultIfEmpty(0).Max());
+        double niceStep = NiceStep(Math.Ceiling(maxValue * 1.1) / yTicks);
+        double globalMax = Math.Max(1, niceStep * yTicks);
 
-        // Flatten values to find max
-        int globalMax = 1;
-        foreach (var kv in series)
+        canvas.DrawLine(marginLeft, marginTop, marginLeft, originY, grid);
+        for (int i = 0; i <= yTicks; i++)
         {
-            int max = kv.Value.DefaultIfEmpty(0).Max();
-            if (max > globalMax) globalMax = max;
+            float y = marginTop + i / (float)yTicks * plotHeight;
+            canvas.DrawLine(marginLeft, y, marginLeft + plotWidth, y, grid);
+            string label = Math.Round((yTicks - i) * niceStep).ToString();
+            canvas.DrawText(label, marginLeft - 10, y - (font.Metrics.Ascent + font.Metrics.Descent) / 2,
+                SKTextAlign.Right, font, ink);
         }
 
-        // Padding top
-        globalMax = (int)Math.Ceiling(globalMax * 1.1);
-        if (globalMax <= 0) globalMax = 1;
-
-        // grid lines and labels
-        int yTicks = 6;
-        Font font = GetFont(12);
-
-        double rawStep = globalMax / (double)yTicks;
-        double niceStep = NiceStep(rawStep);
-        int niceMax = (int)Math.Max(1, Math.Ceiling(niceStep * yTicks));
-        globalMax = niceMax;
-
-        image.Mutate(ctx =>
+        DateTime baseStart = (start ?? DateTime.UtcNow.Date.AddDays(-(days - 1))).Date;
+        int denominator = Math.Max(1, days - 1);
+        for (int day = 0; day < days; day += Math.Max(1, days / 8))
         {
-            // background
-            ctx.Fill(Color.White);
+            float x = marginLeft + day / (float)denominator * plotWidth;
+            canvas.Save();
+            canvas.RotateDegrees(-0.6f * 180 / MathF.PI, x, originY + 45);
+            canvas.DrawText(baseStart.AddDays(day).ToString("yyyy-MM-dd"), x, originY + 45 - font.Metrics.Ascent, SKTextAlign.Left, font, ink);
+            canvas.Restore();
+        }
 
-            // draw axes (simple thin rectangles)
-            ctx.Fill(Color.LightGray, new RectangleF(originX - 1, marginTop, 1, plotHeight));
-            ctx.Fill(Color.LightGray, new RectangleF(originX, originY - 1, plotWidth, 1));
-
-            // horizontal grid and y labels
-            for (int i = 0; i <= yTicks; i++)
-            {
-                float t = i / (float)yTicks;
-                float y = marginTop + t * plotHeight;
-                ctx.Fill(Color.LightGray, new RectangleF(originX, y - 0.5f, plotWidth, 1));
-
-                int labelVal = (int)Math.Round((yTicks - i) * niceStep);
-                string lbl = labelVal.ToString();
-                // approximate text size
-                var approxWidth = lbl.Length * font.Size * 0.6f;
-                var approxHeight = font.Size;
-                ctx.DrawText(lbl, font, Color.Black, new PointF(originX - 10 - approxWidth, y - approxHeight / 2));
-            }
-
-            // x labels: show day ticks evenly
-            DateTime baseStart = (start ?? DateTime.UtcNow.Date.AddDays(-(days - 1))).Date;
-            int xStep = Math.Max(1, days / 8);
-            int denom = Math.Max(1, days - 1);
-            for (int d = 0; d < days; d += xStep)
-            {
-                float x = originX + (d / (float)denom) * plotWidth;
-                DateTime dt = baseStart.AddDays(d);
-                string lbl = dt.ToString("yyyy-MM-dd");
-                var origin = new PointF(x, originY + 45);
-                ctx.SetDrawingTransform(Matrix3x2.CreateRotation(-0.6f, origin));
-                ctx.DrawText(lbl, font, Color.Black, origin);
-                ctx.SetDrawingTransform(Matrix3x2.Identity);
-            }
-        });
-
-        // color palette (distinct colors)
-        List<Color> palette = new()
+        SKColor[] palette = [
+            SKColor.Parse("#1f77b4"), SKColor.Parse("#ff7f0e"), SKColor.Parse("#2ca02c"),
+            SKColor.Parse("#d62728"), SKColor.Parse("#9467bd"), SKColor.Parse("#8c564b"),
+            SKColor.Parse("#e377c2"), SKColor.Parse("#7f7f7f"), SKColor.Parse("#bcbd22"), SKColor.Parse("#17becf")
+        ];
+        int index = 0;
+        foreach (var (label, values) in series.Take(10))
         {
-            Color.ParseHex("#1f77b4"),
-            Color.ParseHex("#ff7f0e"),
-            Color.ParseHex("#2ca02c"),
-            Color.ParseHex("#d62728"),
-            Color.ParseHex("#9467bd"),
-            Color.ParseHex("#8c564b"),
-            Color.ParseHex("#e377c2"),
-            Color.ParseHex("#7f7f7f"),
-            Color.ParseHex("#bcbd22"),
-            Color.ParseHex("#17becf")
-        };
-
-        int idx = 0;
-        foreach (var kv in series)
-        {
-            var label = kv.Key;
-            var values = kv.Value;
-            // pad or trim to days
-            List<int> data = new List<int>(new int[days]);
-            for (int i = 0; i < days; i++)
+            using SKPaint plot = new() { Color = palette[index], IsAntialias = true, StrokeWidth = 3 };
+            SKPoint previous = default;
+            for (int day = 0; day < days; day++)
             {
-                if (i < values.Count) data[i] = values[i];
-                else data[i] = 0;
+                int value = day < values.Count ? values[day] : 0;
+                SKPoint point = new(marginLeft + day / (float)denominator * plotWidth,
+                    marginTop + (float)(1 - value / globalMax) * plotHeight);
+                if (day > 0) canvas.DrawLine(previous, point, plot);
+                canvas.DrawCircle(point, 3, plot);
+                previous = point;
             }
-
-            // convert to points
-            PointF[] points = new PointF[days];
-            for (int i = 0; i < days; i++)
-            {
-                int denom = Math.Max(1, days - 1);
-                float x = originX + (i / (float)denom) * plotWidth;
-                float y = marginTop + (1 - (data[i] / (float)globalMax)) * plotHeight;
-                points[i] = new PointF(x, y);
-            }
-
-            var color = palette[idx % palette.Count];
-            // draw points and connecting segments by sampling (avoid DrawLines API differences)
-            image.Mutate(ctx =>
-            {
-                for (int i = 0; i < points.Length; i++)
-                {
-                    var p = points[i];
-                    ctx.Fill(color, new EllipsePolygon(p.X, p.Y, 3));
-                    if (i > 0)
-                    {
-                        var p0 = points[i - 1];
-                        var p1 = p;
-                        float dx = p1.X - p0.X;
-                        float dy = p1.Y - p0.Y;
-                        float dist = MathF.Sqrt(dx * dx + dy * dy);
-                        int steps = Math.Max(1, (int)(dist / 2));
-                        for (int s = 0; s <= steps; s++)
-                        {
-                            float t = s / (float)steps;
-                            float sx = p0.X + dx * t;
-                            float sy = p0.Y + dy * t;
-                            ctx.Fill(color, new EllipsePolygon(sx, sy, 1.5f));
-                        }
-                    }
-                }
-            });
-
-            // legend
             float legendX = width - marginRight + 10;
-            float legendY = marginTop + idx * 22;
-            var legendFont = font;
-            image.Mutate(ctx =>
-            {
-                ctx.Fill(color, new RectangleF(legendX, legendY + 4, 12, 12));
-                ctx.DrawText(label, legendFont, Color.Black, new PointF(legendX + 18, legendY));
-            });
-
-            idx++;
-            if (idx >= 10) break; // top 10
+            float legendY = marginTop + index * 22;
+            canvas.DrawRect(legendX, legendY + 4, 12, 12, plot);
+            canvas.DrawShapedText(shaper, label, legendX + 18, legendY - font.Metrics.Ascent, SKTextAlign.Left, font, ink);
+            index++;
         }
-
-        // footer
-        image.Mutate(ctx =>
-        {
-            Font f = GetFont(10);
-            ctx.DrawText($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", f, Color.Gray, new PointF(8, height - marginBottom + 70));
-        });
-
-        using MemoryStream ms = new();
-        image.SaveAsPng(ms);
-        return ms.ToArray();
-    }
-
-    private static Font GetFont(float size)
-    {
-        // Prefer system fonts if available
-        try
-        {
-            if (SystemFonts.Families != null && SystemFonts.Families.Any())
-            {
-                return SystemFonts.Families.First().CreateFont(size);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load system fonts, falling back to default. Error: {ex}");
-        }
-
-        // Try common Linux font paths
-        string[] candidates = new[] {
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-            "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf"
-        };
-
-        foreach (var path in candidates)
-        {
-            try
-            {
-                if (File.Exists(path))
-                {
-                    var fc = new FontCollection();
-                    var family = fc.Add(path);
-                    return family.CreateFont(size);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to load font from {path}. Error: {ex}");
-            }
-        }
-
-        // Try scanning the usual truetype folder for any .ttf
-        try
-        {
-            string root = "/usr/share/fonts/truetype";
-            if (Directory.Exists(root))
-            {
-                var first = Directory.EnumerateFiles(root, "*.ttf", SearchOption.AllDirectories).FirstOrDefault();
-                if (!string.IsNullOrEmpty(first))
-                {
-                    var fc = new FontCollection();
-                    var family = fc.Add(first);
-                    return family.CreateFont(size);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load font. Error: {ex}");
-        }
-
-        // If nothing found, provide a helpful exception so caller can log and skip rendering
-        throw new InvalidOperationException("No usable font found on the system. Please install a TTF font such as DejaVuSans in the container (e.g. package 'fonts-dejavu').");
+        using SKFont footer = SkiaImages.CreateFont(10);
+        ink.Color = SKColors.Gray;
+        canvas.DrawText($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC", 8, height - 30 - footer.Metrics.Ascent, SKTextAlign.Left, footer, ink);
+        return SkiaImages.Encode(image);
     }
 
     private static double NiceStep(double step)

@@ -24,9 +24,9 @@ RUN dotnet publish "./Morpheus.csproj" -c $BUILD_CONFIGURATION -o /app/publish /
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 USER root
-# Install a common TTF font so ImageSharp can render text in Linux containers
+# SkiaSharp uses Fontconfig to discover fonts for captions and charts.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends fonts-dejavu-core && \
+    apt-get install -y --no-install-recommends libfontconfig1 fonts-dejavu-core && \
     rm -rf /var/lib/apt/lists/*
 
 USER app
