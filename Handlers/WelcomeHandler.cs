@@ -84,7 +84,9 @@ public class WelcomeHandler
         if (customLeaveEmojiId is ulong emojiId)
             leaveEmoji = await client.Rest.GetApplicationEmoteAsync(emojiId);
 
-        await channel.SendMessageAsync((leaveEmoji != null ? leaveEmoji.ToString() + " " : "") + string.Format(goodbyeMessagesBag.Random(), user.Mention));
+        await channel.SendMessageAsync(
+            (leaveEmoji != null ? leaveEmoji.ToString() + " " : "") + string.Format(goodbyeMessagesBag.Random(), Format.Sanitize(user.Username)),
+            allowedMentions: AllowedMentions.None);
         await channel.SendMessageAsync($"Server now has {guild.MemberCount} members! {sadEmojisBag.Random()}");
     }
 
