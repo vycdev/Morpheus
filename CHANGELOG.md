@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Persist successful Twitch go-live notifications before propagating a later failure or cancellation, avoiding duplicate posts on retry.
 - Persist completed temporary unbans before processing another ban so cancellation cannot replay successful removals.
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
 - Use a valid YouTube entry updated date when its published date is malformed.
