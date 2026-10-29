@@ -29,6 +29,20 @@ public class Env
                     continue;
 
                 string value = parts[1].Trim();
+                // A hash after whitespace starts an inline comment, except inside
+                // a quoted value. Keep URL fragments and literal quoted hashes.
+                int closingQuote = value.Length > 1 && value[0] is '"' or '\''
+                    ? value.LastIndexOf(value[0])
+                    : -1;
+                for (int commentIndex = 1; commentIndex < value.Length; commentIndex++)
+                {
+                    if (value[commentIndex] == '#' && char.IsWhiteSpace(value[commentIndex - 1]) &&
+                        (value[0] is not ('"' or '\'') || commentIndex > closingQuote && closingQuote > 0))
+                    {
+                        value = value[..commentIndex].TrimEnd();
+                        break;
+                    }
+                }
                 // Quoted .env values may contain spaces, # and = as literal content.
                 // Strip only a matching pair of surrounding quotes.
                 if (value.Length >= 2 &&

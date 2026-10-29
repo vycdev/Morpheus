@@ -142,4 +142,33 @@ public class EnvTests
             File.Delete(filePath);
         }
     }
+
+    [Theory]
+    [InlineData("42 # max retries", "42")]
+    [InlineData("42\t# max retries", "42")]
+    [InlineData("https://example.com/path#section", "https://example.com/path#section")]
+    [InlineData("'value # literal' # explanation", "value # literal")]
+    [InlineData("\"value # literal\" # explanation", "value # literal")]
+    public void Load_InlineComments_PreservesHashesInsideValues(string configured, string expected)
+    {
+        string key = $"MORPHEUS_ENV_TEST_{Guid.NewGuid():N}";
+        string? originalEnvironmentValue = Environment.GetEnvironmentVariable(key);
+        Dictionary<string, string> originalVariables = new(Env.Variables);
+        string filePath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(filePath, $"{key}={configured}\n");
+            Env.Load(filePath);
+            Assert.Equal(expected, Env.Get(key, string.Empty));
+            Assert.Equal(expected, Environment.GetEnvironmentVariable(key));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(key, originalEnvironmentValue);
+            Env.Variables.Clear();
+            foreach ((string existingKey, string existingValue) in originalVariables)
+                Env.Variables[existingKey] = existingValue;
+            File.Delete(filePath);
+        }
+    }
 }
