@@ -121,6 +121,22 @@ public class ImageRenderingTests
     }
 
     [Fact]
+    public void Memefy_PreservesTransparentAndSemiTransparentSourcePixels()
+    {
+        using SKBitmap original = new(320, 200);
+        original.Erase(SKColors.Transparent);
+        original.SetPixel(0, 0, new SKColor(255, 0, 0, 128));
+        using SKData input = original.Encode(SKEncodedImageFormat.Png, 100);
+
+        using SKBitmap result = SKBitmap.Decode(ImageMemefier.Memefy(input.ToArray(), "Hi"));
+        int captionHeight = result.Height - original.Height;
+
+        Assert.InRange(captionHeight, 1, original.Height / 2);
+        Assert.Equal(original.GetPixel(0, 0), result.GetPixel(0, captionHeight));
+        Assert.Equal((byte)0, result.GetPixel(1, captionHeight).Alpha);
+    }
+
+    [Fact]
     public void Captcha_RendersTextWithLinuxFontFallback()
     {
         CaptchaResult result = new CaptchaGenerator().GenerateCaptcha();
