@@ -28,21 +28,25 @@ public class Env
                 if (string.IsNullOrWhiteSpace(key))
                     continue;
 
-                string value = parts[1].Trim();
-                // A hash after whitespace starts an inline comment, except inside
-                // a quoted value. Keep URL fragments and literal quoted hashes.
-                int closingQuote = value.Length > 1 && value[0] is '"' or '\''
-                    ? value.LastIndexOf(value[0])
-                    : -1;
+                // Keep leading whitespace until comments are removed so empty values
+                // followed by a comment are recognized too.
+                string value = parts[1];
                 for (int commentIndex = 1; commentIndex < value.Length; commentIndex++)
                 {
-                    if (value[commentIndex] == '#' && char.IsWhiteSpace(value[commentIndex - 1]) &&
-                        (value[0] is not ('"' or '\'') || commentIndex > closingQuote && closingQuote > 0))
-                    {
-                        value = value[..commentIndex].TrimEnd();
-                        break;
-                    }
+                    if (value[commentIndex] != '#' || !char.IsWhiteSpace(value[commentIndex - 1]))
+                        continue;
+
+                    // A quoted value must close before the comment starts. Quotes in
+                    // the comment itself must not affect this decision.
+                    ReadOnlySpan<char> beforeComment = value.AsSpan(0, commentIndex).Trim();
+                    if (!beforeComment.IsEmpty && beforeComment[0] is '"' or '\'' &&
+                        (beforeComment.Length < 2 || beforeComment[^1] != beforeComment[0]))
+                        continue;
+
+                    value = value[..commentIndex];
+                    break;
                 }
+                value = value.Trim();
                 // Quoted .env values may contain spaces, # and = as literal content.
                 // Strip only a matching pair of surrounding quotes.
                 if (value.Length >= 2 &&

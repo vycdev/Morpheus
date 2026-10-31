@@ -149,6 +149,16 @@ public class EnvTests
     [InlineData("https://example.com/path#section", "https://example.com/path#section")]
     [InlineData("'value # literal' # explanation", "value # literal")]
     [InlineData("\"value # literal\" # explanation", "value # literal")]
+    [InlineData("'42' # user's preferred count", "42")]
+    [InlineData("\"42\" # use \"42\" in production", "42")]
+    [InlineData("\"42\" # use \"42\"", "42")]
+    [InlineData(" # optional", "")]
+    [InlineData("\t# optional", "")]
+    [InlineData("'' # user's optional value", "")]
+    [InlineData("\"\" # use \"defaults\"", "")]
+    [InlineData("#literal", "#literal")]
+    [InlineData("'unmatched # literal", "'unmatched # literal")]
+    [InlineData("  'inner'quote # literal' # user's explanation", "inner'quote # literal")]
     public void Load_InlineComments_PreservesHashesInsideValues(string configured, string expected)
     {
         string key = $"MORPHEUS_ENV_TEST_{Guid.NewGuid():N}";
@@ -159,8 +169,8 @@ public class EnvTests
         {
             File.WriteAllText(filePath, $"{key}={configured}\n");
             Env.Load(filePath);
-            Assert.Equal(expected, Env.Get(key, string.Empty));
-            Assert.Equal(expected, Environment.GetEnvironmentVariable(key));
+            Assert.Equal(expected, Env.Variables[key]);
+            Assert.Equal(expected, Environment.GetEnvironmentVariable(key) ?? string.Empty);
         }
         finally
         {
