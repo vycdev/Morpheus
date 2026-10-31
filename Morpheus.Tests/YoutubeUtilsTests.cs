@@ -66,6 +66,34 @@ public class YoutubeUtilsTests
     }
 
     [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("/relative.jpg")]
+    [InlineData("http://example.com/insecure.jpg")]
+    public async Task GetChannelAvatarAsync_SkipsInvalidThumbnailUrls(string invalidUrl)
+    {
+        RecordingHandler handler = new(request => request.Method == HttpMethod.Get
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("\"INNERTUBE_API_KEY\":\"test\",\"INNERTUBE_CLIENT_VERSION\":\"1.0\"")
+            }
+            : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {"header":{"c4TabbedHeaderRenderer":{"avatar":{"thumbnails":[
+                        {"url":"https://example.com/valid.jpg","width":128},
+                        {"url":"INVALID","width":256}
+                    ]}}}}
+                    """.Replace("INVALID", invalidUrl, StringComparison.Ordinal))
+            });
+        using HttpClient httpClient = new(handler);
+
+        string? avatar = await YoutubeUtils.GetChannelAvatarAsync(httpClient, ChannelId);
+
+        Assert.Equal("https://example.com/valid.jpg", avatar);
+        Assert.Equal(2, handler.RequestedUris.Count);
+    }
+
+    [Theory]
     [InlineData("https://www.youtube.com/@channel", "/@channel", "?cbrd=1&ucbcb=1")]
     [InlineData("youtube.com/user/channel", "/user/channel", "?cbrd=1&ucbcb=1")]
     [InlineData("https://m.youtube.com/c/channel?feature=share", "/c/channel", "?cbrd=1&ucbcb=1")]
@@ -220,6 +248,34 @@ public class YoutubeUtilsTests
         using HttpClient httpClient = new(handler);
 
         Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+    }
+
+    [Fact]
+    public async Task ResolveChannelIdAsync_AcceptsProtocolRelativeCanonicalChannelLink()
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<link rel=\"canonical\" href=\"//www.youtube.com/channel/{ChannelId}\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Theory]
+    [InlineData("ftp://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")]
+    [InlineData("file://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")]
+    public async Task ResolveChannelIdAsync_IgnoresCanonicalLinkWithNonWebScheme(string canonicalUrl)
+    {
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<link rel=\"canonical\" href=\"{canonicalUrl}\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Null(await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+        Assert.Single(handler.RequestedUris);
     }
 
     [Fact]
