@@ -40,21 +40,44 @@ public class TwitchLiveJob(DB db, TwitchService twitch, DiscordWebhookService di
 
         IReadOnlyDictionary<string, TwitchService.TwitchStream> live = result.Streams;
 
-        bool changed = false;
+        await ProcessSubscriptionsAsync(
+            subscriptions,
+            live,
+            (subscription, liveStream) => AnnounceAsync(subscription, liveStream, cancellationToken),
+            () => db.SaveChangesAsync(CancellationToken.None),
+            cancellationToken);
+    }
 
-        foreach (TwitchSubscription sub in subscriptions)
+    internal static async Task ProcessSubscriptionsAsync(
+        IReadOnlyList<TwitchSubscription> subscriptions,
+        IReadOnlyDictionary<string, TwitchService.TwitchStream> live,
+        Func<TwitchSubscription, TwitchService.TwitchStream, Task<bool>> announceAsync,
+        Func<Task> saveChangesAsync,
+        CancellationToken cancellationToken)
+    {
+        bool changed = false;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            live.TryGetValue(sub.TwitchUserId, out TwitchService.TwitchStream? stream);
-            changed |= await UpdateSubscriptionAsync(
-                sub,
-                stream,
-                (subscription, liveStream) => AnnounceAsync(subscription, liveStream, cancellationToken),
-                cancellationToken);
+            foreach (TwitchSubscription sub in subscriptions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                live.TryGetValue(sub.TwitchUserId, out TwitchService.TwitchStream? stream);
+                changed |= await UpdateSubscriptionAsync(sub, stream, announceAsync, cancellationToken);
+            }
+        }
+        catch
+        {
+            // Discord posts cannot be rolled back. Persist successful announcements
+            // even if a later subscription fails or the job is canceled.
+            if (changed)
+                await saveChangesAsync();
+            throw;
         }
 
         if (changed)
-            await db.SaveChangesAsync(cancellationToken);
+            await saveChangesAsync();
+
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     internal static async Task<bool> UpdateSubscriptionAsync(

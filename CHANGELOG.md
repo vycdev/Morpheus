@@ -3,6 +3,10 @@
 ## Unreleased
 
 - Ignore malformed, relative, and non-HTTPS YouTube avatar thumbnails so a usable image can still be selected.
+- Persist successful Twitch go-live notifications before propagating a later failure or cancellation, avoiding duplicate posts on retry.
+- Ignore non-web canonical links when resolving YouTube channels, while retaining protocol-relative YouTube links.
+- Preserve transparent and semi-transparent pixels in the original image when adding a meme caption.
+- Ignore whitespace-separated inline comments in `.env` values without changing quoted hashes or URL fragments.
 - Persist completed temporary unbans before processing another ban so cancellation cannot replay successful removals.
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
 - Use a valid YouTube entry updated date when its published date is malformed.

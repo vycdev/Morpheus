@@ -12,6 +12,24 @@ namespace Morpheus.Tests;
 public class HoneypotRenameJobTests
 {
     [Fact]
+    public void GetHoneypotChannelName_LongPrefix_KeepsRandomSuffix()
+    {
+        string prefix = new('a', 90);
+
+        string first = HoneypotRenameJob.GetHoneypotChannelName(prefix);
+        string second = HoneypotRenameJob.GetHoneypotChannelName(prefix);
+
+        Assert.Matches("^a{81}-[a-z0-9]{8}$", first);
+        Assert.Matches("^a{81}-[a-z0-9]{8}$", second);
+    }
+
+    [Fact]
+    public void GetHoneypotChannelName_SuffixLongerThanAvailableSpace_RejectsIt()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => HoneypotRenameJob.GetHoneypotChannelName(suffixLen: 90));
+    }
+
+    [Fact]
     public async Task Execute_WhenCanceledBeforeLoadingGuilds_PropagatesCancellation()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");

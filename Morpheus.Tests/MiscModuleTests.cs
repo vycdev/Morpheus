@@ -136,6 +136,21 @@ public class MiscModuleTests
     }
 
     [Theory]
+    [InlineData(int.MinValue, int.MinValue)]
+    [InlineData(int.MaxValue, int.MinValue)]
+    [InlineData(int.MinValue, int.MaxValue)]
+    [InlineData(int.MaxValue, int.MaxValue - 1)]
+    [InlineData(int.MinValue + 1, int.MinValue)]
+    public void GenerateRandomNumber_AcceptsExtremeAndReversedBounds(int min, int max)
+    {
+        int lower = Math.Min(min, max);
+        int upper = Math.Max(min, max);
+
+        for (int i = 0; i < 100; i++)
+            Assert.InRange(MiscModule.GenerateRandomNumber(min, max), lower, upper);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]

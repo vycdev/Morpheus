@@ -103,6 +103,78 @@ public class TwitchLiveJobTests
         Assert.Null(subscription.LastAnnouncedStreamId);
     }
 
+    [Fact]
+    public async Task ProcessSubscriptionsAsync_WhenLaterAnnouncementFails_PersistsEarlierPost()
+    {
+        TwitchSubscription first = new() { TwitchUserId = "first" };
+        TwitchSubscription second = new() { TwitchUserId = "second" };
+        Dictionary<string, TwitchService.TwitchStream> live = new()
+        {
+            ["first"] = new("stream-1", "First"),
+            ["second"] = new("stream-2", "Second")
+        };
+        string? savedFirstStreamId = null;
+        int saveCount = 0;
+        InvalidOperationException error = new("Second webhook failed");
+
+        InvalidOperationException caught = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            TwitchLiveJob.ProcessSubscriptionsAsync(
+                [first, second], live,
+                (sub, _) => sub == first
+                    ? Task.FromResult(true)
+                    : Task.FromException<bool>(error),
+                () =>
+                {
+                    saveCount++;
+                    savedFirstStreamId = first.LastAnnouncedStreamId;
+                    return Task.CompletedTask;
+                },
+                CancellationToken.None));
+
+        Assert.Same(error, caught);
+        Assert.Equal(1, saveCount);
+        Assert.Equal("stream-1", savedFirstStreamId);
+        Assert.Null(second.LastAnnouncedStreamId);
+    }
+
+    [Fact]
+    public async Task ProcessSubscriptionsAsync_WhenCanceledAfterPost_PersistsBeforeStopping()
+    {
+        TwitchSubscription first = new() { TwitchUserId = "first" };
+        TwitchSubscription second = new() { TwitchUserId = "second" };
+        Dictionary<string, TwitchService.TwitchStream> live = new()
+        {
+            ["first"] = new("stream-1", "First"),
+            ["second"] = new("stream-2", "Second")
+        };
+        using CancellationTokenSource cancellation = new();
+        List<string> announced = [];
+        string? savedFirstStreamId = null;
+        int saveCount = 0;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            TwitchLiveJob.ProcessSubscriptionsAsync(
+                [first, second], live,
+                (sub, _) =>
+                {
+                    announced.Add(sub.TwitchUserId);
+                    cancellation.Cancel();
+                    return Task.FromResult(true);
+                },
+                () =>
+                {
+                    saveCount++;
+                    savedFirstStreamId = first.LastAnnouncedStreamId;
+                    return Task.CompletedTask;
+                },
+                cancellation.Token));
+
+        Assert.Equal(["first"], announced);
+        Assert.Equal(1, saveCount);
+        Assert.Equal("stream-1", savedFirstStreamId);
+        Assert.Null(second.LastAnnouncedStreamId);
+    }
+
     private static IJobExecutionContext CreateContext(CancellationToken cancellationToken)
     {
         JobExecutionContextProxy.CurrentCancellationToken = cancellationToken;
