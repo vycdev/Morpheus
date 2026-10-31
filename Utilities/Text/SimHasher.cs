@@ -28,9 +28,9 @@ public static class SimHasher
                 continue;
             }
 
-            // Strip combining marks (diacritics)
+            // Strip combining marks (diacritics) and invisible format characters.
             var cat = CharUnicodeInfo.GetUnicodeCategory(ch.ToString(), 0);
-            if (cat == UnicodeCategory.NonSpacingMark || cat == UnicodeCategory.SpacingCombiningMark)
+            if (cat is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.Format)
                 continue;
 
             // Remove punctuation, symbols, control chars, surrogate/format
@@ -44,10 +44,6 @@ public static class SimHasher
                 lastWasSpace = false;
                 continue;
             }
-
-            // Remove variation selectors and zero-width chars
-            if (ch.Value == 0xFE0F || ch.Value == 0x200D || ch.Value == 0x200B)
-                continue;
 
             sb.Append(ch.ToString());
             lastWasSpace = false;
