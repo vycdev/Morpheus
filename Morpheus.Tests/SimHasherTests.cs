@@ -12,6 +12,17 @@ public class SimHasherTests
         Assert.Equal(expected, SimHasher.Normalize(input));
     }
 
+    [Theory]
+    [InlineData("hello\u200C world")]
+    [InlineData("hello\u2060 world")]
+    [InlineData("hello\uFEFF world")]
+    public void ComputeSimHash_IgnoresInvisibleFormatCharacters(string input)
+    {
+        Assert.Equal(
+            SimHasher.ComputeSimHash("hello world"),
+            SimHasher.ComputeSimHash(input));
+    }
+
     [Fact]
     public void ComputeSimHash_MapsUnicodeDigitsLikeAsciiDigits()
     {
