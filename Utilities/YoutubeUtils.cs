@@ -275,7 +275,12 @@ public static partial class YoutubeUtils
                         int w = 0;
                         if (it.TryGetProperty("width", out JsonElement wEl) &&
                             wEl.ValueKind == JsonValueKind.Number && wEl.TryGetInt32(out int wi)) w = wi;
-                        if (w >= bestW && !string.IsNullOrWhiteSpace(s)) { bestW = w; best = s; }
+                        if (w >= bestW && Uri.TryCreate(s, UriKind.Absolute, out Uri? avatarUri) &&
+                            avatarUri.Scheme == Uri.UriSchemeHttps)
+                        {
+                            bestW = w;
+                            best = s;
+                        }
                     }
                 }
                 return best;
