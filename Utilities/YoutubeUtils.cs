@@ -90,7 +90,16 @@ public static partial class YoutubeUtils
                     continue;
 
                 Match href = LinkHrefRegex().Match(link.Value);
-                if (!href.Success || !Uri.TryCreate(href.Groups["url"].Value, UriKind.Absolute, out Uri? uri) ||
+                if (!href.Success)
+                    continue;
+
+                // Scheme-relative canonical links are web URLs, not file URLs.
+                string canonicalUrl = href.Groups["url"].Value;
+                if (canonicalUrl.StartsWith("//", StringComparison.Ordinal))
+                    canonicalUrl = $"https:{canonicalUrl}";
+
+                if (!Uri.TryCreate(canonicalUrl, UriKind.Absolute, out Uri? uri) ||
+                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
                     !IsYoutubeHost(uri.Host))
                     continue;
 
@@ -266,7 +275,12 @@ public static partial class YoutubeUtils
                         int w = 0;
                         if (it.TryGetProperty("width", out JsonElement wEl) &&
                             wEl.ValueKind == JsonValueKind.Number && wEl.TryGetInt32(out int wi)) w = wi;
-                        if (w >= bestW && !string.IsNullOrWhiteSpace(s)) { bestW = w; best = s; }
+                        if (w >= bestW && Uri.TryCreate(s, UriKind.Absolute, out Uri? avatarUri) &&
+                            avatarUri.Scheme == Uri.UriSchemeHttps)
+                        {
+                            bestW = w;
+                            best = s;
+                        }
                     }
                 }
                 return best;

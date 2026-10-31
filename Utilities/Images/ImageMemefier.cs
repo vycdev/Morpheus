@@ -39,10 +39,12 @@ public static class ImageMemefier
 
         using SKBitmap result = new(original.Width, original.Height + captionHeight);
         using SKCanvas canvas = new(result);
-        canvas.Clear(SKColors.White);
+        canvas.Clear(SKColors.Transparent);
         canvas.Save();
         canvas.ClipRect(new SKRect(0, 0, original.Width, captionHeight));
-        using SKPaint paint = new() { Color = SKColors.Black, IsAntialias = true };
+        using SKPaint paint = new() { Color = SKColors.White, IsAntialias = true };
+        canvas.DrawRect(0, 0, original.Width, captionHeight, paint);
+        paint.Color = SKColors.Black;
         float baseline = (captionHeight - textHeight) / 2f - font.Metrics.Ascent;
         foreach (string line in lines)
         {
