@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Skip malformed or non-web xkcd feed links instead of posting them as comic announcements.
 - Ignore malformed, relative, and non-HTTPS YouTube avatar thumbnails so a usable image can still be selected.
 - Persist successful Twitch go-live notifications before propagating a later failure or cancellation, avoiding duplicate posts on retry.
 - Ignore non-web canonical links when resolving YouTube channels, while retaining protocol-relative YouTube links.

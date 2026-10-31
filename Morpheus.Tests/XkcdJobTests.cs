@@ -107,6 +107,29 @@ public class XkcdJobTests
     }
 
     [Fact]
+    public async Task FetchItemsAsync_IgnoresLinksThatCannotBePostedAsWebUrls()
+    {
+        const string feed = """
+            <rss version="2.0">
+              <channel>
+                <item><link>javascript:alert(1)</link></item>
+                <item><link>/1234/</link></item>
+                <item><link>ftp://xkcd.com/1234/</link></item>
+                <item><link>https://xkcd.com:invalid/1234/</link></item>
+                <item><link>http://xkcd.com/1233/</link></item>
+                <item><link>https://xkcd.com/1234/</link></item>
+              </channel>
+            </rss>
+            """;
+        using HttpClient httpClient = new(new StaticResponseHandler(feed));
+
+        List<XkcdJob.XkcdItem> items = await XkcdJob.FetchItemsAsync(httpClient, CancellationToken.None);
+
+        Assert.Equal(["http://xkcd.com/1233/", "https://xkcd.com/1234/"],
+            items.Select(item => item.Link));
+    }
+
+    [Fact]
     public async Task FetchItemsAsync_WhenCallerCancels_PropagatesCancellation()
     {
         using HttpClient httpClient = new();

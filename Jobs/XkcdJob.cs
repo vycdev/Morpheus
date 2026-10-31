@@ -150,7 +150,8 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
             .Select(x => new XkcdItem(
                 x.Element("title")?.Value ?? string.Empty,
                 x.Element("link")?.Value.Trim() ?? string.Empty))
-            .Where(i => !string.IsNullOrEmpty(i.Link))
+            .Where(i => Uri.TryCreate(i.Link, UriKind.Absolute, out Uri? uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
             .DistinctBy(i => i.Link, StringComparer.Ordinal)
             .ToList();
     }
