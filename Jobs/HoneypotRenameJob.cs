@@ -32,12 +32,16 @@ public class HoneypotRenameJob(LogsService logsService, DB dB, DiscordSocketClie
 
     public static string GetHoneypotChannelName(string prefix = "honeypot", int suffixLen = 8)
     {
-        string name = $"{prefix}-{GenerateRandomSuffix(suffixLen)}";
-        // Ensure we only use allowed characters and trim the length to a sane limit
-        name = Regex.Replace(name.ToLowerInvariant(), "[^a-z0-9-]", "-");
-        if (name.Length > 90)
-            name = name[..90];
-        return name;
+        if (suffixLen < 0 || suffixLen > 89)
+            throw new ArgumentOutOfRangeException(nameof(suffixLen));
+
+        // Reserve space for the separator and random suffix before trimming the prefix.
+        // Trimming the full name would silently discard the random part for long prefixes.
+        string safePrefix = Regex.Replace(prefix.ToLowerInvariant(), "[^a-z0-9-]", "-");
+        int maxPrefixLength = 90 - suffixLen - 1;
+        if (safePrefix.Length > maxPrefixLength)
+            safePrefix = safePrefix[..maxPrefixLength];
+        return $"{safePrefix}-{GenerateRandomSuffix(suffixLen)}";
     }
 
     public async Task Execute(IJobExecutionContext context)

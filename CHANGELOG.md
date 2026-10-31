@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Preserve transparent and semi-transparent pixels in the original image when adding a meme caption.
+- Ignore whitespace-separated inline comments in `.env` values without changing quoted hashes or URL fragments.
 - Persist completed temporary unbans before processing another ban so cancellation cannot replay successful removals.
 - Persist earlier completed reminders if a later delivery fails unexpectedly, avoiding duplicate notifications on retry.
 - Use a valid YouTube entry updated date when its published date is malformed.

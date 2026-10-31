@@ -28,7 +28,25 @@ public class Env
                 if (string.IsNullOrWhiteSpace(key))
                     continue;
 
-                string value = parts[1].Trim();
+                // Keep leading whitespace until comments are removed so empty values
+                // followed by a comment are recognized too.
+                string value = parts[1];
+                for (int commentIndex = 1; commentIndex < value.Length; commentIndex++)
+                {
+                    if (value[commentIndex] != '#' || !char.IsWhiteSpace(value[commentIndex - 1]))
+                        continue;
+
+                    // A quoted value must close before the comment starts. Quotes in
+                    // the comment itself must not affect this decision.
+                    ReadOnlySpan<char> beforeComment = value.AsSpan(0, commentIndex).Trim();
+                    if (!beforeComment.IsEmpty && beforeComment[0] is '"' or '\'' &&
+                        (beforeComment.Length < 2 || beforeComment[^1] != beforeComment[0]))
+                        continue;
+
+                    value = value[..commentIndex];
+                    break;
+                }
+                value = value.Trim();
                 // Quoted .env values may contain spaces, # and = as literal content.
                 // Strip only a matching pair of surrounding quotes.
                 if (value.Length >= 2 &&
