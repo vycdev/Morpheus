@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Ignore non-web YouTube feed entry links and fall back to the canonical video URL when no usable link remains.
 - Read YouTube avatar homepage metadata when JSON fields have whitespace around colons.
 - Ignore invisible Unicode format characters when normalizing messages for XP similarity checks.
 - Skip malformed or non-web xkcd feed links instead of posting them as comic announcements.
