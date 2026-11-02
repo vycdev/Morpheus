@@ -76,13 +76,19 @@ internal static partial class SubscriptionInputParser
                     }
 
                     // Once a path comma is recognized, preserve any later commas
-                    // within that URL token too. An unspaced final comma is
-                    // ambiguous; use "URL | Name", "URL Name", or "URL ,Name".
+                    // within that URL token too. A final path segment can also
+                    // contain a comma (e.g. feed,latest.xml) without another slash.
+                    // An unspaced comma before a plain name remains ambiguous;
+                    // use "URL | Name", "URL Name", or "URL ,Name" for that case.
                     int nextSlash = line.IndexOf('/', commaIndex + 1);
                     int nextWhitespace = line.IndexOfAny([' ', '\t'], commaIndex + 1);
-                    bool commaInPath = nextSlash >= 0 &&
-                        (queryIndex < 0 || nextSlash < queryIndex) &&
-                        (nextWhitespace < 0 || nextSlash < nextWhitespace);
+                    int nextDot = line.IndexOf('.', commaIndex + 1);
+                    bool commaInPath = (nextSlash >= 0 &&
+                            (queryIndex < 0 || nextSlash < queryIndex) &&
+                            (nextWhitespace < 0 || nextSlash < nextWhitespace)) ||
+                        (nextDot >= 0 &&
+                            (queryIndex < 0 || nextDot < queryIndex) &&
+                            (nextWhitespace < 0 || nextDot < nextWhitespace));
                     sawPathComma |= commaInPath;
                     if (!sawPathComma && IsHttpUrl(candidateUrl))
                     {
