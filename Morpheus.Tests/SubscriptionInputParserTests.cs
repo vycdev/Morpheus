@@ -97,6 +97,21 @@ public class SubscriptionInputParserTests
     }
 
     [Theory]
+    [InlineData("https://example.com/feed,latest.xml", null)]
+    [InlineData("https://example.com/feed,latest.xml?lang=en", null)]
+    [InlineData("https://example.com/feed,latest.xml | Latest", "Latest")]
+    public void ParseRssSources_PreservesCommaInFinalPathSegment(string input, string? expectedName)
+    {
+        SubscriptionInputParser.RssSource parsed = Assert.Single(
+            SubscriptionInputParser.ParseRssSources(input));
+
+        Assert.Equal(expectedName is null
+            ? input
+            : "https://example.com/feed,latest.xml", parsed.Url);
+        Assert.Equal(expectedName, parsed.DisplayName);
+    }
+
+    [Theory]
     [InlineData("https://example.com/releases,stable/feed.xml?lang=en", null)]
     [InlineData("https://example.com/releases,stable/feed.xml | Releases", "Releases")]
     public void ParseRssSources_PreservesCommaInFeedPath(string input, string? expectedDisplayName)
