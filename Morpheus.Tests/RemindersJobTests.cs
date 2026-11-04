@@ -164,6 +164,25 @@ public class RemindersJobTests
     }
 
     [Fact]
+    public async Task DeliverAsync_WhenSendIsCanceled_DoesNotCountAsFailedDelivery()
+    {
+        Reminder reminder = new() { Id = 7, ChannelId = 42, Text = "Remember this" };
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            RemindersJob.DeliverAsync(
+                reminder,
+                _ => Task.FromCanceled(cancellation.Token),
+                _ => { },
+                new DateTime(2026, 11, 4, 5, 0, 0, DateTimeKind.Utc)));
+
+        Assert.Equal(0, reminder.DeliveryFailureCount);
+        Assert.Null(reminder.FirstDeliveryFailureAt);
+        Assert.Null(reminder.NextDeliveryAttemptAt);
+    }
+
+    [Fact]
     public async Task DeliverAsync_WhenDeliverySucceeds_DeletesReminder()
     {
         Reminder reminder = new() { Id = 7, ChannelId = 42, Text = "Remember this" };

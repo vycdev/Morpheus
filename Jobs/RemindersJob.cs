@@ -131,6 +131,12 @@ public class RemindersJob(LogsService logsService, DB dB, DiscordSocketClient di
             log($"Sent reminder {reminder.Id} to channel {reminder.ChannelId}");
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            // A canceled Discord send is not a confirmed delivery failure. The
+            // reminder stays due for the next run without consuming retry age.
+            throw;
+        }
         catch (Exception ex)
         {
             ScheduleRetry(
