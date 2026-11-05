@@ -81,11 +81,8 @@ public static partial class YoutubeUtils
             if (string.IsNullOrEmpty(html))
                 return null;
 
-            Match m = ChannelIdInHtmlRegex().Match(html);
-            if (m.Success)
-                return m.Groups[1].Value;
-
-            // Only a canonical link for a YouTube channel identifies the page.
+            // Prefer the page's canonical channel link: embedded channelId metadata can
+            // belong to a recommendation rather than the channel being resolved.
             // Other channel links on the page may point to unrelated creators.
             foreach (Match link in LinkTagRegex().Matches(html))
             {
@@ -114,7 +111,8 @@ public static partial class YoutubeUtils
                     return canonical.Groups[1].Value;
             }
 
-            return null;
+            Match m = ChannelIdInHtmlRegex().Match(html);
+            return m.Success ? m.Groups[1].Value : null;
         }
         catch (Exception)
         {
