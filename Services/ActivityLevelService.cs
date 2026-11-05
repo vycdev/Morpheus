@@ -131,8 +131,10 @@ public class ActivityLevelService(DB dbContext)
         double messageLength = activity.MessageLength;
 
         userLevel.UserMessageCount = newMessageCount;
+        // Use a bounded online update: once the stored count saturates, the
+        // previous average must not carry more weight than the denominator.
         userLevel.UserAverageMessageLength = previousMessageCount > 0
-            ? ((previousAverageLength * previousMessageCount) + messageLength) / newMessageCount
+            ? previousAverageLength + (messageLength - previousAverageLength) / newMessageCount
             : messageLength;
         userLevel.UserAverageMessageLengthEma = previousMessageCount == 0
             ? messageLength
