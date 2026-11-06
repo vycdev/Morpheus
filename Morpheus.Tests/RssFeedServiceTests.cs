@@ -164,6 +164,72 @@ public class RssFeedServiceTests
         Assert.Equal("https://example.com/current", entry.Link);
     }
 
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("ftp://example.com/article")]
+    [InlineData("/relative/article")]
+    public void ParseEntries_DoesNotPostNonWebRssLinks(string link)
+    {
+        XDocument document = XDocument.Parse($$"""
+            <rss version="2.0"><channel><item>
+              <guid>entry-1</guid><title>Readable title</title>
+              <link>{{link}}</link>
+            </item></channel></rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("entry-1", entry.EntryId);
+        Assert.Empty(entry.Link);
+        Assert.Equal("Readable title", RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
+    public void ParseEntries_DoesNotPostNonWebAtomLinks()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+              <id>entry-1</id><title>Readable title</title>
+              <link rel="alternate" href="javascript:alert(1)" />
+            </entry></feed>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseEntries(document));
+        Assert.Equal("entry-1", entry.EntryId);
+        Assert.Empty(entry.Link);
+        Assert.Equal("Readable title", RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
+    public void ParseEntries_InvalidRssLinkFallsBackToValidExtensionLink()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+              <channel><item><guid>entry-1</guid>
+                <link>ftp://example.com/article</link>
+                <atom:link href="https://example.com/article" />
+              </item></channel>
+            </rss>
+            """);
+
+        Assert.Equal("https://example.com/article",
+            Assert.Single(RssFeedService.ParseRssEntries(document)).Link);
+    }
+
+    [Fact]
+    public void ParseEntries_InvalidAtomAlternateFallsBackToValidLink()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+              <id>entry-1</id>
+              <link rel="alternate" type="text/html" href="javascript:alert(1)" />
+              <link rel="alternate" href="https://example.com/article" />
+            </entry></feed>
+            """);
+
+        Assert.Equal("https://example.com/article",
+            Assert.Single(RssFeedService.ParseEntries(document)).Link);
+    }
+
     [Fact]
     public void ParseEntries_WhenLinkUsesHrefAttribute_ReturnsHref()
     {

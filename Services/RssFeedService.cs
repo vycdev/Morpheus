@@ -83,14 +83,14 @@ public class RssFeedService(LogsService logsService)
             string legacyLink = FirstNonBlank(
                 links.Where(l => (string?)l.Attribute("rel") is null or "alternate")
                     .Select(l => l.Attribute("href")?.Value)
-                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                    .FirstOrDefault(IsWebLink),
                 links.Select(l => l.Attribute("href")?.Value)
-                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
+                    .FirstOrDefault(IsWebLink));
             string link = FirstNonBlank(
                 links.Where(l => (string?)l.Attribute("rel") is null or "alternate" &&
                                  string.Equals((string?)l.Attribute("type"), "text/html", StringComparison.OrdinalIgnoreCase))
                     .Select(l => l.Attribute("href")?.Value)
-                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                    .FirstOrDefault(IsWebLink),
                 legacyLink);
             string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
             string legacyId = FirstNonBlank(e.Element(Atom + "id")?.Value, legacyLink);
@@ -122,9 +122,10 @@ public class RssFeedService(LogsService logsService)
                 .Where(element => element.Name.LocalName == "link")
                 .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
                 .Select(element => FirstNonBlank(element.Value, element.Attribute("href")?.Value))
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                .FirstOrDefault(IsWebLink)
                 ?? (item.Name.Namespace == RssOne
-                    ? FirstNonBlank(item.Attribute(Rdf + "about")?.Value)
+                    ? FirstNonBlank(IsWebLink(item.Attribute(Rdf + "about")?.Value)
+                        ? item.Attribute(Rdf + "about")?.Value : null)
                     : item.Name.Namespace == XNamespace.None ? RssGuidPermalink(guid) : string.Empty);
             string explicitId = FirstNonBlank(guid?.Value, ChildByLocalName(item, "id")?.Value);
             string legacyId = FirstNonBlank(explicitId, link);
@@ -158,6 +159,11 @@ public class RssFeedService(LogsService logsService)
 
         return value;
     }
+
+    private static bool IsWebLink(string? value) =>
+        Uri.TryCreate(value?.Trim(), UriKind.Absolute, out Uri? uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
+        !string.IsNullOrEmpty(uri.Host);
 
     private static XElement? ChildByLocalName(XElement parent, string localName) =>
         parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName);

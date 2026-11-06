@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Skip non-web RSS and Atom entry links, falling back to a valid link or the entry title.
 - Read YouTube avatar homepage metadata when JSON fields have whitespace around colons.
 - Ignore invisible Unicode format characters when normalizing messages for XP similarity checks.
 - Skip malformed or non-web xkcd feed links instead of posting them as comic announcements.
