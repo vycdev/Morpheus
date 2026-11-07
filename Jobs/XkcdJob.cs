@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using Discord;
 using Microsoft.EntityFrameworkCore;
@@ -147,12 +148,24 @@ public class XkcdJob(DB db, DiscordWebhookService discordWebhook, LogsService lo
         string rss = await httpClient.GetStringAsync("https://xkcd.com/rss.xml", cancellationToken);
         XDocument doc = XDocument.Parse(rss);
         return doc.Descendants("item")
-            .Select(x => new XkcdItem(
-                x.Element("title")?.Value ?? string.Empty,
-                x.Element("link")?.Value.Trim() ?? string.Empty))
-            .Where(i => Uri.TryCreate(i.Link, UriKind.Absolute, out Uri? uri) &&
+            .Select(x =>
+            {
+                DateTimeOffset published = DateTimeOffset.TryParse(
+                    x.Element("pubDate")?.Value,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal,
+                    out DateTimeOffset parsed) ? parsed : DateTimeOffset.MinValue;
+                return (Item: new XkcdItem(
+                    x.Element("title")?.Value ?? string.Empty,
+                    x.Element("link")?.Value.Trim() ?? string.Empty), Published: published);
+            })
+            .Where(entry => Uri.TryCreate(entry.Item.Link, UriKind.Absolute, out Uri? uri) &&
                 (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-            .DistinctBy(i => i.Link, StringComparer.Ordinal)
+            // First-run delivery uses items[0], and subsequent posts reverse this list.
+            // Keep feed order when dates are absent or equal (OrderBy is stable).
+            .OrderByDescending(entry => entry.Published)
+            .Select(entry => entry.Item)
+            .DistinctBy(item => item.Link, StringComparer.Ordinal)
             .ToList();
     }
 
