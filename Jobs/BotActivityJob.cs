@@ -10,7 +10,8 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
     // A time‐boxed activity that recurs every year
     private class AnnualActivity(
         int startMonth, int startDay, TimeSpan startTime,
-        int endMonth, int endDay, TimeSpan endTime, string description)
+        int endMonth, int endDay, TimeSpan endTime, string description,
+        int? dayOfYear = null)
     {
         public int StartMonth { get; } = startMonth;
         public int StartDay { get; } = startDay;
@@ -23,6 +24,10 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
 
         public bool IsActive(DateTime now)
         {
+            // Ordinal dates such as Programmer's Day shift in leap years.
+            if (dayOfYear.HasValue)
+                return now.DayOfYear == dayOfYear.Value;
+
             // Build this year's start/end DateTimes
             int year = now.Year;
             DateTime start = new DateTime(year, StartMonth, StartDay)
@@ -109,11 +114,11 @@ public class BotActivityJob(LogsService logsService, DiscordSocketClient discord
             description: "celebrating CC anniversary 🎉"
         ),
 
-        // Day of the programmer (256th day): Sep 13, 00:00 → Sep 14, 00:00
+        // Day of the programmer (256th day): Sep 12 in leap years, Sep 13 otherwise.
         new AnnualActivity(
             startMonth: 9, startDay: 13, startTime: TimeSpan.Zero,
             endMonth:   9, endDay:   14, endTime:   TimeSpan.Zero,
-            description: "0b1010010101 👨‍💻"
+            description: "0b1010010101 👨‍💻", dayOfYear: 256
         ),
 
         // Halloween (Example): Oct 31, 00:00 → Nov 1, 00:00
