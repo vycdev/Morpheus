@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show the Programmer's Day activity on the 256th day of leap years (September 12), not September 13.
 - Keep message-length averages correctly weighted after a user's message counter reaches its maximum value.
 - Read YouTube avatar homepage metadata when JSON fields have whitespace around colons.
 - Ignore invisible Unicode format characters when normalizing messages for XP similarity checks.
