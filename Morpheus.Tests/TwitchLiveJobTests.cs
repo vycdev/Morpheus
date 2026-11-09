@@ -104,6 +104,45 @@ public class TwitchLiveJobTests
     }
 
     [Fact]
+    public async Task ProcessSubscriptionsAsync_WhenStreamGoesOffline_PersistsStateOnce()
+    {
+        TwitchSubscription subscription = new()
+        {
+            TwitchUserId = "streamer",
+            IsLive = true,
+            LastAnnouncedStreamId = "stream-1"
+        };
+        int saveCount = 0;
+        int announcementCount = 0;
+        Task<bool> AnnounceAsync(TwitchSubscription _, TwitchService.TwitchStream __)
+        {
+            announcementCount++;
+            return Task.FromResult(true);
+        }
+        Task SaveAsync()
+        {
+            saveCount++;
+            return Task.CompletedTask;
+        }
+
+        await TwitchLiveJob.ProcessSubscriptionsAsync(
+            [subscription], new Dictionary<string, TwitchService.TwitchStream>(),
+            AnnounceAsync, SaveAsync, CancellationToken.None);
+
+        Assert.False(subscription.IsLive);
+        Assert.Equal("stream-1", subscription.LastAnnouncedStreamId);
+        Assert.Equal(0, announcementCount);
+        Assert.Equal(1, saveCount);
+
+        await TwitchLiveJob.ProcessSubscriptionsAsync(
+            [subscription], new Dictionary<string, TwitchService.TwitchStream>(),
+            AnnounceAsync, SaveAsync, CancellationToken.None);
+
+        Assert.Equal(0, announcementCount);
+        Assert.Equal(1, saveCount);
+    }
+
+    [Fact]
     public async Task ProcessSubscriptionsAsync_WhenLaterAnnouncementFails_PersistsEarlierPost()
     {
         TwitchSubscription first = new() { TwitchUserId = "first" };
