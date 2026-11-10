@@ -12,6 +12,37 @@ namespace Morpheus.Tests;
 public class GuildPrefixServiceTests
 {
     [Fact]
+    public async Task GetPrefixAsync_CachesPersistedPrefixWithoutLeakingAcrossGuilds()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<DB> options = new DbContextOptionsBuilder<DB>()
+            .UseSqlite(connection)
+            .Options;
+        await using (DB setup = new(options))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.Guilds.AddRange(
+                new Guild { DiscordId = 123, Name = "first", Prefix = "first!" },
+                new Guild { DiscordId = 456, Name = "second", Prefix = "second!" });
+            await setup.SaveChangesAsync();
+        }
+
+        using ServiceProvider services = new ServiceCollection()
+            .AddScoped(_ => new DB(options))
+            .BuildServiceProvider();
+        GuildPrefixService service = new(services.GetRequiredService<IServiceScopeFactory>());
+
+        Assert.Equal("first!", await service.GetPrefixAsync(123));
+        Assert.Equal("second!", await service.GetPrefixAsync(456));
+
+        // Repeat reads must use each guild's own cached value, not query the closed database.
+        await connection.CloseAsync();
+        Assert.Equal("second!", await service.GetPrefixAsync(456));
+        Assert.Equal("first!", await service.GetPrefixAsync(123));
+    }
+
+    [Fact]
     public async Task GetPrefixAsync_CachesDefaultForMissingGuildAndAcceptsLaterUpdate()
     {
         await using SqliteConnection connection = new("Data Source=:memory:");
