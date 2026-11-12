@@ -50,6 +50,29 @@ public class RateLimitPolicyTests
     }
 
     [Fact]
+    public void Apply_CooldownsAreIndependentForUsersAndCommands()
+    {
+        Dictionary<(ulong UserId, string CommandName), RateLimitData> state = [];
+        TimeSpan period = TimeSpan.FromSeconds(10);
+        (ulong UserId, string CommandName) first = (42, "quote");
+        (ulong UserId, string CommandName) otherUser = (43, "quote");
+        (ulong UserId, string CommandName) otherCommand = (42, "level");
+
+        Assert.True(RateLimitPolicy.Apply(state, first, uses: 1, period, Now).IsAllowed);
+        Assert.False(RateLimitPolicy.Apply(state, first, uses: 1, period, Now.AddSeconds(1)).IsAllowed);
+        Assert.True(RateLimitPolicy.Apply(state, otherUser, uses: 1, period, Now.AddSeconds(2)).IsAllowed);
+        Assert.True(RateLimitPolicy.Apply(state, otherCommand, uses: 1, period, Now.AddSeconds(3)).IsAllowed);
+
+        Assert.False(RateLimitPolicy.Check(state, first, uses: 1, period, Now.AddSeconds(4)).IsAllowed);
+        Assert.False(RateLimitPolicy.Check(state, otherUser, uses: 1, period, Now.AddSeconds(4)).IsAllowed);
+        Assert.False(RateLimitPolicy.Check(state, otherCommand, uses: 1, period, Now.AddSeconds(4)).IsAllowed);
+        Assert.Equal(3, state.Count);
+        Assert.Equal(Now, state[first].StartTime);
+        Assert.Equal(Now.AddSeconds(2), state[otherUser].StartTime);
+        Assert.Equal(Now.AddSeconds(3), state[otherCommand].StartTime);
+    }
+
+    [Fact]
     public void Check_ValidatesWithoutCreatingOrConsumingAWindow()
     {
         Dictionary<(ulong UserId, string CommandName), RateLimitData> state = [];
