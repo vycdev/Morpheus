@@ -201,6 +201,34 @@ public class QuoteServiceTests
     }
 
     [Fact]
+    public async Task GetQuotePageAsync_FiltersRemovedPendingAndOtherGuildQuotes()
+    {
+        await using SqliteTestDb testDb = await CreateSqliteDbAsync();
+        (User user, Guild guild) = await SeedUserAndGuildAsync(testDb.Db);
+        Guild otherGuild = new() { DiscordId = 789, Name = "Other guild" };
+        testDb.Db.Guilds.Add(otherGuild);
+        await testDb.Db.SaveChangesAsync();
+
+        Quote visible = await SeedQuoteAsync(testDb.Db, guild, user, approved: true, content: "visible");
+        Quote pending = await SeedQuoteAsync(testDb.Db, guild, user, approved: false, content: "pending");
+        await SeedQuoteAsync(testDb.Db, guild, user, approved: true, removed: true, content: "removed");
+        Quote elsewhere = await SeedQuoteAsync(testDb.Db, otherGuild, user, approved: true, content: "elsewhere");
+        QuoteService service = new(testDb.Db);
+
+        QuotePage guildApproved = await service.GetQuotePageAsync(1, "oldest", approvedOnly: true, guild.Id);
+        Assert.Equal(1, guildApproved.Total);
+        Assert.Equal([visible.Id], guildApproved.Items.Select(item => item.Id));
+
+        QuotePage guildAll = await service.GetQuotePageAsync(1, "oldest", approvedOnly: false, guild.Id);
+        Assert.Equal(2, guildAll.Total);
+        Assert.Equal([visible.Id, pending.Id], guildAll.Items.Select(item => item.Id));
+
+        QuotePage globalApproved = await service.GetQuotePageAsync(1, "oldest", approvedOnly: true, guildId: null);
+        Assert.Equal(2, globalApproved.Total);
+        Assert.Equal([visible.Id, elsewhere.Id], globalApproved.Items.Select(item => item.Id));
+    }
+
+    [Fact]
     public async Task QuoteScoreAggregates_WidenBeforeSummingAndClampPublicTotals()
     {
         await using SqliteTestDb testDb = await CreateSqliteDbAsync();
