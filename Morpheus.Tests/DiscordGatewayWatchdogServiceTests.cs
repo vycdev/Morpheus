@@ -53,6 +53,67 @@ public class DiscordGatewayWatchdogServiceTests
         Assert.Equal(DiscordGatewayWatchdogService.WatchdogExitCode, terminator.ExitCode);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_DisabledWatchdogDoesNotPollGatewayOrExit()
+    {
+        FakeGatewayStateProvider gateway = new(ConnectionState.Disconnected);
+        FakeProcessTerminator terminator = new();
+        LogQueue queue = new(capacity: 10);
+        DiscordGatewayWatchdogService service = new(
+            gateway,
+            new DiscordGatewayWatchdogOptions(false, TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(15)),
+            terminator,
+            new LogsService(queue));
+
+        await service.StartAsync(CancellationToken.None);
+        await WaitForLogAsync(queue, "watchdog is disabled", TimeSpan.FromSeconds(2));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Equal(0, gateway.ReadCount);
+        Assert.Null(terminator.ExitCode);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RecoveryClearsTimeoutWhileServiceIsRunning()
+    {
+        FakeGatewayStateProvider gateway = new(ConnectionState.Disconnected);
+        FakeProcessTerminator terminator = new();
+        LogQueue queue = new(capacity: 10);
+        DiscordGatewayWatchdogService service = new(
+            gateway,
+            new DiscordGatewayWatchdogOptions(true, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(10)),
+            terminator,
+            new LogsService(queue));
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForLogAsync(queue, "gateway entered", TimeSpan.FromSeconds(2));
+            gateway.ConnectionState = ConnectionState.Connected;
+            await WaitForLogAsync(queue, "gateway recovered", TimeSpan.FromSeconds(2));
+            await Task.Delay(550);
+
+            Assert.Null(terminator.ExitCode);
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private static async Task WaitForLogAsync(LogQueue queue, string fragment, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (queue.TryDequeue(out QueuedLog? log) && log.Message.Contains(fragment))
+                return;
+            await Task.Delay(5);
+        }
+
+        Assert.Fail($"Watchdog did not log '{fragment}' before the deadline.");
+    }
+
     [Theory]
     [InlineData(29, 15)]
     [InlineData(3601, 15)]
@@ -85,7 +146,19 @@ public class DiscordGatewayWatchdogServiceTests
     private sealed class FakeGatewayStateProvider(ConnectionState state)
         : IDiscordGatewayStateProvider
     {
-        public ConnectionState ConnectionState { get; set; } = state;
+        private ConnectionState connectionState = state;
+
+        public int ReadCount { get; private set; }
+
+        public ConnectionState ConnectionState
+        {
+            get
+            {
+                ReadCount++;
+                return connectionState;
+            }
+            set => connectionState = value;
+        }
     }
 
     private sealed class FakeProcessTerminator : IProcessTerminator
