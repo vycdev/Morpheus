@@ -221,6 +221,21 @@ public class YoutubeUtilsTests
     }
 
     [Fact]
+    public async Task ResolveChannelIdAsync_PrefersCanonicalLinkOverUnrelatedEmbeddedChannelId()
+    {
+        const string unrelatedId = "UC1234567890123456789012";
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<script>var recommendations = {{\"channelId\":\"{unrelatedId}\"}};</script>" +
+                $"<link rel=\"canonical\" href=\"https://www.youtube.com/channel/{ChannelId}\">")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "@channel"));
+        Assert.Single(handler.RequestedUris);
+    }
+
+    [Fact]
     public async Task ResolveChannelIdAsync_DoesNotInferChannelFromUnrelatedLink()
     {
         RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
