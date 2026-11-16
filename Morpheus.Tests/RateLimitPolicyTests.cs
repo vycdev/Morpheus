@@ -63,9 +63,15 @@ public class RateLimitPolicyTests
         Assert.True(RateLimitPolicy.Apply(state, otherUser, uses: 1, period, Now.AddSeconds(2)).IsAllowed);
         Assert.True(RateLimitPolicy.Apply(state, otherCommand, uses: 1, period, Now.AddSeconds(3)).IsAllowed);
 
-        Assert.False(RateLimitPolicy.Check(state, first, uses: 1, period, Now.AddSeconds(4)).IsAllowed);
-        Assert.False(RateLimitPolicy.Check(state, otherUser, uses: 1, period, Now.AddSeconds(4)).IsAllowed);
-        Assert.False(RateLimitPolicy.Check(state, otherCommand, uses: 1, period, Now.AddSeconds(4)).IsAllowed);
+        RateLimitDecision firstCheck = RateLimitPolicy.Check(state, first, uses: 1, period, Now.AddSeconds(4));
+        RateLimitDecision otherUserCheck = RateLimitPolicy.Check(state, otherUser, uses: 1, period, Now.AddSeconds(4));
+        RateLimitDecision otherCommandCheck = RateLimitPolicy.Check(state, otherCommand, uses: 1, period, Now.AddSeconds(4));
+        Assert.False(firstCheck.IsAllowed);
+        Assert.False(otherUserCheck.IsAllowed);
+        Assert.False(otherCommandCheck.IsAllowed);
+        Assert.Equal(TimeSpan.FromSeconds(6), firstCheck.RetryAfter);
+        Assert.Equal(TimeSpan.FromSeconds(8), otherUserCheck.RetryAfter);
+        Assert.Equal(TimeSpan.FromSeconds(9), otherCommandCheck.RetryAfter);
         Assert.Equal(3, state.Count);
         Assert.Equal(Now, state[first].StartTime);
         Assert.Equal(Now.AddSeconds(2), state[otherUser].StartTime);
