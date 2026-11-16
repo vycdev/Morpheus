@@ -26,6 +26,24 @@ public class BotActivityJobTests
         Assert.Equal(expected, active.GetType().GetProperty("Description")!.GetValue(active));
     }
 
+    [Theory]
+    [InlineData(2024, 9, 12, true)]
+    [InlineData(2024, 9, 13, false)]
+    [InlineData(2025, 9, 12, false)]
+    [InlineData(2025, 9, 13, true)]
+    public void Schedule_ProgrammersDayIsThe256thDayOfTheYear(int year, int month, int day, bool expected)
+    {
+        Array schedule = Assert.IsAssignableFrom<Array>(typeof(BotActivityJob)
+            .GetField("Schedule", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null));
+        object activity = Assert.Single(schedule.Cast<object>(), entry =>
+            (string)entry.GetType().GetProperty("Description")!.GetValue(entry)! == "0b1010010101 👨‍💻");
+
+        bool active = (bool)activity.GetType().GetMethod("IsActive")!
+            .Invoke(activity, [new DateTime(year, month, day, 12, 0, 0)])!;
+        Assert.Equal(expected, active);
+    }
+
     [Fact]
     public async Task Execute_WhenCanceledBeforeActivityUpdate_PropagatesCancellation()
     {
