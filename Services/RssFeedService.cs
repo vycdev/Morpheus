@@ -80,18 +80,23 @@ public class RssFeedService(LogsService logsService)
         foreach (XElement e in atomEntries)
         {
             List<XElement> links = e.Elements(Atom + "link").ToList();
-            string legacyLink = FirstNonBlank(
-                links.Where(l => (string?)l.Attribute("rel") is null or "alternate")
-                    .Select(l => l.Attribute("href")?.Value)
-                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
-                links.Select(l => l.Attribute("href")?.Value)
-                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
-            string link = FirstNonBlank(
-                links.Where(l => (string?)l.Attribute("rel") is null or "alternate" &&
+            List<string?> alternateHrefs = links.Where(l => (string?)l.Attribute("rel") is null or "alternate")
+                .Select(l => l.Attribute("href")?.Value).ToList();
+            List<string?> htmlAlternateHrefs = links.Where(l => (string?)l.Attribute("rel") is null or "alternate" &&
                                  string.Equals((string?)l.Attribute("type"), "text/html", StringComparison.OrdinalIgnoreCase))
-                    .Select(l => l.Attribute("href")?.Value)
-                    .FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                .Select(l => l.Attribute("href")?.Value).ToList();
+            List<string?> allHrefs = links.Select(l => l.Attribute("href")?.Value).ToList();
+            // Entry IDs keep using any non-blank link so they stay stable; only web links are posted.
+            string legacyLink = FirstNonBlank(
+                alternateHrefs.FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
+                allHrefs.FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)));
+            string link = FirstNonBlank(
+                htmlAlternateHrefs.FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
                 legacyLink);
+            string webLink = FirstNonBlank(
+                htmlAlternateHrefs.FirstOrDefault(IsWebLink),
+                alternateHrefs.FirstOrDefault(IsWebLink),
+                allHrefs.FirstOrDefault(IsWebLink));
             string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
             string legacyId = FirstNonBlank(e.Element(Atom + "id")?.Value, legacyLink);
             string title = e.Element(Atom + "title")?.Value ?? string.Empty;
@@ -100,7 +105,7 @@ public class RssFeedService(LogsService logsService)
                 e.Element(Atom + "updated")?.Value);
 
             if (!string.IsNullOrWhiteSpace(id))
-                entries.Add(new FeedEntry(id, title, link, published)
+                entries.Add(new FeedEntry(id, title, webLink, published)
                 {
                     LegacyEntryId = legacyId != id && legacyId.Length > 0 ? legacyId : null
                 });
@@ -118,14 +123,17 @@ public class RssFeedService(LogsService logsService)
             // Prefer a usable link in the item's namespace (RSS 2.0 or RSS 1.0),
             // then fall back to extension links when the RSS link is absent or blank.
             XElement? guid = ChildByLocalName(item, "guid");
-            string link = item.Elements()
+            List<string> linkValues = item.Elements()
                 .Where(element => element.Name.LocalName == "link")
                 .OrderByDescending(element => element.Name.Namespace == item.Name.Namespace)
                 .Select(element => FirstNonBlank(element.Value, element.Attribute("href")?.Value))
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-                ?? (item.Name.Namespace == RssOne
-                    ? FirstNonBlank(item.Attribute(Rdf + "about")?.Value)
-                    : item.Name.Namespace == XNamespace.None ? RssGuidPermalink(guid) : string.Empty);
+                .ToList();
+            string fallbackLink = item.Name.Namespace == RssOne
+                ? FirstNonBlank(item.Attribute(Rdf + "about")?.Value)
+                : item.Name.Namespace == XNamespace.None ? RssGuidPermalink(guid) : string.Empty;
+            // Entry IDs keep using any non-blank link so they stay stable; only web links are posted.
+            string link = linkValues.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? fallbackLink;
+            string webLink = linkValues.FirstOrDefault(IsWebLink) ?? (IsWebLink(fallbackLink) ? fallbackLink : string.Empty);
             string explicitId = FirstNonBlank(guid?.Value, ChildByLocalName(item, "id")?.Value);
             string legacyId = FirstNonBlank(explicitId, link);
             string id = FirstNonBlank(
@@ -139,7 +147,7 @@ public class RssFeedService(LogsService logsService)
                 ChildByLocalName(item, "date")?.Value);
 
             if (!string.IsNullOrWhiteSpace(id))
-                entries.Add(new FeedEntry(id, title, link, published)
+                entries.Add(new FeedEntry(id, title, webLink, published)
                 {
                     LegacyEntryId = legacyId != id && legacyId.Length > 0 ? legacyId : null
                 });
@@ -158,6 +166,11 @@ public class RssFeedService(LogsService logsService)
 
         return value;
     }
+
+    private static bool IsWebLink(string? value) =>
+        Uri.TryCreate(value?.Trim(), UriKind.Absolute, out Uri? uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
+        !string.IsNullOrEmpty(uri.Host);
 
     private static XElement? ChildByLocalName(XElement parent, string localName) =>
         parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName);
