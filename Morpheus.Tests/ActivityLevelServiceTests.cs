@@ -41,6 +41,22 @@ public class ActivityLevelServiceTests
         Assert.InRange(userLevel.UserAverageMessageLength, 100, 101);
     }
 
+    [Fact]
+    public void ApplyActivityToUserLevel_UsesBoundedWeightAtSaturatedMessageCount()
+    {
+        UserLevels userLevel = new()
+        {
+            UserMessageCount = int.MaxValue,
+            UserAverageMessageLength = 100
+        };
+
+        ActivityLevelService.ApplyActivityToUserLevel(userLevel, new UserActivity { MessageLength = 200 });
+
+        Assert.Equal(int.MaxValue, userLevel.UserMessageCount);
+        Assert.Equal(100 + (200 - 100) / (double)int.MaxValue,
+            userLevel.UserAverageMessageLength, precision: 12);
+    }
+
     [Theory]
     [InlineData(long.MinValue, 0)]
     [InlineData(-1, 0)]

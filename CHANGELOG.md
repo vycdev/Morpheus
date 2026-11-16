@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep message-length averages correctly weighted after a user's message counter reaches its maximum value.
 - Read YouTube avatar homepage metadata when JSON fields have whitespace around colons.
 - Ignore invisible Unicode format characters when normalizing messages for XP similarity checks.
 - Skip malformed or non-web xkcd feed links instead of posting them as comic announcements.
