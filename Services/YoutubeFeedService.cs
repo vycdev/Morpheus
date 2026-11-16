@@ -51,13 +51,12 @@ public class YoutubeFeedService(LogsService logsService)
                 continue;
 
             string title = e.Element(Atom + "title")?.Value ?? string.Empty;
-            string? rawLink = e.Elements(Atom + "link")
-                .FirstOrDefault(l => (string?)l.Attribute("rel") is null or "alternate" &&
-                    !string.IsNullOrWhiteSpace((string?)l.Attribute("href")))
-                ?.Attribute("href")?.Value;
-            string link = string.IsNullOrWhiteSpace(rawLink)
-                ? $"https://www.youtube.com/watch?v={vid}"
-                : rawLink.Trim();
+            string? webLink = e.Elements(Atom + "link")
+                .Where(l => (string?)l.Attribute("rel") is null or "alternate")
+                .Select(l => ((string?)l.Attribute("href"))?.Trim())
+                .FirstOrDefault(href => Uri.TryCreate(href, UriKind.Absolute, out Uri? uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps));
+            string link = webLink ?? $"https://www.youtube.com/watch?v={vid}";
             string? publishedRaw = e.Element(Atom + "published")?.Value;
             DateTime published = ParsePublished(publishedRaw ?? string.Empty);
             if (published == DateTime.MinValue)

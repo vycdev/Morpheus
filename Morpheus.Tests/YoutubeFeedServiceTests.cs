@@ -156,6 +156,44 @@ public class YoutubeFeedServiceTests
         Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
     }
 
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("/watch?v=video-id")]
+    [InlineData("ftp://www.youtube.com/watch?v=video-id")]
+    public void ParseEntries_WhenAlternateLinkIsNotAWebUrl_UsesCanonicalVideoUrl(string invalidLink)
+    {
+        XDocument document = XDocument.Parse($"""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                <link rel="alternate" href="{invalidLink}" />
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+        Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
+    }
+
+    [Fact]
+    public void ParseEntries_WhenFirstAlternateLinkIsInvalid_UsesNextValidWebLink()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+              <entry>
+                <yt:videoId>video-id</yt:videoId>
+                <link rel="alternate" href="javascript:alert(1)" />
+                <link rel="alternate" href="https://www.youtube.com/watch?v=video-id" />
+              </entry>
+            </feed>
+            """);
+
+        YoutubeFeedService.VideoEntry entry = Assert.Single(YoutubeFeedService.ParseEntries(document));
+        Assert.Equal("https://www.youtube.com/watch?v=video-id", entry.Link);
+    }
+
     [Fact]
     public void ParseEntries_TrimsWhitespaceAroundVideoIds()
     {
