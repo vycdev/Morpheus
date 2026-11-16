@@ -200,6 +200,37 @@ public class RssFeedServiceTests
     }
 
     [Fact]
+    public void ParseEntries_NonWebRssLinkWithoutGuid_KeepsLinkIdentityAndPostsTitle()
+    {
+        XDocument document = XDocument.Parse("""
+            <rss version="2.0"><channel><item>
+              <title>Readable title</title><link>/relative/article</link>
+            </item></channel></rss>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseRssEntries(document));
+        Assert.Equal("/relative/article", entry.EntryId);
+        Assert.Empty(entry.Link);
+        Assert.Equal("Readable title", RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
+    public void ParseEntries_NonWebAtomLinkWithoutId_KeepsLinkIdentityAndPostsTitle()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+              <title>Readable title</title>
+              <link rel="alternate" href="javascript:alert(1)" />
+            </entry></feed>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseEntries(document));
+        Assert.Equal("javascript:alert(1)", entry.EntryId);
+        Assert.Empty(entry.Link);
+        Assert.Equal("Readable title", RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
     public void ParseEntries_InvalidRssLinkFallsBackToValidExtensionLink()
     {
         XDocument document = XDocument.Parse("""
