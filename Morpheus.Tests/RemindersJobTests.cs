@@ -183,6 +183,22 @@ public class RemindersJobTests
     }
 
     [Fact]
+    public async Task DeliverAsync_WhenSendTimesOut_SchedulesRetry()
+    {
+        Reminder reminder = new() { Id = 7, ChannelId = 42, Text = "Remember this" };
+
+        bool shouldDelete = await RemindersJob.DeliverAsync(
+            reminder,
+            _ => Task.FromException(new TaskCanceledException("timed out", new TimeoutException())),
+            _ => { },
+            new DateTime(2026, 11, 4, 5, 0, 0, DateTimeKind.Utc));
+
+        Assert.False(shouldDelete);
+        Assert.Equal(1, reminder.DeliveryFailureCount);
+        Assert.NotNull(reminder.NextDeliveryAttemptAt);
+    }
+
+    [Fact]
     public async Task DeliverAsync_WhenDeliverySucceeds_DeletesReminder()
     {
         Reminder reminder = new() { Id = 7, ChannelId = 42, Text = "Remember this" };
