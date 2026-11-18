@@ -80,11 +80,11 @@ public class RssFeedService(LogsService logsService)
         foreach (XElement e in atomEntries)
         {
             List<XElement> links = e.Elements(Atom + "link").ToList();
-            List<string?> alternateHrefs = links.Where(l => (string?)l.Attribute("rel") is null or "alternate")
-                .Select(l => l.Attribute("href")?.Value).ToList();
-            List<string?> htmlAlternateHrefs = links.Where(l => (string?)l.Attribute("rel") is null or "alternate" &&
-                                 string.Equals((string?)l.Attribute("type"), "text/html", StringComparison.OrdinalIgnoreCase))
-                .Select(l => l.Attribute("href")?.Value).ToList();
+            List<XElement> alternates = links.Where(l => (string?)l.Attribute("rel") is null or "alternate").ToList();
+            List<XElement> htmlAlternates = alternates.Where(l =>
+                string.Equals((string?)l.Attribute("type"), "text/html", StringComparison.OrdinalIgnoreCase)).ToList();
+            List<string?> alternateHrefs = alternates.Select(l => l.Attribute("href")?.Value).ToList();
+            List<string?> htmlAlternateHrefs = htmlAlternates.Select(l => l.Attribute("href")?.Value).ToList();
             List<string?> allHrefs = links.Select(l => l.Attribute("href")?.Value).ToList();
             // Entry IDs keep using any non-blank link so they stay stable; only web links are posted.
             string legacyLink = FirstNonBlank(
@@ -94,9 +94,9 @@ public class RssFeedService(LogsService logsService)
                 htmlAlternateHrefs.FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
                 legacyLink);
             string webLink = FirstNonBlank(
-                htmlAlternateHrefs.FirstOrDefault(IsWebLink),
-                alternateHrefs.FirstOrDefault(IsWebLink),
-                allHrefs.FirstOrDefault(IsWebLink));
+                htmlAlternates.Select(ResolveAtomWebLink).FirstOrDefault(href => href.Length > 0),
+                alternates.Select(ResolveAtomWebLink).FirstOrDefault(href => href.Length > 0),
+                links.Select(ResolveAtomWebLink).FirstOrDefault(href => href.Length > 0));
             string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
             string legacyId = FirstNonBlank(e.Element(Atom + "id")?.Value, legacyLink);
             string title = e.Element(Atom + "title")?.Value ?? string.Empty;
@@ -165,6 +165,33 @@ public class RssFeedService(LogsService logsService)
             return string.Empty;
 
         return value;
+    }
+
+    private static string ResolveAtomWebLink(XElement link)
+    {
+        string href = link.Attribute("href")?.Value.Trim() ?? string.Empty;
+        if (IsWebLink(href))
+            return href;
+        if (string.IsNullOrWhiteSpace(href))
+            return string.Empty;
+
+        Uri? baseUri = null;
+        foreach (XElement element in link.AncestorsAndSelf().Reverse())
+        {
+            string? xmlBase = (string?)element.Attribute(XNamespace.Xml + "base");
+            if (string.IsNullOrWhiteSpace(xmlBase))
+                continue;
+
+            bool valid = baseUri is null
+                ? Uri.TryCreate(xmlBase, UriKind.Absolute, out baseUri)
+                : Uri.TryCreate(baseUri, xmlBase, out baseUri);
+            if (!valid || baseUri is null)
+                return string.Empty;
+        }
+
+        if (baseUri is null || !Uri.TryCreate(baseUri, href, out Uri? resolved))
+            return string.Empty;
+        return IsWebLink(resolved.AbsoluteUri) ? resolved.AbsoluteUri : string.Empty;
     }
 
     private static bool IsWebLink(string? value) =>
