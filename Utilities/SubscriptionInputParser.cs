@@ -96,6 +96,20 @@ internal static partial class SubscriptionInputParser
                         break;
                     }
                 }
+
+                // A list token cannot contain a display name after a CSV comma or whitespace.
+                string[] tokens = SplitRssTokens(line).ToArray();
+                if (tokens.Length > 1 &&
+                    (separatorIndex < 0 || separatorIndex >= tokens[0].Length) &&
+                    tokens.All(token => !token.Any(char.IsWhiteSpace)))
+                {
+                    string[] urls = tokens.Where(IsHttpUrl).ToArray();
+                    if (urls.Length > 1)
+                    {
+                        sources.AddRange(urls.Select(url => new RssSource(url, null)));
+                        continue;
+                    }
+                }
             }
 
             string sourcePart = separatorIndex >= 0 ? line[..separatorIndex].Trim() : line;
