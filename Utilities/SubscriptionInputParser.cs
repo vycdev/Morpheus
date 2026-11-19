@@ -38,20 +38,18 @@ internal static partial class SubscriptionInputParser
         string[] lines = input.Replace("\r\n", "\n")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (lines.Length == 1)
-        {
-            string[] tokens = SplitRssTokens(lines[0]).ToArray();
-            string[] urls = tokens.Where(IsHttpUrl).ToArray();
-            if (urls.Length > 1)
-                return urls
-                    .GroupBy(GetRssUrlKey)
-                    .Select(group => new RssSource(RemoveRssFragment(group.First()), null))
-                    .ToArray();
-        }
-
         List<RssSource> sources = [];
         foreach (string line in lines)
         {
+            // Each line in an attached file may itself contain several URLs.
+            // Preserve the single-URL display-name syntax on the other lines.
+            string[] urls = SplitRssTokens(line).Where(IsHttpUrl).ToArray();
+            if (urls.Length > 1)
+            {
+                sources.AddRange(urls.Select(url => new RssSource(url, null)));
+                continue;
+            }
+
             int separatorIndex = line.IndexOf('|');
             if (separatorIndex < 0)
             {

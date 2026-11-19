@@ -199,6 +199,20 @@ public class SubscriptionInputParserTests
     }
 
     [Fact]
+    public void ParseRssSources_AcceptsMultipleUrlsOnALineInBulkFiles()
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            "https://example.com/feed.xml | Example\nhttps://example.org/atom.xml https://example.net/news.xml");
+
+        Assert.Equal(
+            ["https://example.com/feed.xml", "https://example.org/atom.xml", "https://example.net/news.xml"],
+            parsed.Select(source => source.Url));
+        Assert.Equal("Example", parsed[0].DisplayName);
+        Assert.Null(parsed[1].DisplayName);
+        Assert.Null(parsed[2].DisplayName);
+    }
+
+    [Fact]
     public void ParseRssSources_AcceptsCsvUrlAndDisplayName()
     {
         SubscriptionInputParser.RssSource parsed = Assert.Single(
