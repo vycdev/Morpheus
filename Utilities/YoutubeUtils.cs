@@ -96,12 +96,10 @@ public static partial class YoutubeUtils
                 if (!href.Success)
                     continue;
 
-                // Scheme-relative canonical links are web URLs, not file URLs.
+                // Resolve relative canonical links against the YouTube page being fetched.
+                // Scheme-relative links retain their own host for the check below.
                 string canonicalUrl = href.Groups["url"].Value;
-                if (canonicalUrl.StartsWith("//", StringComparison.Ordinal))
-                    canonicalUrl = $"https:{canonicalUrl}";
-
-                if (!Uri.TryCreate(canonicalUrl, UriKind.Absolute, out Uri? uri) ||
+                if (!Uri.TryCreate(scrapeUri, canonicalUrl, out Uri? uri) ||
                     (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
                     !IsYoutubeHost(uri.Host))
                     continue;
