@@ -711,13 +711,13 @@ public class MiscModule(CommandService commands, IServiceProvider serviceProvide
         if (string.IsNullOrWhiteSpace(favicon))
             return false;
 
-        const string base64Marker = ";base64,";
-        int markerIndex = favicon.IndexOf(base64Marker, StringComparison.OrdinalIgnoreCase);
-        if (favicon.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && markerIndex < 0)
+        const string pngDataPrefix = "data:image/png;base64,";
+        if (favicon.StartsWith("data:", StringComparison.OrdinalIgnoreCase) &&
+            !favicon.StartsWith(pngDataPrefix, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        string encodedImage = markerIndex >= 0
-            ? favicon[(markerIndex + base64Marker.Length)..]
+        string encodedImage = favicon.StartsWith(pngDataPrefix, StringComparison.OrdinalIgnoreCase)
+            ? favicon[pngDataPrefix.Length..]
             : favicon;
 
         try
