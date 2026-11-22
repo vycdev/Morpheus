@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reject UBI donations with fractions of a cent so the donor's debit matches the credit to the pool.
 - Ignore non-PNG Minecraft favicon data URIs instead of attaching them as PNG images.
 - Resolve relative YouTube canonical channel links against their page when finding channel IDs.
 - Subscribe to every RSS/Atom URL when a bulk input line contains several feeds, even if other lines use display names.

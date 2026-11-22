@@ -215,6 +215,10 @@ public class EconomyService(DB dbContext, LogsService logsService)
     {
         if (amount <= 0) return (false, "Amount must be positive.");
 
+        // The pool is stored in whole cents, so rounding would make the credit differ from the debit.
+        if (decimal.Round(amount, 2) != amount)
+            return (false, "Donations must be in whole cents (at most 2 decimal places).");
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try
         {
