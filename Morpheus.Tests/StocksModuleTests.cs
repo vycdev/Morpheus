@@ -120,14 +120,24 @@ public class StocksModuleTests
         StocksService stocksService = new(db, logs, new EconomyService(db, logs));
         TestStocksModule module = new(db, stocksService);
 
-        await module.StockPortfolioAsync(CreateUser(owner.DiscordId, owner.Username));
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
-        Embed embed = Assert.IsType<Embed>(module.LastEmbed);
-        Assert.NotNull(embed.Description);
-        Assert.InRange(embed.Description.Length, 1, EmbedBuilder.MaxDescriptionLength);
-        Assert.Contains("more holdings", embed.Description);
-        Assert.Contains("Total Holdings Value", embed.Description);
-        Assert.Contains("$5000.00", embed.Description);
+            await module.StockPortfolioAsync(CreateUser(owner.DiscordId, owner.Username));
+
+            Embed embed = Assert.IsType<Embed>(module.LastEmbed);
+            Assert.NotNull(embed.Description);
+            Assert.InRange(embed.Description.Length, 1, EmbedBuilder.MaxDescriptionLength);
+            Assert.Contains("more holdings", embed.Description);
+            Assert.Contains("Total Holdings Value", embed.Description);
+            Assert.Contains("$5000.00", embed.Description);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     private static IUser CreateUser(ulong id, string username)
