@@ -73,12 +73,12 @@ If the change needs a manual database migration for production, explain it in th
 
 - Language: C# targeting .NET 10.
 - Use the project's existing style for naming, nullability annotations, and dependency injection patterns.
-- Prefer small, focused PRs. Unit tests are not required, but are nice to have. 
+- Prefer small, focused PRs. Include regression tests when they help verify a behavior change.
 - If you change public behavior (commands, DB schema, bot permissions), document it in the PR description.
 
 ## Running tests
 
-There are no project-wide unit tests mandated by the repository, but if you add tests run:
+Run the xUnit suite in `Morpheus.Tests/` from the repository root:
 
 ```powershell
 dotnet test
@@ -87,7 +87,7 @@ dotnet test
 ## Submitting a PR
 
 - Rebase or merge from `develop` before opening the PR.
-- Make sure `dotnet build` succeeds and `COMMANDS.md` is up to date.
+- Verify the change with `dotnet build` and `dotnet test`. Make sure `COMMANDS.md` is up to date.
 - In your PR description include what you changed, why, and any migration steps or deploy notes.
 
 ## Reporting issues
