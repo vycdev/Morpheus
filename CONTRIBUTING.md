@@ -27,6 +27,13 @@ Install dotnet-ef (if needed):
 dotnet tool install --global dotnet-ef
 ```
 
+## Running the bot locally
+
+1. Copy [`default.env`](./default.env) to `.env` in the repository root. Git ignores `.env` because it holds credentials. Values in `.env` take precedence over inherited environment variables.
+2. Set `BOT_TOKEN` to the token for a development Discord bot. Enable **Server Members Intent** and **Message Content Intent** for that bot in the Discord Developer Portal, then invite it to a test server.
+3. Set `DB_CONNECTION_STRING` to the connection string for a development PostgreSQL database. Morpheus applies pending EF Core migrations before connecting to Discord, so the database user needs permission to create and alter the schema objects.
+4. From the repository root, start the bot with `dotnet run --project Morpheus.csproj`. The default command prefix in the template is `!`.
+
 ## Publishing the Docker image
 
 The publishing script reads registry credentials and image settings from `publish/.env`, which is intentionally ignored by Git. Create it from the checked-in template before publishing:
