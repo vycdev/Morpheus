@@ -112,10 +112,16 @@ any non-connected state for five minutes. Container deployments should use a
 restart policy such as `unless-stopped` so a gateway connection that becomes
 stuck after a network outage is recovered automatically.
 
-The watchdog is enabled by default. Its settings can be overridden with
-`DISCORD_GATEWAY_WATCHDOG_ENABLED`,
-`DISCORD_GATEWAY_WATCHDOG_TIMEOUT_SECONDS` (default: `300`), and
-`DISCORD_GATEWAY_WATCHDOG_CHECK_INTERVAL_SECONDS` (default: `15`).
+| Environment variable | Default | Configuration |
+| --- | --- | --- |
+| `DISCORD_GATEWAY_WATCHDOG_ENABLED` | `true` | Set to `false` to disable |
+| `DISCORD_GATEWAY_WATCHDOG_TIMEOUT_SECONDS` | `300` | 30–3600 whole seconds |
+| `DISCORD_GATEWAY_WATCHDOG_CHECK_INTERVAL_SECONDS` | `15` | 1–60 whole seconds, strictly less than the timeout |
+
+Morpheus uses the default for any timing setting that is unset, blank, or cannot
+be parsed as an integer. It validates the resulting settings at startup, even
+when the watchdog is disabled. Values outside the allowed ranges or a check
+interval equal to or greater than the timeout prevent startup.
 
 ## Contributing
 
