@@ -93,10 +93,10 @@ public class RssFeedService(LogsService logsService)
             string link = FirstNonBlank(
                 htmlAlternateHrefs.FirstOrDefault(href => !string.IsNullOrWhiteSpace(href)),
                 legacyLink);
-            string webLink = FirstNonBlank(
-                htmlAlternates.Select(ResolveAtomWebLink).FirstOrDefault(href => href.Length > 0),
-                alternates.Select(ResolveAtomWebLink).FirstOrDefault(href => href.Length > 0),
-                links.Select(ResolveAtomWebLink).FirstOrDefault(href => href.Length > 0));
+            string webLink = htmlAlternates.Select(ResolveAtomWebLink).FirstOrDefault(href => href is not null)
+                ?? alternates.Select(ResolveAtomWebLink).FirstOrDefault(href => href is not null)
+                ?? links.Select(ResolveAtomWebLink).FirstOrDefault(href => href is not null)
+                ?? string.Empty;
             string id = FirstNonBlank(e.Element(Atom + "id")?.Value, link);
             string legacyId = FirstNonBlank(e.Element(Atom + "id")?.Value, legacyLink);
             string title = e.Element(Atom + "title")?.Value ?? string.Empty;
@@ -167,13 +167,15 @@ public class RssFeedService(LogsService logsService)
         return value;
     }
 
-    private static string ResolveAtomWebLink(XElement link)
+    private static string? ResolveAtomWebLink(XElement link)
     {
         string href = link.Attribute("href")?.Value.Trim() ?? string.Empty;
         if (IsWebLink(href))
             return href;
-        if (string.IsNullOrWhiteSpace(href))
-            return string.Empty;
+        int schemeSeparator = href.IndexOf(':');
+        // Only relative references can use xml:base. Uri may accept malformed absolute URLs as relative.
+        if (href.Length == 0 || (schemeSeparator > 0 && Uri.CheckSchemeName(href[..schemeSeparator])))
+            return null;
 
         Uri? baseUri = null;
         foreach (XElement element in link.AncestorsAndSelf().Reverse())
@@ -182,16 +184,16 @@ public class RssFeedService(LogsService logsService)
             if (string.IsNullOrWhiteSpace(xmlBase))
                 continue;
 
-            bool valid = baseUri is null
-                ? Uri.TryCreate(xmlBase, UriKind.Absolute, out baseUri)
-                : Uri.TryCreate(baseUri, xmlBase, out baseUri);
-            if (!valid || baseUri is null)
-                return string.Empty;
+            // A later absolute xml:base can provide a base even if an earlier one could not.
+            if (baseUri is null)
+                Uri.TryCreate(xmlBase, UriKind.Absolute, out baseUri);
+            else
+                Uri.TryCreate(baseUri, xmlBase, out baseUri);
         }
 
         if (baseUri is null || !Uri.TryCreate(baseUri, href, out Uri? resolved))
-            return string.Empty;
-        return IsWebLink(resolved.AbsoluteUri) ? resolved.AbsoluteUri : string.Empty;
+            return null;
+        return IsWebLink(resolved.AbsoluteUri) ? resolved.AbsoluteUri : null;
     }
 
     private static bool IsWebLink(string? value) =>
