@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Morpheus.Database;
@@ -203,15 +204,25 @@ public class ActivityLeaderboardServiceTests
             });
         await db.SaveChangesAsync();
 
-        ActivityLeaderboardService service = new(db);
-        ActivityLeaderboardQueryResult result = await service.GetGlobalAverageLengthLeaderboardAsync(
-            viewerUserId: viewer.Id,
-            page: 1);
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
-        Assert.True(result.Success);
-        Assert.NotNull(result.Page);
-        Assert.Equal("[1] | viewer: Avg length 10.0 chars", result.Page.Lines[0]);
-        Assert.Equal("Your rank: #1", result.Page.RankLine);
+            ActivityLeaderboardService service = new(db);
+            ActivityLeaderboardQueryResult result = await service.GetGlobalAverageLengthLeaderboardAsync(
+                viewerUserId: viewer.Id,
+                page: 1);
+
+            Assert.True(result.Success);
+            Assert.NotNull(result.Page);
+            Assert.Equal("[1] | viewer: Avg length 10.0 chars", result.Page.Lines[0]);
+            Assert.Equal("Your rank: #1", result.Page.RankLine);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Fact]
