@@ -308,14 +308,14 @@ public class EmojisModule : MorpheusModuleBase
     public async Task AddEmoji([Remainder] string? name = null)
     {
         IUserMessage message = Context.Message;
-        (IAttachment? attachment, string? imageUrl) = GetEmojiSource(message, includeEmbeds: false);
+        (IAttachment? attachment, string? imageUrl, IAttachment? fallbackAttachment) = GetEmojiSource(message, includeEmbeds: false);
         ulong? replyToRefresh = null;
         if (imageUrl is null)
         {
             IUserMessage? reply = message.ReferencedMessage;
             if (reply is not null)
             {
-                (attachment, imageUrl) = GetEmojiSource(reply, includeEmbeds: true);
+                (attachment, imageUrl, fallbackAttachment) = GetEmojiSource(reply, includeEmbeds: true);
                 replyToRefresh = reply.Id;
             }
             else if (message.Type == MessageType.Reply &&
@@ -323,7 +323,7 @@ public class EmojisModule : MorpheusModuleBase
                      reference.ChannelId == Context.Channel.Id &&
                      await GetFreshEmojiReplyAsync(reference.MessageId.Value) is { } freshReply)
             {
-                (attachment, imageUrl) = GetEmojiSource(freshReply, includeEmbeds: true);
+                (attachment, imageUrl, fallbackAttachment) = GetEmojiSource(freshReply, includeEmbeds: true);
             }
         }
 
@@ -347,6 +347,13 @@ public class EmojisModule : MorpheusModuleBase
         }
 
         byte[]? imageData = await DownloadEmojiSourceAsync(imageUrl);
+        if (imageData is null && fallbackAttachment is not null && fallbackAttachment.Size <= MaxEmojiSourceBytes)
+        {
+            attachment = fallbackAttachment;
+            imageUrl = attachment.Url;
+            imageData = await DownloadEmojiSourceAsync(imageUrl);
+            emojiName = NormalizeEmojiName(name, attachment.Filename) ?? emojiName;
+        }
         if (imageData is null && replyToRefresh is ulong replyId && attachment is not null &&
             await GetFreshEmojiReplyAsync(replyId) is { } refreshedReply &&
             refreshedReply.Attachments.FirstOrDefault(file => file.Id == attachment.Id) is { } refreshed &&
@@ -396,24 +403,25 @@ public class EmojisModule : MorpheusModuleBase
             : null;
     }
 
-    private static (IAttachment? Attachment, string? Url) GetEmojiSource(IUserMessage message, bool includeEmbeds)
+    private static (IAttachment? Attachment, string? Url, IAttachment? FallbackAttachment) GetEmojiSource(
+        IUserMessage message, bool includeEmbeds)
     {
         IAttachment? attachment = message.Attachments.FirstOrDefault(file =>
             file.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true);
         if (attachment is not null)
-            return (attachment, attachment.Url);
+            return (attachment, attachment.Url, null);
 
+        attachment = message.Attachments.FirstOrDefault(file => string.IsNullOrEmpty(file.ContentType));
         if (includeEmbeds)
         {
             string? previewUrl = message.Embeds.Select(embed =>
                 GetEmbedImageUrl(embed.Image?.ProxyUrl, embed.Image?.Url) ??
                 GetEmbedImageUrl(embed.Thumbnail?.ProxyUrl, embed.Thumbnail?.Url)).FirstOrDefault(url => url is not null);
             if (previewUrl is not null)
-                return (null, previewUrl);
+                return (null, previewUrl, attachment);
         }
 
-        attachment = message.Attachments.FirstOrDefault(file => string.IsNullOrEmpty(file.ContentType));
-        return (attachment, attachment?.Url);
+        return (attachment, attachment?.Url, null);
     }
 
     internal static string? GetEmbedImageUrl(string? proxyUrl, string? sourceUrl)
