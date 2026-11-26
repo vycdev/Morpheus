@@ -183,6 +183,58 @@ public class RssFeedServiceTests
         Assert.Equal("Readable title", RssFeedJob.FormatEntryContent(entry));
     }
 
+    [Theory]
+    [InlineData("https://example.com/blog/", "2026/")]
+    [InlineData("blog/", "https://example.com/blog/2026/")]
+    public void ParseEntries_ResolvesRelativeAtomLinksAgainstXmlBase(string feedBase, string entryBase)
+    {
+        XDocument document = XDocument.Parse($"""
+            <feed xmlns="http://www.w3.org/2005/Atom" xml:base="{feedBase}">
+              <entry xml:base="{entryBase}">
+                <id>urn:post:1</id><title>New post</title>
+                <link rel="alternate" href="post-1" />
+              </entry>
+            </feed>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseEntries(document));
+        Assert.Equal("urn:post:1", entry.EntryId);
+        Assert.Equal("https://example.com/blog/2026/post-1", entry.Link);
+        Assert.Equal(entry.Link, RssFeedJob.FormatEntryContent(entry));
+    }
+
+    [Fact]
+    public void ParseEntries_RelativeAtomLinkWithoutIdRetainsItsExistingIdentity()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://example.com/">
+              <entry><title>New post</title>
+                <link rel="alternate" xml:base="articles/" href="post-1" />
+              </entry>
+            </feed>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseEntries(document));
+        Assert.Equal("post-1", entry.EntryId);
+        Assert.Equal("https://example.com/articles/post-1", entry.Link);
+    }
+
+    [Fact]
+    public void ParseEntries_XmlBaseDoesNotTurnNonWebAtomLinkIntoWebLink()
+    {
+        XDocument document = XDocument.Parse("""
+            <feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://example.com/">
+              <entry><id>entry-1</id><title>New post</title>
+                <link rel="alternate" href="javascript:alert(1)" />
+              </entry>
+            </feed>
+            """);
+
+        RssFeedService.FeedEntry entry = Assert.Single(RssFeedService.ParseEntries(document));
+        Assert.Equal("entry-1", entry.EntryId);
+        Assert.Empty(entry.Link);
+    }
+
     [Fact]
     public void ParseEntries_DoesNotPostNonWebAtomLinks()
     {
@@ -246,13 +298,15 @@ public class RssFeedServiceTests
             Assert.Single(RssFeedService.ParseRssEntries(document)).Link);
     }
 
-    [Fact]
-    public void ParseEntries_InvalidAtomAlternateFallsBackToValidLink()
+    [Theory]
+    [InlineData("", "javascript:alert(1)")]
+    [InlineData("https://example.net/blog/", "https:/article")]
+    public void ParseEntries_InvalidAtomAlternateFallsBackToValidLink(string feedBase, string invalidLink)
     {
-        XDocument document = XDocument.Parse("""
-            <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+        XDocument document = XDocument.Parse($"""
+            <feed xmlns="http://www.w3.org/2005/Atom" xml:base="{feedBase}"><entry>
               <id>entry-1</id>
-              <link rel="alternate" type="text/html" href="javascript:alert(1)" />
+              <link rel="alternate" type="text/html" href="{invalidLink}" />
               <link rel="alternate" href="https://example.com/article" />
             </entry></feed>
             """);
