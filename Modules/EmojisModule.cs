@@ -308,15 +308,14 @@ public class EmojisModule : MorpheusModuleBase
     public async Task AddEmoji([Remainder] string? name = null)
     {
         IUserMessage message = Context.Message;
-        IAttachment? attachment = message.Attachments.FirstOrDefault(IsImageAttachment);
-        string? imageUrl = attachment?.Url;
+        (IAttachment? attachment, string? imageUrl) = GetEmojiSource(message, includeEmbeds: false);
         ulong? replyToRefresh = null;
         if (imageUrl is null)
         {
             IUserMessage? reply = message.ReferencedMessage;
             if (reply is not null)
             {
-                (attachment, imageUrl) = GetReplyEmojiSource(reply);
+                (attachment, imageUrl) = GetEmojiSource(reply, includeEmbeds: true);
                 replyToRefresh = reply.Id;
             }
             else if (message.Type == MessageType.Reply &&
@@ -324,7 +323,7 @@ public class EmojisModule : MorpheusModuleBase
                      reference.ChannelId == Context.Channel.Id &&
                      await GetFreshEmojiReplyAsync(reference.MessageId.Value) is { } freshReply)
             {
-                (attachment, imageUrl) = GetReplyEmojiSource(freshReply);
+                (attachment, imageUrl) = GetEmojiSource(freshReply, includeEmbeds: true);
             }
         }
 
@@ -361,29 +360,19 @@ public class EmojisModule : MorpheusModuleBase
             return;
         }
 
-        if (!EmojiImage.TryPrepare(imageData, out byte[] emojiData, out bool animated, out string? error))
+        if (!EmojiImage.TryPrepare(imageData, out byte[] emojiData, out _, out string? error))
         {
             await ReplyAsync(error!);
             return;
         }
 
         SocketGuild guild = Context.Guild;
-
-        // Check emoji slot limits (fetch fresh data via REST to avoid stale cache)
-        var freshEmotes = (await client.Rest.GetGuildAsync(guild.Id))?.Emotes ?? guild.Emotes;
-        int usedSlots = freshEmotes.Count(e => e.Animated == animated);
-        int emojiLimit = GetGuildEmojiLimit(guild.PremiumTier);
-        if (usedSlots >= emojiLimit)
-        {
-            await ReplyAsync($"This server has reached its {(animated ? "animated" : "static")} emoji limit ({usedSlots}/{emojiLimit}). Boost the server to unlock more slots.");
-            return;
-        }
-
-        string finalName = GetAvailableEmojiName(emojiName, freshEmotes.Select(e => e.Name));
-
+        string finalName = emojiName;
         GuildEmote newEmoji;
         try
         {
+            var currentEmojis = await guild.GetEmotesAsync();
+            finalName = GetAvailableEmojiName(emojiName, currentEmojis.Select(emoji => emoji.Name));
             using var stream = new MemoryStream(emojiData);
             newEmoji = await guild.CreateEmoteAsync(finalName, new Image(stream));
         }
@@ -407,13 +396,24 @@ public class EmojisModule : MorpheusModuleBase
             : null;
     }
 
-    private static (IAttachment? Attachment, string? Url) GetReplyEmojiSource(IUserMessage reply)
+    private static (IAttachment? Attachment, string? Url) GetEmojiSource(IUserMessage message, bool includeEmbeds)
     {
-        IAttachment? attachment = reply.Attachments.FirstOrDefault(IsImageAttachment);
-        string? imageUrl = attachment?.Url ?? reply.Embeds.Select(embed =>
-            GetEmbedImageUrl(embed.Image?.ProxyUrl, embed.Image?.Url) ??
-            GetEmbedImageUrl(embed.Thumbnail?.ProxyUrl, embed.Thumbnail?.Url)).FirstOrDefault(url => url is not null);
-        return (attachment, imageUrl);
+        IAttachment? attachment = message.Attachments.FirstOrDefault(file =>
+            file.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true);
+        if (attachment is not null)
+            return (attachment, attachment.Url);
+
+        if (includeEmbeds)
+        {
+            string? previewUrl = message.Embeds.Select(embed =>
+                GetEmbedImageUrl(embed.Image?.ProxyUrl, embed.Image?.Url) ??
+                GetEmbedImageUrl(embed.Thumbnail?.ProxyUrl, embed.Thumbnail?.Url)).FirstOrDefault(url => url is not null);
+            if (previewUrl is not null)
+                return (null, previewUrl);
+        }
+
+        attachment = message.Attachments.FirstOrDefault(file => string.IsNullOrEmpty(file.ContentType));
+        return (attachment, attachment?.Url);
     }
 
     internal static string? GetEmbedImageUrl(string? proxyUrl, string? sourceUrl)
@@ -428,9 +428,6 @@ public class EmojisModule : MorpheusModuleBase
             ? sourceUrl
             : null;
     }
-
-    private static bool IsImageAttachment(IAttachment attachment) =>
-        attachment.ContentType == null || attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
     private static string? GetUrlFileName(string url) =>
         Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? Uri.UnescapeDataString(Path.GetFileName(uri.AbsolutePath)) : null;
