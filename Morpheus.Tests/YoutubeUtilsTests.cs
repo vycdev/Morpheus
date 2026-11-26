@@ -317,6 +317,21 @@ public class YoutubeUtilsTests
         Assert.Single(handler.RequestedUris);
     }
 
+    [Fact]
+    public async Task ResolveChannelIdAsync_UsesFinalPagePathForRelativeCanonicalLink()
+    {
+        using HttpRequestMessage redirectedRequest = new(HttpMethod.Get, "https://www.youtube.com/@channel");
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = redirectedRequest,
+            Content = new StringContent($"<link rel='canonical' href='channel/{ChannelId}'>")
+        });
+        using HttpClient httpClient = new(handler);
+
+        Assert.Equal(ChannelId, await YoutubeUtils.ResolveChannelIdAsync(httpClient, "youtube.com/c/channel"));
+        Assert.Equal("/c/channel", Assert.Single(handler.RequestedUris).AbsolutePath);
+    }
+
     [Theory]
     [InlineData("ftp://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")]
     [InlineData("file://www.youtube.com/channel/UCabcdefghijklmnopqrstuv")]

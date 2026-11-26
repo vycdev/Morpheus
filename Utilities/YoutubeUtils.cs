@@ -81,6 +81,8 @@ public static partial class YoutubeUtils
             if (string.IsNullOrEmpty(html))
                 return null;
 
+            Uri pageUri = resp.RequestMessage?.RequestUri ?? scrapeUri;
+
             // Prefer the page's canonical channel link: embedded channelId metadata can
             // belong to a recommendation rather than the channel being resolved.
             // Other channel links on the page may point to unrelated creators.
@@ -99,7 +101,7 @@ public static partial class YoutubeUtils
                 // Resolve relative canonical links against the YouTube page being fetched.
                 // Scheme-relative links retain their own host for the check below.
                 string canonicalUrl = href.Groups["url"].Value;
-                if (!Uri.TryCreate(scrapeUri, canonicalUrl, out Uri? uri) ||
+                if (!Uri.TryCreate(pageUri, canonicalUrl, out Uri? uri) ||
                     (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
                     !IsYoutubeHost(uri.Host))
                     continue;
