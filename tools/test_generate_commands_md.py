@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Regression tests for the command documentation generator."""
 import importlib.util
-import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,12 +48,7 @@ public class ExampleModule
             path = Path(temporary) / "Nested" / "ExampleModule.cs"
             path.parent.mkdir()
             path.write_text(source, encoding="utf-8")
-            old_cwd = Path.cwd()
-            try:
-                os.chdir(ROOT)
-                commands = GENERATOR.extract_methods_from_file(path)
-            finally:
-                os.chdir(old_cwd)
+            commands = GENERATOR.extract_methods_from_file(path)
 
         markdown = GENERATOR.generate_markdown(commands)
         self.assertIn("## Example (1 command)", markdown)
@@ -62,6 +58,21 @@ public class ExampleModule
         self.assertNotIn("`1` — int page", markdown)
         expected_source = str(path.relative_to(ROOT)).replace("/", chr(92))
         self.assertIn(f"- Source: `{expected_source}`", markdown)
+
+
+class CommandLineTests(unittest.TestCase):
+    def test_generates_repository_relative_sources_from_outside_checkout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "commands.md"],
+                cwd=temporary,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            markdown = (Path(temporary) / "commands.md").read_text(encoding="utf-8")
+            self.assertIn(r"- Source: `Modules\HelpModule.cs`", markdown)
 
 
 if __name__ == "__main__":
