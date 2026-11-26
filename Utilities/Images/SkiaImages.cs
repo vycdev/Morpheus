@@ -12,11 +12,16 @@ internal static class SkiaImages
         using SKData encoded = SKData.CreateCopy(data);
         using SKCodec codec = SKCodec.Create(encoded)
             ?? throw new ArgumentException("Unsupported or invalid image data.", nameof(data));
-        SKBitmap bitmap = new(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        return Decode(codec, codec.Info.Size);
+    }
+
+    internal static SKBitmap Decode(SKCodec codec, SKSizeI size)
+    {
+        SKBitmap bitmap = new(size.Width, size.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         if (codec.GetPixels(bitmap.Info, bitmap.GetPixels()) != SKCodecResult.Success)
         {
             bitmap.Dispose();
-            throw new ArgumentException("Could not decode the image.", nameof(data));
+            throw new ArgumentException("Could not decode the image.");
         }
         return bitmap;
     }

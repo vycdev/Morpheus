@@ -36,6 +36,48 @@ public class EmojiImageTests
     }
 
     [Fact]
+    public void TryPrepare_PassesSmallAnimatedWebpThroughUnchanged()
+    {
+        // A two-frame, 2x2 animation with red and blue frames.
+        byte[] input = Convert.FromBase64String(
+            "UklGRsQAAABXRUJQVlA4WAoAAAACAAAAAQAAAQAAQU5JTQYAAAAAAAAAAABBTk1GSgAAAAAAAAAAAAEAAAEAAGQAAAJWUDggMgAAADABAJ0BKgIAAgABQCYloAADcAD+8ut///mwP/bz/wR6Af//0uD//pcH//S4P/SkAAAAQU5NRkYAAAAAAAAAAAABAAABAABkAAAAVlA4IC4AAAA0AQCdASoCAAIAAAAmJaAAA3AA/vtV4///S4P/+lwf/9Lg/9Lg//rV5Vesq6AA");
+
+        Assert.True(EmojiImage.TryPrepare(input, out byte[] output, out bool animated, out string? error));
+
+        Assert.True(animated);
+        Assert.Null(error);
+        Assert.Same(input, output);
+    }
+
+    [Fact]
+    public void TryPrepare_UsesTheJpegOrientationWhenProducingPng()
+    {
+        using SKBitmap source = new(48, 32);
+        source.Erase(SKColors.Blue);
+        using SKCanvas canvas = new(source);
+        using SKPaint paint = new() { Color = SKColors.Red };
+        canvas.DrawRect(0, 0, 24, 32, paint);
+        using SKData jpeg = source.Encode(SKEncodedImageFormat.Jpeg, 90);
+        byte[] encoded = jpeg.ToArray();
+        byte[] orientationTag = [
+            0xFF, 0xE1, 0, 34, (byte)'E', (byte)'x', (byte)'i', (byte)'f', 0, 0,
+            (byte)'M', (byte)'M', 0, 42, 0, 0, 0, 8, 0, 1,
+            1, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0
+        ];
+        byte[] input = [.. encoded.AsSpan(0, 2), .. orientationTag, .. encoded.AsSpan(2)];
+
+        Assert.True(EmojiImage.TryPrepare(input, out byte[] output, out bool animated, out string? error));
+
+        Assert.False(animated);
+        Assert.Null(error);
+        using SKBitmap result = SKBitmap.Decode(output);
+        Assert.Equal(32, result.Width);
+        Assert.Equal(48, result.Height);
+        Assert.True(result.GetPixel(16, 8).Red > 200);
+        Assert.True(result.GetPixel(16, 40).Blue > 200);
+    }
+
+    [Fact]
     public void TryPrepare_RejectsAnimatedGifsOverTheUploadLimit()
     {
         byte[] input = BuildAnimatedGif(paddingBytes: EmojiImage.MaxUploadBytes);

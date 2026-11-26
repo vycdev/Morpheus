@@ -274,6 +274,9 @@ public class EmojisModuleTests
     [InlineData("pepe_happy", null, "pepe_happy")]
     [InlineData("  sad cat!! ", null, "sad_cat")]
     [InlineData(null, "funny-dog.final.png", "funny_dog_final")]
+    [InlineData(null, "猫.png", "emoji")]
+    [InlineData(null, "a.png", "emoji")]
+    [InlineData(null, null, "emoji")]
     [InlineData("", "IMG_2041.JPG", "IMG_2041")]
     [InlineData("café", null, "caf")]
     [InlineData("abcdefghijklmnopqrstuvwxyz_0123456789", null, "abcdefghijklmnopqrstuvwxyz_01234")]
@@ -285,11 +288,18 @@ public class EmojisModuleTests
     [Theory]
     [InlineData("x", null)]
     [InlineData("!!!", "image.png")]
-    [InlineData(null, "a.png")]
-    [InlineData(null, null)]
     public void NormalizeEmojiName_RejectsNamesThatAreTooShort(string? requestedName, string? fileName)
     {
         Assert.Null(EmojisModule.NormalizeEmojiName(requestedName, fileName));
+    }
+
+    [Theory]
+    [InlineData("https://images-ext-1.discordapp.net/external/image.png", "https://example.org/image.png", "https://images-ext-1.discordapp.net/external/image.png")]
+    [InlineData(null, "https://cdn.discordapp.com/attachments/1/2/image.png", "https://cdn.discordapp.com/attachments/1/2/image.png")]
+    [InlineData(null, "https://example.org/image.png", null)]
+    public void GetEmbedImageUrl_PrefersTheProxyAndAllowsDirectDiscordImages(string? proxyUrl, string sourceUrl, string? expected)
+    {
+        Assert.Equal(expected, EmojisModule.GetEmbedImageUrl(proxyUrl, sourceUrl));
     }
 
     [Fact]

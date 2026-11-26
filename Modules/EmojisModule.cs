@@ -298,28 +298,36 @@ public class EmojisModule : MorpheusModuleBase
     private const long MaxEmojiSourceBytes = 10 * 1024 * 1024;
 
     [Name("Add Emoji")]
-    [Summary("Create a new emoji from an image attached to the command or in the message you replied to. Uses the file name when no name is given.")]
+    [Summary("Create a server emoji from an attached or replied-to image. If you omit the name, uses the file name when possible.")]
     [Command("addemoji")]
     [Alias("addemote", "createemoji", "createemote", "uploademoji")]
-    [RequireUserPermission(GuildPermission.ManageEmojisAndStickers)]
-    [RequireBotPermission(GuildPermission.ManageEmojisAndStickers)]
+    [RequireUserPermission(GuildPermission.CreateGuildExpressions)]
+    [RequireBotPermission(GuildPermission.CreateGuildExpressions)]
     [RequireContext(ContextType.Guild)]
     [RateLimit(3, 30)]
     public async Task AddEmoji([Remainder] string? name = null)
     {
-        // Prefer an image attached to the command, then one in the message the user replied to.
-        IAttachment? attachment = Context.Message.Attachments.FirstOrDefault(IsImageAttachment);
-        IEmbed? embed = null;
-        if (attachment == null && TryGetReferencedMessageId(Context.Message.ReferencedMessage?.Id, out ulong referencedMessageId))
+        IUserMessage message = Context.Message;
+        IAttachment? attachment = message.Attachments.FirstOrDefault(IsImageAttachment);
+        string? imageUrl = attachment?.Url;
+        ulong? replyToRefresh = null;
+        if (imageUrl is null)
         {
-            if (await Context.Channel.GetMessageAsync(referencedMessageId) is IUserMessage refMsg)
+            IUserMessage? reply = message.ReferencedMessage;
+            if (reply is not null)
             {
-                attachment = refMsg.Attachments.FirstOrDefault(IsImageAttachment);
-                embed = refMsg.Embeds.FirstOrDefault(e => e.Image != null || e.Thumbnail != null);
+                (attachment, imageUrl) = GetReplyEmojiSource(reply);
+                replyToRefresh = reply.Id;
+            }
+            else if (message.Type == MessageType.Reply &&
+                     message.Reference is { MessageId.IsSpecified: true } reference &&
+                     reference.ChannelId == Context.Channel.Id &&
+                     await GetFreshEmojiReplyAsync(reference.MessageId.Value) is { } freshReply)
+            {
+                (attachment, imageUrl) = GetReplyEmojiSource(freshReply);
             }
         }
 
-        string? imageUrl = attachment?.Url ?? embed?.Image?.ProxyUrl ?? embed?.Thumbnail?.ProxyUrl;
         if (imageUrl == null)
         {
             await ReplyAsync("Attach an image to this command or reply to a message that contains one.");
@@ -340,6 +348,13 @@ public class EmojisModule : MorpheusModuleBase
         }
 
         byte[]? imageData = await DownloadEmojiSourceAsync(imageUrl);
+        if (imageData is null && replyToRefresh is ulong replyId && attachment is not null &&
+            await GetFreshEmojiReplyAsync(replyId) is { } refreshedReply &&
+            refreshedReply.Attachments.FirstOrDefault(file => file.Id == attachment.Id) is { } refreshed &&
+            refreshed.Url != imageUrl)
+        {
+            imageData = await DownloadEmojiSourceAsync(refreshed.Url);
+        }
         if (imageData == null)
         {
             await ReplyAsync("Failed to download the image. Please try again later.");
@@ -366,33 +381,59 @@ public class EmojisModule : MorpheusModuleBase
 
         string finalName = GetAvailableEmojiName(emojiName, freshEmotes.Select(e => e.Name));
 
+        GuildEmote newEmoji;
         try
         {
             using var stream = new MemoryStream(emojiData);
-            GuildEmote newEmoji = await guild.CreateEmoteAsync(finalName, new Image(stream));
-
-            string renamedNote = finalName != emojiName ? $" (renamed to **{finalName}** to avoid conflict)" : "";
-            await ReplyAsync(embed: new EmbedBuilder()
-                .WithColor(Colors.Blue)
-                .WithTitle("✅ Emoji Added!")
-                .WithDescription($"Added {newEmoji} **{newEmoji.Name}** to the server.{renamedNote}")
-                .WithThumbnailUrl(newEmoji.Url)
-                .Build());
-
-            logsService.Log($"Emoji '{finalName}' created from an image in {guild.Name} by {Context.User}", LogSeverity.Info);
+            newEmoji = await guild.CreateEmoteAsync(finalName, new Image(stream));
         }
         catch (Exception ex)
         {
             logsService.Log($"Failed to create emoji '{finalName}' from an image: {ex}", LogSeverity.Warning);
             await ReplyAsync($"Failed to add the emoji: {ex.Message}");
+            return;
         }
+
+        logsService.Log($"Emoji '{finalName}' created from an image in {guild.Name} by {Context.User}", LogSeverity.Info);
+        string renamedNote = finalName != emojiName ? $" Renamed from **{emojiName}** to avoid a conflict." : "";
+        await ReplyAsync($"Added {newEmoji} **{newEmoji.Name}** to the server.{renamedNote}");
+    }
+
+    private async Task<IUserMessage?> GetFreshEmojiReplyAsync(ulong messageId)
+    {
+        // Discord refreshes signed attachment URLs on a REST read. Socket channels may return cached messages.
+        return await client.Rest.GetChannelAsync(Context.Channel.Id) is IMessageChannel channel
+            ? await channel.GetMessageAsync(messageId) as IUserMessage
+            : null;
+    }
+
+    private static (IAttachment? Attachment, string? Url) GetReplyEmojiSource(IUserMessage reply)
+    {
+        IAttachment? attachment = reply.Attachments.FirstOrDefault(IsImageAttachment);
+        string? imageUrl = attachment?.Url ?? reply.Embeds.Select(embed =>
+            GetEmbedImageUrl(embed.Image?.ProxyUrl, embed.Image?.Url) ??
+            GetEmbedImageUrl(embed.Thumbnail?.ProxyUrl, embed.Thumbnail?.Url)).FirstOrDefault(url => url is not null);
+        return (attachment, imageUrl);
+    }
+
+    internal static string? GetEmbedImageUrl(string? proxyUrl, string? sourceUrl)
+    {
+        if (!string.IsNullOrEmpty(proxyUrl))
+            return proxyUrl;
+
+        // Only Discord-hosted images can be fetched directly when a preview has no proxy URL.
+        return Uri.TryCreate(sourceUrl, UriKind.Absolute, out Uri? uri) &&
+               uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort &&
+               uri.Host is "cdn.discordapp.com" or "media.discordapp.net"
+            ? sourceUrl
+            : null;
     }
 
     private static bool IsImageAttachment(IAttachment attachment) =>
         attachment.ContentType == null || attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
     private static string? GetUrlFileName(string url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? Path.GetFileName(uri.AbsolutePath) : null;
+        Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? Uri.UnescapeDataString(Path.GetFileName(uri.AbsolutePath)) : null;
 
     // Embed images have no known size up front, so cap the download instead of trusting Content-Length.
     private static async Task<byte[]?> DownloadEmojiSourceAsync(string url)
@@ -417,7 +458,7 @@ public class EmojisModule : MorpheusModuleBase
 
             return buffer.ToArray();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
         {
             return null;
         }
@@ -429,9 +470,10 @@ public class EmojisModule : MorpheusModuleBase
     /// </summary>
     internal static string? NormalizeEmojiName(string? requestedName, string? fileName)
     {
-        string source = string.IsNullOrWhiteSpace(requestedName)
+        bool useFileName = string.IsNullOrWhiteSpace(requestedName);
+        string source = useFileName
             ? Path.GetFileNameWithoutExtension(fileName ?? "")
-            : requestedName.Trim();
+            : requestedName!.Trim();
 
         StringBuilder name = new();
         foreach (char c in source)
@@ -446,7 +488,7 @@ public class EmojisModule : MorpheusModuleBase
         if (normalized.Length > MaxEmojiNameLength)
             normalized = normalized[..MaxEmojiNameLength].TrimEnd('_');
 
-        return normalized.Length >= MinEmojiNameLength ? normalized : null;
+        return normalized.Length >= MinEmojiNameLength ? normalized : useFileName ? "emoji" : null;
     }
 
     internal static string GetAvailableEmojiName(string name, IEnumerable<string> existingNames)
