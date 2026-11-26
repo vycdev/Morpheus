@@ -7,6 +7,7 @@ using Morpheus.Extensions;
 using Morpheus.Handlers;
 using Morpheus.Services;
 using Morpheus.Utilities;
+using Morpheus.Utilities.Images;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO.Compression;
@@ -289,6 +290,179 @@ public class EmojisModule : MorpheusModuleBase
 
     internal static string GetEmojiArchivePath(string tempPath, ulong guildId) =>
         Path.Combine(tempPath, $"Morpheus_Emojis_{guildId}.zip");
+
+    // ─── Add Emoji From Image Command ───────────────────────────────────
+
+    private const int MinEmojiNameLength = 2;
+    private const int MaxEmojiNameLength = 32;
+    private const long MaxEmojiSourceBytes = 10 * 1024 * 1024;
+
+    [Name("Add Emoji")]
+    [Summary("Create a new emoji from an image attached to the command or in the message you replied to. Uses the file name when no name is given.")]
+    [Command("addemoji")]
+    [Alias("addemote", "createemoji", "createemote", "uploademoji")]
+    [RequireUserPermission(GuildPermission.ManageEmojisAndStickers)]
+    [RequireBotPermission(GuildPermission.ManageEmojisAndStickers)]
+    [RequireContext(ContextType.Guild)]
+    [RateLimit(3, 30)]
+    public async Task AddEmoji([Remainder] string? name = null)
+    {
+        // Prefer an image attached to the command, then one in the message the user replied to.
+        IAttachment? attachment = Context.Message.Attachments.FirstOrDefault(IsImageAttachment);
+        IEmbed? embed = null;
+        if (attachment == null && TryGetReferencedMessageId(Context.Message.ReferencedMessage?.Id, out ulong referencedMessageId))
+        {
+            if (await Context.Channel.GetMessageAsync(referencedMessageId) is IUserMessage refMsg)
+            {
+                attachment = refMsg.Attachments.FirstOrDefault(IsImageAttachment);
+                embed = refMsg.Embeds.FirstOrDefault(e => e.Image != null || e.Thumbnail != null);
+            }
+        }
+
+        string? imageUrl = attachment?.Url ?? embed?.Image?.ProxyUrl ?? embed?.Thumbnail?.ProxyUrl;
+        if (imageUrl == null)
+        {
+            await ReplyAsync("Attach an image to this command or reply to a message that contains one.");
+            return;
+        }
+
+        if (attachment != null && attachment.Size > MaxEmojiSourceBytes)
+        {
+            await ReplyAsync($"That image is too large. Use a file under {MaxEmojiSourceBytes / (1024 * 1024)} MB.");
+            return;
+        }
+
+        string? emojiName = NormalizeEmojiName(name, attachment?.Filename ?? GetUrlFileName(imageUrl));
+        if (emojiName == null)
+        {
+            await ReplyAsync($"Give the emoji a name with {MinEmojiNameLength}-{MaxEmojiNameLength} letters, numbers or underscores, e.g. `addemoji pepe_happy`.");
+            return;
+        }
+
+        byte[]? imageData = await DownloadEmojiSourceAsync(imageUrl);
+        if (imageData == null)
+        {
+            await ReplyAsync("Failed to download the image. Please try again later.");
+            return;
+        }
+
+        if (!EmojiImage.TryPrepare(imageData, out byte[] emojiData, out bool animated, out string? error))
+        {
+            await ReplyAsync(error!);
+            return;
+        }
+
+        SocketGuild guild = Context.Guild;
+
+        // Check emoji slot limits (fetch fresh data via REST to avoid stale cache)
+        var freshEmotes = (await client.Rest.GetGuildAsync(guild.Id))?.Emotes ?? guild.Emotes;
+        int usedSlots = freshEmotes.Count(e => e.Animated == animated);
+        int emojiLimit = GetGuildEmojiLimit(guild.PremiumTier);
+        if (usedSlots >= emojiLimit)
+        {
+            await ReplyAsync($"This server has reached its {(animated ? "animated" : "static")} emoji limit ({usedSlots}/{emojiLimit}). Boost the server to unlock more slots.");
+            return;
+        }
+
+        string finalName = GetAvailableEmojiName(emojiName, freshEmotes.Select(e => e.Name));
+
+        try
+        {
+            using var stream = new MemoryStream(emojiData);
+            GuildEmote newEmoji = await guild.CreateEmoteAsync(finalName, new Image(stream));
+
+            string renamedNote = finalName != emojiName ? $" (renamed to **{finalName}** to avoid conflict)" : "";
+            await ReplyAsync(embed: new EmbedBuilder()
+                .WithColor(Colors.Blue)
+                .WithTitle("✅ Emoji Added!")
+                .WithDescription($"Added {newEmoji} **{newEmoji.Name}** to the server.{renamedNote}")
+                .WithThumbnailUrl(newEmoji.Url)
+                .Build());
+
+            logsService.Log($"Emoji '{finalName}' created from an image in {guild.Name} by {Context.User}", LogSeverity.Info);
+        }
+        catch (Exception ex)
+        {
+            logsService.Log($"Failed to create emoji '{finalName}' from an image: {ex}", LogSeverity.Warning);
+            await ReplyAsync($"Failed to add the emoji: {ex.Message}");
+        }
+    }
+
+    private static bool IsImageAttachment(IAttachment attachment) =>
+        attachment.ContentType == null || attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+    private static string? GetUrlFileName(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? Path.GetFileName(uri.AbsolutePath) : null;
+
+    // Embed images have no known size up front, so cap the download instead of trusting Content-Length.
+    private static async Task<byte[]?> DownloadEmojiSourceAsync(string url)
+    {
+        try
+        {
+            using HttpResponseMessage response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength > MaxEmojiSourceBytes)
+                return null;
+
+            await using Stream body = await response.Content.ReadAsStreamAsync();
+            using MemoryStream buffer = new();
+            byte[] chunk = new byte[81920];
+            int read;
+            while ((read = await body.ReadAsync(chunk)) > 0)
+            {
+                if (buffer.Length + read > MaxEmojiSourceBytes)
+                    return null;
+                buffer.Write(chunk, 0, read);
+            }
+
+            return buffer.ToArray();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Turns the requested name (or the image's file name when none is given) into a valid
+    /// Discord emoji name: letters, digits and underscores, 2-32 characters.
+    /// </summary>
+    internal static string? NormalizeEmojiName(string? requestedName, string? fileName)
+    {
+        string source = string.IsNullOrWhiteSpace(requestedName)
+            ? Path.GetFileNameWithoutExtension(fileName ?? "")
+            : requestedName.Trim();
+
+        StringBuilder name = new();
+        foreach (char c in source)
+        {
+            if (char.IsAsciiLetterOrDigit(c) || c == '_')
+                name.Append(c);
+            else if (name.Length > 0 && name[^1] != '_')
+                name.Append('_');
+        }
+
+        string normalized = name.ToString().Trim('_');
+        if (normalized.Length > MaxEmojiNameLength)
+            normalized = normalized[..MaxEmojiNameLength].TrimEnd('_');
+
+        return normalized.Length >= MinEmojiNameLength ? normalized : null;
+    }
+
+    internal static string GetAvailableEmojiName(string name, IEnumerable<string> existingNames)
+    {
+        HashSet<string> taken = new(existingNames, StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(name))
+            return name;
+
+        for (int suffix = 2; ; suffix++)
+        {
+            string tag = $"_{suffix}";
+            string candidate = name[..Math.Min(name.Length, MaxEmojiNameLength - tag.Length)] + tag;
+            if (!taken.Contains(candidate))
+                return candidate;
+        }
+    }
 
     // ─── Import Emoji Command ────────────────────────────────────────────
 

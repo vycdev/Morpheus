@@ -269,4 +269,43 @@ public class EmojisModuleTests
         Assert.Equal(1, store.RemoveExpired(now, TimeSpan.FromMinutes(5)));
         Assert.False(store.TryGetValue(42UL, out _));
     }
+
+    [Theory]
+    [InlineData("pepe_happy", null, "pepe_happy")]
+    [InlineData("  sad cat!! ", null, "sad_cat")]
+    [InlineData(null, "funny-dog.final.png", "funny_dog_final")]
+    [InlineData("", "IMG_2041.JPG", "IMG_2041")]
+    [InlineData("café", null, "caf")]
+    [InlineData("abcdefghijklmnopqrstuvwxyz_0123456789", null, "abcdefghijklmnopqrstuvwxyz_01234")]
+    public void NormalizeEmojiName_ProducesValidDiscordNames(string? requestedName, string? fileName, string expected)
+    {
+        Assert.Equal(expected, EmojisModule.NormalizeEmojiName(requestedName, fileName));
+    }
+
+    [Theory]
+    [InlineData("x", null)]
+    [InlineData("!!!", "image.png")]
+    [InlineData(null, "a.png")]
+    [InlineData(null, null)]
+    public void NormalizeEmojiName_RejectsNamesThatAreTooShort(string? requestedName, string? fileName)
+    {
+        Assert.Null(EmojisModule.NormalizeEmojiName(requestedName, fileName));
+    }
+
+    [Fact]
+    public void GetAvailableEmojiName_SuffixesTakenNamesIgnoringCase()
+    {
+        Assert.Equal("pepe", EmojisModule.GetAvailableEmojiName("pepe", ["other"]));
+        Assert.Equal("pepe_3", EmojisModule.GetAvailableEmojiName("pepe", ["PEPE", "pepe_2"]));
+    }
+
+    [Fact]
+    public void GetAvailableEmojiName_KeepsSuffixedNamesWithinTheLengthLimit()
+    {
+        string name = new('a', 32);
+
+        string available = EmojisModule.GetAvailableEmojiName(name, [name]);
+
+        Assert.Equal(new string('a', 30) + "_2", available);
+    }
 }
