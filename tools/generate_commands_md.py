@@ -17,8 +17,9 @@ import re
 from pathlib import Path
 
 
-MODULES_DIR = Path(__file__).resolve().parents[1] / 'Modules'
-OUT_DEFAULT = Path(__file__).resolve().parents[1] / 'COMMANDS.md'
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MODULES_DIR = REPO_ROOT / 'Modules'
+OUT_DEFAULT = REPO_ROOT / 'COMMANDS.md'
 
 
 def parse_attributes(attr_block: str):
@@ -187,7 +188,7 @@ def extract_methods_from_file(path: Path):
             'required_permission': required_permission,
             'required_bot_permission': required_bot_permission,
             # 'requires_db_guild' removed per request
-            'source': str(path.relative_to(Path.cwd())).replace('/', '\\')
+            'source': str(path.relative_to(REPO_ROOT)).replace('/', '\\')
         })
 
     return results
