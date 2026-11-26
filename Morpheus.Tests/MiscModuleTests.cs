@@ -178,6 +178,7 @@ public class MiscModuleTests
 
     [Theory]
     [InlineData("data:image/png;base64,AQID")]
+    [InlineData("DATA:IMAGE/PNG;BASE64,AQID")]
     [InlineData("AQID")]
     public void TryDecodeMinecraftFavicon_DecodesSupportedBase64Formats(string favicon)
     {
@@ -192,6 +193,8 @@ public class MiscModuleTests
     [InlineData("")]
     [InlineData("data:image/png,not-base64")]
     [InlineData("data:image/png;base64,")]
+    [InlineData("data:text/html;base64,AQID")]
+    [InlineData("data:image/jpeg;base64,AQID")]
     [InlineData("not-base64")]
     public void TryDecodeMinecraftFavicon_RejectsMissingOrMalformedImages(string? favicon)
     {
