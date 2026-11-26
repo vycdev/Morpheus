@@ -30,8 +30,13 @@ dotnet tool install --global dotnet-ef
 ## Running the bot locally
 
 1. Copy [`default.env`](./default.env) to `.env` in the repository root. Git ignores `.env` because it holds credentials. Values in `.env` take precedence over inherited environment variables.
-2. Set `BOT_TOKEN` to the token for a development Discord bot. Enable **Server Members Intent** and **Message Content Intent** for that bot in the Discord Developer Portal, then invite it to a test server.
-3. Set `DB_CONNECTION_STRING` to the connection string for a development PostgreSQL database. Morpheus applies pending EF Core migrations before connecting to Discord, so the database user needs permission to create and alter the schema objects.
+2. Set `BOT_TOKEN` to the token for a development Discord bot. On the app's **Bot** page in the Discord Developer Portal, enable **Server Members Intent** and **Message Content Intent**. On the **Installation** page, configure **Guild Install** with the `bot` scope and use the app's install link to add it to a test server. Give the bot **View Channel** and **Send Messages** permissions in the channel you use for testing. See [Discord's bot installation guide](https://docs.discord.com/developers/quick-start/getting-started#setting-up-an-install-link).
+3. Create an empty development PostgreSQL database owned by the role Morpheus will use, then set `DB_CONNECTION_STRING` in `.env`. Morpheus applies pending EF Core migrations before connecting to Discord, so the role needs permission to create and alter schema objects. For a local database named `morpheus_dev`, replace `<password>` with your database role's password in this example.
+
+   ```dotenv
+   DB_CONNECTION_STRING=Host=localhost;Database=morpheus_dev;Username=morpheus_dev;Password=<password>
+   ```
+
 4. From the repository root, start the bot with `dotnet run --project Morpheus.csproj`. The default command prefix in the template is `!`.
 
 ## Publishing the Docker image
