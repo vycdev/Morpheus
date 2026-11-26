@@ -41,7 +41,7 @@ public class ExampleModule
 {
     [Command("example")]
     [Summary("Shows an example.")]
-    public Task Example(int page = 1, string sort = "oldest") => Task.CompletedTask;
+    public Task Example(int page = 1, [OverrideTypeReader(typeof(SortReader))] string sort = "oldest") => Task.CompletedTask;
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT) as temporary:

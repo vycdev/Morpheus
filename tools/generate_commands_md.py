@@ -82,8 +82,12 @@ def extract_methods_from_file(path: Path):
         class_match = re.search(r"class\s+(\w+)", text)
     class_name = class_match.group(1) if class_match else path.stem
 
-    # iterate attribute blocks followed by a method signature
-    pattern = re.compile(r"((?:\s*\[[^\]]+\]\s*)+)\s*(public|protected|private)\s+[\w<>,\s]+\s+(\w+)\s*\(([^)]*)\)", re.S)
+    # Match bracketed parameter attributes as a unit so parentheses inside them do not end the signature.
+    pattern = re.compile(
+        r"((?:\s*\[[^\]]+\]\s*)+)\s*(public|protected|private)\s+[\w<>,\s]+\s+(\w+)\s*"
+        r"\(((?:\[[^\]]*\]|[^)\[])*)\)",
+        re.S,
+    )
     for m in pattern.finditer(text):
         attr_block = m.group(1)
         method_name = m.group(3)

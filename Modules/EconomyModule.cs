@@ -4,6 +4,7 @@ using Morpheus.Attributes;
 using Morpheus.Extensions;
 using Morpheus.Services;
 using Morpheus.Utilities.Extensions;
+using System.Globalization;
 
 namespace Morpheus.Modules;
 
@@ -41,19 +42,20 @@ public class EconomyModule(EconomyService economyService, UsersService usersServ
     }
 
     [Name("Donate to UBI")]
-    [Summary("Donate money to the Universal Basic Income pool.")]
+    [Summary("Donate money in whole cents to the Universal Basic Income pool.")]
     [Command("ubi donate")]
     [Alias("donate")]
-    public async Task Donate(decimal amount)
+    public async Task Donate(
+        [OverrideTypeReader(typeof(DonationAmountReader))] [RequireWholeCentDonation] DonationAmount amount)
     {
-        if (amount <= 0)
+        if (amount.Value <= 0)
         {
             await ReplyAsync("Please specify a positive amount to donate.");
             return;
         }
 
         var dbUser = await usersService.TryGetCreateUser(Context.User);
-        var (success, message) = await economyService.DonateToUbi(dbUser.Id, amount);
+        var (success, message) = await economyService.DonateToUbi(dbUser.Id, amount.Value);
 
         if (success)
         {
@@ -133,6 +135,78 @@ public class EconomyModule(EconomyService economyService, UsersService usersServ
         else
         {
             await ReplyAsync($"🚫 {message}");
+        }
+    }
+
+    public readonly record struct DonationAmount(decimal Value, bool HasFractionalCent);
+
+    private sealed class RequireWholeCentDonationAttribute : ParameterPreconditionAttribute
+    {
+        public override Task<PreconditionResult> CheckPermissionsAsync(
+            ICommandContext context, ParameterInfo parameter, object value, IServiceProvider services) =>
+            Task.FromResult(value is DonationAmount { HasFractionalCent: true }
+                ? PreconditionResult.FromError(EconomyService.WholeCentDonationMessage)
+                : PreconditionResult.FromSuccess());
+    }
+
+    private sealed class DonationAmountReader : TypeReader
+    {
+        public override Task<TypeReaderResult> ReadAsync(ICommandContext context, string input, IServiceProvider services)
+        {
+            NumberFormatInfo format = CultureInfo.CurrentCulture.NumberFormat;
+            if (!decimal.TryParse(input, NumberStyles.Number, format, out decimal amount))
+                return Task.FromResult(TypeReaderResult.FromError(CommandError.ParseFailed, "Failed to parse Decimal."));
+
+            bool hasFractionalCent = !decimal.IsNegative(amount) && HasFractionalCent(input, format);
+            return Task.FromResult(TypeReaderResult.FromSuccess(new DonationAmount(amount, hasFractionalCent)));
+        }
+
+        private static bool HasFractionalCent(ReadOnlySpan<char> input, NumberFormatInfo format)
+        {
+            // Syntax is valid. Find the original fraction because decimal.TryParse can round it away.
+            const string whitespace = " \t\r\n\v\f";
+            input = input.TrimStart(whitespace);
+            if (TryConsume(ref input, format.PositiveSign) && format.NumberNegativePattern == 2)
+                input = input.TrimStart(whitespace);
+
+            while (!input.IsEmpty)
+            {
+                if (char.IsAsciiDigit(input[0]))
+                {
+                    input = input[1..];
+                    continue;
+                }
+
+                if (TryConsume(ref input, format.NumberDecimalSeparator))
+                {
+                    for (int i = 2; i < input.Length && char.IsAsciiDigit(input[i]); i++)
+                    {
+                        if (input[i] != '0')
+                            return true;
+                    }
+                    return false;
+                }
+
+                if (!TryConsume(ref input, format.NumberGroupSeparator))
+                    break;
+            }
+            return false;
+        }
+
+        private static bool TryConsume(ref ReadOnlySpan<char> input, string token)
+        {
+            if (token.Length == 0 || token.Length > input.Length)
+                return false;
+
+            for (int i = 0; i < token.Length; i++)
+            {
+                // decimal.TryParse accepts a regular space in place of either nonbreaking space.
+                if (input[i] != token[i] && !(input[i] == ' ' && token[i] is '\u00A0' or '\u202F'))
+                    return false;
+            }
+
+            input = input[token.Length..];
+            return true;
         }
     }
 }

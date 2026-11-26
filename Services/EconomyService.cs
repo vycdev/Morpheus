@@ -9,6 +9,7 @@ namespace Morpheus.Services;
 
 public class EconomyService(DB dbContext, LogsService logsService)
 {
+    internal const string WholeCentDonationMessage = "Donations must be in whole cents.";
     private const string UbiPoolKey = "ubi_pool";
 
     /// <summary>
@@ -217,7 +218,7 @@ public class EconomyService(DB dbContext, LogsService logsService)
 
         // The pool is stored in whole cents, so rounding would make the credit differ from the debit.
         if (decimal.Round(amount, 2) != amount)
-            return (false, "Donations must be in whole cents (at most 2 decimal places).");
+            return (false, WholeCentDonationMessage);
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         try

@@ -41,7 +41,7 @@ public sealed record McpCommandManifest(
 public sealed class McpCommandCatalog(CommandService commandService)
 {
     // Update only after reviewing the MCP safety and context needs of every changed command.
-    internal const string ReviewedRegistryFingerprint = "8c9e50b0721dd9e4b6f66acfa7b411bdc2257db610e3b2e54e9d85a20aac3d59";
+    internal const string ReviewedRegistryFingerprint = "fead9243f1fed95edd027b816e5d95198cc3e143b12f8577af55d992de987918";
 
     private readonly object buildLock = new();
     private volatile McpCommandManifest? cachedManifest;

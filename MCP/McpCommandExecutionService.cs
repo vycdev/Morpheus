@@ -101,6 +101,11 @@ public sealed class McpCommandExecutionService : IDisposable
                     validation.Error?.ToString(), SafeReason(validation), sink, stopwatch);
 
             IResult pipeline = match.Pipeline;
+            if (pipeline is ParseResult { IsSuccess: true } parsed)
+            {
+                pipeline = await ValidateParametersAsync(match.Match.Value.Command, parsed, context, scope.ServiceProvider);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             McpCommandCapability? capability = catalog.FindByAlias(match.Match.Value.Alias);
             return Result(
                 requestId,
@@ -125,6 +130,36 @@ public sealed class McpCommandExecutionService : IDisposable
             return Result(requestId, "validate", "invalid-context", false, false, false, null,
                 "InvalidContext", ex is ArgumentException or InvalidOperationException ? ex.Message : "Unable to resolve the Discord command context.", sink, stopwatch);
         }
+    }
+
+    private static async Task<IResult> ValidateParametersAsync(
+        CommandInfo command, ParseResult parsed, ICommandContext context, IServiceProvider services)
+    {
+        for (int i = 0; i < command.Parameters.Count; i++)
+        {
+            ParameterInfo parameter = command.Parameters[i];
+            if (parameter.Preconditions.Count == 0)
+                continue;
+
+            object argument;
+            if (parameter.IsMultiple)
+            {
+                Array items = Array.CreateInstance(parameter.Type.GetElementType()!, parsed.ParamValues.Count);
+                for (int j = 0; j < items.Length; j++)
+                    items.SetValue(parsed.ParamValues[j].Values.First().Value, j);
+                argument = items;
+            }
+            else
+            {
+                argument = parsed.ArgValues[i].Values.First().Value;
+            }
+
+            PreconditionResult result = await parameter.CheckPreconditionsAsync(context, argument, services);
+            if (!result.IsSuccess)
+                return result;
+        }
+
+        return parsed;
     }
 
     private async Task<McpCommandExecutionResult> ExecuteIdempotentlyAsync(

@@ -60,6 +60,39 @@ public class McpCommandExecutionTests
         Assert.Equal(CommandError.ParseFailed.ToString(), malformed.Error);
     }
 
+    [Theory]
+    [InlineData("ubi donate 0.004", "validate", "invalid")]
+    [InlineData("donate 1.25000000000000000000000000001", "validate", "invalid")]
+    [InlineData("donate 0.00000000000000000000000000001", "execute", "failed")]
+    public async Task Donation_RejectsFractionalCentsBeforeCommandBody(string command, string mode, string expectedStatus)
+    {
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            await using TestHarness harness = await TestHarness.CreateAsync(executionEnabled: true);
+
+            McpCommandExecutionResult result = await harness.Service.InvokeAsync(new(
+                command,
+                harness.UserId.ToString(),
+                harness.ChannelId.ToString(),
+                SourceMessageId: "900000000000005",
+                Mode: mode,
+                IdempotencyKey: mode == "execute" ? "test-ubi-subcent-0001" : null));
+
+            Assert.False(result.Success);
+            Assert.False(result.Executed);
+            Assert.False(result.SideEffectsMayHaveOccurred);
+            Assert.Equal(expectedStatus, result.Status);
+            Assert.Equal(CommandError.UnmetPrecondition.ToString(), result.Error);
+            Assert.Equal("Donations must be in whole cents.", result.ErrorReason);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
     [Fact]
     public async Task Validate_HonorsCallerCancellation()
     {
