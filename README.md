@@ -55,9 +55,9 @@ Level-up messages
 - The possibility to mention any list of users for a given graph.
 
 ### Automatic activity roles (daily)
-- A daily job assigns activity‑based roles (e.g., top 1%, 5%, 10%, 20%, 30%) per guild.
-- Roles are created automatically if missing, existing holders are cleared, and fresh recipients are assigned based on up‑to‑date activity.
-- Gentle pacing and robust logging keep it reliable across large servers.
+- Administrators can enable activity roles with `!toggleactivityroles`. Use your server's command prefix in place of `!` if it differs. Morpheus needs the Manage Roles permission.
+- Morpheus ranks current non-bot members by total XP earned in that server over the past 30 days, highest first. Members need a positive XP total to qualify. The top 1%, 5%, 10%, 20%, and 30% roles are cumulative, so a member can earn several roles. Morpheus calculates each tier as a percentage of eligible members and rounds up to a whole member.
+- The daily job creates missing roles, compares current non-bot role holders with the latest rankings, and adds or removes roles where assignments differ.
 
 ### A dynamic, XP-driven economy
 Morpheus features a fully integrated economic system where value is directly tied to server activity:
