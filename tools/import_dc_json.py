@@ -4,7 +4,9 @@ Import Discord Chat Exporter JSON into the Morpheus database, computing XP exact
 like ActivityHandler.cs (hashing, SimHash similarity, WPM/time penalties, and
 guild average length), and updating UserLevels.
 
-From the repository root, install the dependencies with:
+Run these commands from the repository root. If python is unavailable, use python3.
+
+Install the dependencies with:
   python -m pip install -r tools/requirements.txt
 
 Check that an export can be parsed before importing it:
