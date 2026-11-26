@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
-r"""
+"""
 Import Discord Chat Exporter JSON into the Morpheus database, computing XP exactly
 like ActivityHandler.cs (hashing, SimHash similarity, WPM/time penalties, and
 guild average length), and updating UserLevels.
 
-Usage (Windows PowerShell):
-  python Tools\import_dc_json.py --file Tools\example.json
-  python Tools\import_dc_json.py --dir C:\path\to\exports --pattern *.json
-  python Tools\import_dc_json.py --file Tools\example.json --dry-run
+Run these commands from the repository root. If python is unavailable, use python3.
+
+Install the dependencies with:
+  python -m pip install -r tools/requirements.txt
+
+Check that an export can be parsed before importing it:
+  python tools/import_dc_json.py --file "path/to/export.json" --dry-run
+
+Import a single export or matching exports from one directory:
+  python tools/import_dc_json.py --file "path/to/export.json"
+  python tools/import_dc_json.py --dir "path/to/exports" --pattern "*.json"
 
 Environment:
   Reads DB_CONNECTION_STRING from .env in repo root or process env.
   The connection string should be in Npgsql format (e.g., "Host=...;Username=...;Password=...;Database=...").
-
-Dependencies:
-  pip install -r Tools/requirements.txt
 """
 from __future__ import annotations
 
