@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Subscribe to every RSS/Atom URL when a bulk input line contains several feeds, even if other lines use display names.
 - Resolve relative Atom entry links against inherited `xml:base` URLs before posting, without changing saved entry identities.
 - Skip non-web RSS and Atom entry links, falling back to a valid link or the entry title.
 - Keep canceled reminder sends due for the next run without counting them as failed delivery attempts.

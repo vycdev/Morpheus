@@ -175,6 +175,17 @@ public class SubscriptionInputParserTests
     }
 
     [Theory]
+    [InlineData("https://example.com/feed,latest")]
+    [InlineData("https://example.com/feed.xml?topics=news|tech")]
+    public void ParseRssSources_PreservesSingleLineListPrecedence(string firstUrl)
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            $"{firstUrl} https://example.org/atom.xml");
+
+        Assert.Equal([firstUrl, "https://example.org/atom.xml"], parsed.Select(source => source.Url));
+    }
+
+    [Theory]
     [InlineData("https://example.com/feed.xml,https://example.org/atom.xml")]
     [InlineData("https://example.com/feed.xml , https://example.org/atom.xml")]
     [InlineData("https://example.com/feed.xml;https://example.org/atom.xml")]
@@ -196,6 +207,24 @@ public class SubscriptionInputParserTests
         Assert.Collection(parsed,
             first => Assert.Equal("Example", first.DisplayName),
             second => Assert.Equal("Other feed", second.DisplayName));
+    }
+
+    [Theory]
+    [InlineData(" | ", "Example")]
+    [InlineData(" | ", "Example archive at https://example.com/archive")]
+    [InlineData(" ", "Example archive at https://example.com/archive")]
+    [InlineData(",", "Archive https://example.com/archive")]
+    public void ParseRssSources_AcceptsMultipleUrlsOnALineInBulkFiles(string separator, string displayName)
+    {
+        IReadOnlyList<SubscriptionInputParser.RssSource> parsed = SubscriptionInputParser.ParseRssSources(
+            $"https://example.com/feed.xml{separator}{displayName}\nhttps://example.org/atom.xml https://example.net/news.xml");
+
+        Assert.Equal(
+            ["https://example.com/feed.xml", "https://example.org/atom.xml", "https://example.net/news.xml"],
+            parsed.Select(source => source.Url));
+        Assert.Equal(displayName, parsed[0].DisplayName);
+        Assert.Null(parsed[1].DisplayName);
+        Assert.Null(parsed[2].DisplayName);
     }
 
     [Fact]
