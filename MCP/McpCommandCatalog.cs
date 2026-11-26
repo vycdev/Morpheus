@@ -41,7 +41,7 @@ public sealed record McpCommandManifest(
 public sealed class McpCommandCatalog(CommandService commandService)
 {
     // Update only after reviewing the MCP safety and context needs of every changed command.
-    internal const string ReviewedRegistryFingerprint = "d1db0efc02e6d1e587054607f79235a230069c9ffb458794f900c59c2454434e";
+    internal const string ReviewedRegistryFingerprint = "8c9e50b0721dd9e4b6f66acfa7b411bdc2257db610e3b2e54e9d85a20aac3d59";
 
     private readonly object buildLock = new();
     private volatile McpCommandManifest? cachedManifest;
@@ -158,7 +158,7 @@ public sealed class McpCommandCatalog(CommandService commandService)
         if (module is "ActivityRoles" or "Emojis" or "Guild" or "Quotes" or "ReactionRoles" or "Subscriptions" or "Utility")
             effects.Add("discord-write");
         if (module == "Subscriptions" ||
-            module == "Emojis" && command is "downloademojis" or "importemoji" ||
+            module == "Emojis" && command is "addemoji" or "downloademojis" or "importemoji" ||
             module == "Image" && command is "cat" or "dog" or "deepfry" or "deepfryextra" or "memefy" or "blurpify" ||
             command is "advice" or "fact" or "joke" or "pingmc" or "udic")
             effects.Add("external-network");
